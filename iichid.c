@@ -489,19 +489,19 @@ iichid_set_intr(struct iichid *sc, iichid_intr_t intr, void *intr_sc)
 	sc->input_buf = malloc(sc->input_size, M_DEVBUF, M_WAITOK | M_ZERO);
 	taskqueue_start_threads(&sc->taskqueue, 1, PI_TTY, "%s taskq", device_get_nameunit(sc->dev));
 
-	sc->sampling_rate = sc->hw.irq == 0 ? 60 : 0;
+	sc->sampling_rate = sc->hw.irq > 0 ? -1 : IICHID_DEFAULT_SAMPLING_RATE;
 
-	if (sc->sampling_rate >= 0) {
-		error = iichid_setup_callout(sc);
-		if (error != 0) {
-			device_printf(sc->dev, "please consider setting the sampling_rate sysctl to -1");
-		}
-		iichid_reset_callout(sc);
-	} else {
+	if (sc->sampling_rate < 0) {
 		error = iichid_setup_interrupt(sc);
 		if (error != 0) {
-			device_printf(sc->dev, "please consider setting the sampling_rate sysctl greater than 0.");
+			device_printf(sc->dev,
+			    "Interrupt setup failed. Fallback to sampling.\n");
+			sc->sampling_rate = IICHID_DEFAULT_SAMPLING_RATE;
 		}
+	}
+	if (sc->sampling_rate >= 0) {
+		iichid_setup_callout(sc);
+		iichid_reset_callout(sc);
 	}
 
 	SYSCTL_ADD_PROC(device_get_sysctl_ctx(sc->dev),
