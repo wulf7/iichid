@@ -27,6 +27,25 @@
 #ifndef _IICHID_H_
 #define _IICHID_H_
 
+#define	I2C_HID_REPORT_TYPE_INPUT	0x1
+#define	I2C_HID_REPORT_TYPE_OUTPUT	0x2
+#define	I2C_HID_REPORT_TYPE_FEATURE	0x3
+
+/* 7.2 */
+enum {
+        I2C_HID_CMD_DESCR       = 0x0,
+        I2C_HID_CMD_RESET       = 0x1,
+        I2C_HID_CMD_GET_REPORT  = 0x2,
+        I2C_HID_CMD_SET_REPORT  = 0x3,
+        I2C_HID_CMD_GET_IDLE    = 0x4,
+        I2C_HID_CMD_SET_IDLE    = 0x5,
+        I2C_HID_CMD_GET_PROTO   = 0x6,
+        I2C_HID_CMD_SET_PROTO   = 0x7,
+        I2C_HID_CMD_SET_POWER   = 0x8,
+
+        /* pseudo commands */
+        I2C_HID_REPORT_DESCR    = 0x100,
+};
 /*
  * Since interrupt resource acquisition is not always possible (in case of GPIO
  * interrupts) iichid now supports a sampling_mode.
@@ -92,6 +111,7 @@ struct iichid {
 };
 
 int	iichid_fetch_report_descriptor(struct iichid*, uint8_t **, int *);
+int	iichid_get_report(struct iichid*, uint8_t *, int, uint8_t, uint8_t);
 void	iichid_identify(driver_t *, device_t);
 int	iichid_init(struct iichid *, device_t);
 void	iichid_destroy(struct iichid *);

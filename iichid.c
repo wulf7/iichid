@@ -301,6 +301,77 @@ iichid_fetch_report_descriptor(struct iichid* sc, uint8_t **buf, int *len)
 	return (0);
 }
 
+int
+iichid_get_report(struct iichid* sc, uint8_t *buf, int len, uint8_t type,
+    uint8_t id)
+{
+	/*
+	 * 7.2.2.4 - "The protocol is optimized for Report < 15.  If a
+	 * report ID >= 15 is necessary, then the Report ID in the Low Byte
+	 * must be set to 1111 and a Third Byte is appended to the protocol.
+	 * This Third Byte contains the entire/actual report ID."
+	 */
+	uint16_t dtareg = htole16(sc->desc.wDataRegister);
+	uint16_t cmdreg = htole16(sc->desc.wCommandRegister);
+	uint8_t cmd[] =	{   /*________|______id>=15_____|______id<15______*/
+						  cmdreg & 0xff		   ,
+						   cmdreg >> 8		   ,
+			    (id >= 15 ? 15 | (type << 4): id | (type << 4)),
+					      I2C_HID_CMD_GET_REPORT	   ,
+			    (id >= 15 ?		id	:   dtareg & 0xff ),
+			    (id >= 15 ?   dtareg & 0xff	:   dtareg >> 8   ),
+			    (id >= 15 ?   dtareg >> 8	:	0	  ),
+			};
+	int cmdlen    =	    (id >= 15 ?		7	:	6	  );
+	int report_id_len = (id >= 15 ?		2	:	1	  );
+	int report_len = len + 2;
+	int d, err;
+	uint8_t *tmprep;
+
+	device_printf(sc->dev, "HID command I2C_HID_CMD_GET_REPORT %d "
+	    "(type %d, len %d)\n", id, type, len);
+
+	/*
+	 * 7.2.2.2 - Response will be a 2-byte length value, the report
+	 * id with length determined above, and then the report.
+	 * Allocate len + 2 + 2 bytes, read into that temporary
+	 * buffer, and then copy only the report back out to buf.
+	 */
+	report_len += report_id_len;
+	tmprep = malloc(report_len, M_DEVBUF, M_WAITOK | M_ZERO);
+
+	/* type 3 id 8: 22 00 38 02 23 00 */
+	err = iichid_fetch_buffer(sc->dev, &cmd, cmdlen, tmprep, report_len);
+	if (err != 0) {
+		free(tmprep, M_DEVBUF);
+		return (EIO);
+	}
+
+	d = tmprep[0] | tmprep[1] << 8;
+	if (d != report_len)
+		device_printf(sc->dev,
+		    "response size %d != expected length %d\n", d, report_len);
+
+	if (report_id_len == 2)
+		d = tmprep[2] | tmprep[3] << 8;
+	else
+		d = tmprep[2];
+
+	if (d != id) {
+		device_printf(sc->dev, "response report id %d != %d\n",
+		    d, id);
+		free(tmprep, M_DEVBUF);
+		return (1);
+	}
+
+	device_printf(sc->dev, "response: %*D\n", report_len, tmprep, " ");
+
+	memcpy(buf, tmprep + 2 + report_id_len, len);
+	free(tmprep, M_DEVBUF);
+
+	return (0);
+}
+
 static void
 iichid_intr(void *context)
 {
