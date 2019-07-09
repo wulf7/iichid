@@ -361,7 +361,7 @@ iichid_get_report(struct iichid* sc, uint8_t *buf, int len, uint8_t type,
 		device_printf(sc->dev, "response report id %d != %d\n",
 		    d, id);
 		free(tmprep, M_DEVBUF);
-		return (1);
+		return (EBADMSG);
 	}
 
 	device_printf(sc->dev, "response: %*D\n", report_len, tmprep, " ");
