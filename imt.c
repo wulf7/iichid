@@ -74,6 +74,8 @@ SYSCTL_INT(_hw_usb_imt, OID_AUTO, debug, CTLFLAG_RWTUN,
     &wmt_debug, 1, "Debug level");
 #endif
 
+#define	WMT_BSIZE	1024	/* bytes, buffer size */
+
 enum {
 	WMT_INTR_DT,
 	WMT_N_TRANSFER,
@@ -218,6 +220,8 @@ struct imt_softc {
 	uint8_t                 cont_max_rid;
 	uint32_t                thqa_cert_rlen;
 	uint8_t                 thqa_cert_rid;
+
+	uint8_t			buf[WMT_BSIZE] __aligned(4);
 };
 
 static bool wmt_hid_parse(struct imt_softc *, const void *, uint16_t);
@@ -329,13 +333,11 @@ imt_attach(device_t dev)
 	mtx_init(&sc->lock, "imt lock", NULL, MTX_DEF);
 	sc->ih.lock = sc->lock;
 
-#if 0
 	/* Fetch and parse "Contact count maximum" feature report */
 	if (sc->cont_max_rlen > 0 && sc->cont_max_rlen <= WMT_BSIZE) {
-		err = usbd_req_get_report(uaa->device, NULL, sc->buf,
-		    sc->cont_max_rlen, uaa->info.bIfaceIndex,
-		    UHID_FEATURE_REPORT, sc->cont_max_rid);
-		if (err == USB_ERR_NORMAL_COMPLETION)
+		error = iichid_get_report(&sc->ih, sc->buf, sc->cont_max_rlen,
+		    I2C_HID_REPORT_TYPE_FEATURE, sc->cont_max_rid);
+		if (error == 0)
 			wmt_cont_max_parse(sc, sc->buf, sc->cont_max_rlen);
 		else
 			DPRINTF("usbd_req_get_report error=(%s)\n",
@@ -347,17 +349,9 @@ imt_attach(device_t dev)
 	/* Fetch THQA certificate to enable some devices like WaveShare */
 	if (sc->thqa_cert_rlen > 0 && sc->thqa_cert_rlen <= WMT_BSIZE &&
 	    sc->thqa_cert_rid != sc->cont_max_rid)
-		(void)usbd_req_get_report(uaa->device, NULL, sc->buf,
-		    sc->thqa_cert_rlen, uaa->info.bIfaceIndex,
-		    UHID_FEATURE_REPORT, sc->thqa_cert_rid);
+		(void)iichid_get_report(&sc->ih, sc->buf, sc->thqa_cert_rlen,
+		    I2C_HID_REPORT_TYPE_FEATURE, sc->thqa_cert_rid);
 
-	err = usbd_transfer_setup(uaa->device, &uaa->info.bIfaceIndex,
-	    sc->xfer, wmt_config, WMT_N_TRANSFER, sc, &sc->mtx);
-	if (err != USB_ERR_NORMAL_COMPLETION) {
-		DPRINTF("usbd_transfer_setup error=%s\n", usbd_errstr(err));
-		goto detach;
-	}
-#endif
 	sc->evdev = evdev_alloc();
 	evdev_set_name(sc->evdev, device_get_desc(dev));
 	evdev_set_phys(sc->evdev, device_get_nameunit(dev));
@@ -512,7 +506,11 @@ wmt_process_report(struct imt_softc *sc, uint8_t *buf, int len)
 	evdev_sync(sc->evdev);
 }
 
-/* port of userland hid_report_size() from usbhid(3) to kernel */
+/*
+ * Port of userland hid_report_size() from usbhid(3) to kernel.
+ * Unlike it USB-oriented predecessor it does not reserve a 1 byte for
+ * report ID as other (I2C) buses encodes report ID in different ways.
+ */
 static int
 wmt_hid_report_size(const void *buf, uint16_t len, enum hid_kind k, uint8_t id)
 {
@@ -521,7 +519,6 @@ wmt_hid_report_size(const void *buf, uint16_t len, enum hid_kind k, uint8_t id)
 	uint32_t temp;
 	uint32_t hpos;
 	uint32_t lpos;
-	int report_id = 0;
 
 	hpos = 0;
 	lpos = 0xFFFFFFFF;
@@ -536,8 +533,6 @@ wmt_hid_report_size(const void *buf, uint16_t len, enum hid_kind k, uint8_t id)
 			/* compute maximum */
 			if (hpos < temp)
 				hpos = temp;
-			if (h.report_ID != 0)
-				report_id = 1;
 		}
 	}
 	hid_end_parse(d);
@@ -549,7 +544,7 @@ wmt_hid_report_size(const void *buf, uint16_t len, enum hid_kind k, uint8_t id)
 		temp = hpos - lpos;
 
 	/* return length in bytes rounded up */
-	return ((temp + 7) / 8 + report_id);
+	return ((temp + 7) / 8);
 }
 
 static bool
@@ -777,8 +772,8 @@ wmt_cont_max_parse(struct imt_softc *sc, const void *r_ptr, uint16_t r_len)
 {
 	uint32_t cont_count_max;
 
-	cont_count_max = hid_get_data_unsigned((const uint8_t *)r_ptr + 1,
-	    r_len - 1, &sc->cont_max_loc);
+	cont_count_max = hid_get_data_unsigned((const uint8_t *)r_ptr,
+	    r_len, &sc->cont_max_loc);
 	if (cont_count_max > MAX_MT_SLOTS) {
 		DPRINTF("Hardware reported %d contacts while only %d is "
 		    "supported\n", (int)cont_count_max, MAX_MT_SLOTS);
