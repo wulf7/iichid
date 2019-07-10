@@ -274,7 +274,7 @@ iichid_fetch_hid_descriptor(device_t dev, uint16_t cmd, struct i2c_hid_desc *hid
 }
 
 int
-iichid_fetch_report_descriptor(struct iichid* sc, uint8_t **buf, int *len)
+iichid_get_report_desc(struct iichid* sc, uint8_t **buf, int *len)
 {
 	int error;
 	uint8_t *tmpbuf;

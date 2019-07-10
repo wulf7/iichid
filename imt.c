@@ -288,7 +288,7 @@ imt_probe(device_t dev)
 	if (error)
 		return (error);
 
-	error = iichid_fetch_report_descriptor(&sc->ih, &d_ptr, &d_len);
+	error = iichid_get_report_desc(&sc->ih, &d_ptr, &d_len);
 	if (error) {
 		device_printf(dev, "could not retrieve report descriptor from device: %d\n", error);
 		return (ENXIO);
@@ -317,7 +317,7 @@ imt_attach(device_t dev)
 
 	sc->dev = dev;
 
-	error = iichid_fetch_report_descriptor(&sc->ih, &d_ptr, &d_len);
+	error = iichid_get_report_desc(&sc->ih, &d_ptr, &d_len);
 	if (error) {
 		device_printf(dev, "could not retrieve report descriptor from device: %d\n", error);
 		return (ENXIO);

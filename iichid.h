@@ -109,7 +109,7 @@ struct iichid {
 	struct task		event_task;
 };
 
-int	iichid_fetch_report_descriptor(struct iichid*, uint8_t **, int *);
+int	iichid_get_report_desc(struct iichid*, uint8_t **, int *);
 int	iichid_get_report(struct iichid*, uint8_t *, int, uint8_t, uint8_t);
 void	iichid_identify(driver_t *, device_t);
 int	iichid_init(struct iichid *, device_t);
