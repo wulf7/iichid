@@ -82,7 +82,6 @@ struct iichid_hw {
 	uint16_t	config_reg;
 	uint16_t	irq;
 	uint16_t	gpio_pin;
-	device_t	acpi_dev;
 };
 
 struct iichid {
