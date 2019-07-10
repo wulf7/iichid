@@ -277,23 +277,34 @@ int
 iichid_get_report_desc(struct iichid* sc, uint8_t **buf, int *len)
 {
 	int error;
+	uint16_t cmd = sc->desc.wReportDescRegister;
 	uint8_t *tmpbuf;
 
+	DPRINTF(sc, "HID command I2C_HID_REPORT_DESCR at 0x%x with size %d\n",
+	    le16toh(cmd), le16toh(sc->desc.wReportDescLength));
+
 	tmpbuf = malloc(sc->desc.wReportDescLength, M_TEMP, M_WAITOK | M_ZERO);
-	error = iichid_fetch_buffer(sc->dev, &sc->desc.wReportDescRegister,
-	    sizeof(sc->desc.wReportDescRegister), tmpbuf,
+	error = iichid_fetch_buffer(sc->dev, &cmd, sizeof(cmd), tmpbuf,
 	    le16toh(sc->desc.wReportDescLength));
 	if (error) {
 		free (tmpbuf, M_TEMP);
+		device_printf(sc->dev, "could not retrieve report descriptor "
+		    "(%d)\n", error);
 		return (error);
 	}
 
 	*buf = tmpbuf;
 	*len = le16toh(sc->desc.wReportDescLength);
 
+	DPRINTF(sc, "HID report descriptor: %*D\n", *len, tmpbuf, " ");
+
+	/*
+	 * Do not rely on wMaxInputLength, as some devices may set it to
+	 * a wrong length. So traverse report descriptor and find the longest.
+	 */
 	sc->input_size = hid_report_size(tmpbuf, *len, hid_input, NULL) + 2;
 	if (sc->input_size != le16toh(sc->desc.wMaxInputLength))
-		device_printf(sc->dev, "determined (len=%d) and described (len=%d)"
+		DPRINTF(sc, "determined (len=%d) and described (len=%d)"
 		    " input report lengths mismatch\n",
 		    sc->input_size, le16toh(sc->desc.wMaxInputLength));
 
