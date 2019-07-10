@@ -460,27 +460,15 @@ iichid_teardown_callout(struct iichid *sc)
 static int
 iichid_setup_interrupt(struct iichid *sc)
 {
-	sc->irq_rid = 0;
 	sc->irq_cookie = 0;
-	sc->irq_res = 0;
-	sc->irq_res = bus_alloc_resource_any(sc->dev, SYS_RES_IRQ, &sc->irq_rid, RF_ACTIVE);
 
-	if( sc->irq_res != NULL )
-	{
-		DPRINTF(sc, "allocated irq at 0x%lx and rid %d\n",
-		    (uint64_t)sc->irq_res, sc->irq_rid);
-		int error = bus_setup_intr(sc->dev, sc->irq_res, INTR_TYPE_TTY | INTR_MPSAFE, NULL, iichid_intr, sc, &sc->irq_cookie);
-		if (error != 0)
-		{
-			DPRINTF(sc, "Could not setup interrupt handler\n");
-			bus_release_resource(sc->dev, SYS_RES_IRQ, sc->irq_rid, sc->irq_res);
-			return error;
-		} else
-			DPRINTF(sc, "successfully setup interrupt\n");
-
-	} else {
-		DPRINTF(sc, "could not allocate IRQ resource\n");
-	}
+	int error = bus_setup_intr(sc->dev, sc->irq_res,
+	    INTR_TYPE_TTY | INTR_MPSAFE, NULL, iichid_intr, sc, &sc->irq_cookie);
+	if (error != 0) {
+		DPRINTF(sc, "Could not setup interrupt handler\n");
+		return error;
+	} else
+		DPRINTF(sc, "successfully setup interrupt\n");
 
 	return (0);
 }
@@ -491,12 +479,7 @@ iichid_teardown_interrupt(struct iichid *sc)
 	if (sc->irq_cookie)
 		bus_teardown_intr(sc->dev, sc->irq_res, sc->irq_cookie);
 
-	if (sc->irq_res)
-		bus_release_resource(sc->dev, SYS_RES_IRQ, sc->irq_rid, sc->irq_res);
-
-	sc->irq_rid = 0;
 	sc->irq_cookie = 0;
-	sc->irq_res = 0;
 }
 
 static int
@@ -514,6 +497,12 @@ iichid_sysctl_sampling_rate_handler(SYSCTL_HANDLER_ARGS)
 	err = sysctl_handle_int(oidp, &value, 0, req);
 
 	if (err != 0 || req->newptr == NULL || value == sc->sampling_rate) {
+		mtx_unlock(&sc->lock);
+		return (err);
+	}
+
+	/* Can't switch to interrupt mode if it is not supported */
+	if (sc->irq_res == NULL && value < 0) {
 		mtx_unlock(&sc->lock);
 		return (err);
 	}
@@ -571,7 +560,17 @@ iichid_set_intr(struct iichid *sc, iichid_intr_t intr, void *intr_sc)
 	sc->input_buf = malloc(sc->input_size, M_DEVBUF, M_WAITOK | M_ZERO);
 	taskqueue_start_threads(&sc->taskqueue, 1, PI_TTY, "%s taskq", device_get_nameunit(sc->dev));
 
-	sc->sampling_rate = sc->hw.irq > 0 ? -1 : IICHID_DEFAULT_SAMPLING_RATE;
+	sc->irq_rid = 0;
+	sc->sampling_rate = -1;
+	sc->irq_res = bus_alloc_resource_any(sc->dev, SYS_RES_IRQ, &sc->irq_rid, RF_ACTIVE);
+
+	if (sc->irq_res != NULL) {
+		DPRINTF(sc, "allocated irq at 0x%lx and rid %d\n",
+		    (uint64_t)sc->irq_res, sc->irq_rid);
+	} else {
+		DPRINTF(sc, "IRQ allocation failed. Fallback to sampling.\n");
+		sc->sampling_rate = IICHID_DEFAULT_SAMPLING_RATE;
+	}
 
 	if (sc->sampling_rate < 0) {
 		error = iichid_setup_interrupt(sc);
@@ -647,6 +646,9 @@ iichid_destroy(struct iichid *sc)
 	iichid_teardown_callout(sc);
 	iichid_teardown_interrupt(sc);
 
+	if (sc->irq_res)
+		bus_release_resource(sc->dev, SYS_RES_IRQ, sc->irq_rid, sc->irq_res);
+
 	if (sc->taskqueue) {
 		taskqueue_block(sc->taskqueue);
 		taskqueue_drain(sc->taskqueue, &sc->event_task);
@@ -699,10 +701,15 @@ iichid_identify_cb(ACPI_HANDLE handle, UINT32 level, void *context,
 
 		/* No I2C devices tied to the addr found. Add a child */
 		child = BUS_ADD_CHILD(iicbus, 0, NULL, -1);
-		if (child != NULL)
-			iicbus_set_addr(child, hw.device_addr);
-		else
+		if (child == NULL) {
 			device_printf(iicbus, "add child failed\n");
+			return (AE_OK);
+		}
+
+		iicbus_set_addr(child, hw.device_addr);
+		if (hw.irq > 0 &&
+		    bus_set_resource(child, SYS_RES_IRQ, 0, hw.irq, 1) != 0)
+			device_printf(iicbus, "irq assignment failed");
 	}
 
 	return (AE_OK);
