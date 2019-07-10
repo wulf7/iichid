@@ -57,6 +57,14 @@ __FBSDID("$FreeBSD$");
 
 #include "iichid.h"
 
+#define IICHID_DEBUG
+
+#ifdef IICHID_DEBUG
+#define	DPRINTF(sc, ...)	device_printf((sc)->dev, __VA_ARGS__);
+#else
+#define	DPRINTF(sc, ...)
+#endif
+
 static ACPI_STATUS
 iichid_res_walk_cb(ACPI_RESOURCE *res, void *context)
 {
@@ -66,9 +74,8 @@ iichid_res_walk_cb(ACPI_RESOURCE *res, void *context)
 	case ACPI_RESOURCE_TYPE_SERIAL_BUS:
 		if (res->Data.CommonSerialBus.Type !=
 		    ACPI_RESOURCE_SERIAL_TYPE_I2C) {
-			device_printf(hw->acpi_dev,
-			    "wrong bus type, should be %d is %d\n",
-			    ACPI_RESOURCE_SERIAL_TYPE_I2C,
+			printf("%s: wrong bus type, should be %d is %d\n",
+			    __func__, ACPI_RESOURCE_SERIAL_TYPE_I2C,
 			    res->Data.CommonSerialBus.Type);
 			return (AE_TYPE);
 		} else {
@@ -91,8 +98,8 @@ iichid_res_walk_cb(ACPI_RESOURCE *res, void *context)
 		break;
 
 	default:
-		device_printf(hw->acpi_dev, "unexpected type %d while parsing "
-		    "Current Resource Settings (_CSR)\n", res->Type);
+		printf("%s: unexpected type %d while parsing Current Resource "
+		    "Settings (_CRS)\n", __func__, res->Type);
 		break;
 	}
 
@@ -100,15 +107,13 @@ iichid_res_walk_cb(ACPI_RESOURCE *res, void *context)
 }
 
 static int
-iichid_get_hw(device_t dev, ACPI_HANDLE handle, struct iichid_hw *hw)
+iichid_get_hw(ACPI_HANDLE handle, struct iichid_hw *hw)
 {
 	ACPI_OBJECT *result;
 	ACPI_OBJECT_LIST acpi_arg;
 	ACPI_BUFFER acpi_buf;
 	ACPI_STATUS status;
 	ACPI_DEVICE_INFO *device_info;
-
-	hw->acpi_dev = dev;
 
 	/*
 	 * function (_DSM) to be evaluated to retrieve the address of
@@ -139,7 +144,7 @@ iichid_get_hw(device_t dev, ACPI_HANDLE handle, struct iichid_hw *hw)
 	/* _CRS holds device addr and irq and needs a callback to evaluate */
 	status = AcpiWalkResources(handle, "_CRS", iichid_res_walk_cb, hw);
 	if (ACPI_FAILURE(status)) {
-		device_printf(dev, "could not evaluate _CRS\n");
+		printf("%s: could not evaluate _CRS\n", __func__);
 		return (ENXIO);
 	}
 
@@ -152,7 +157,7 @@ iichid_get_hw(device_t dev, ACPI_HANDLE handle, struct iichid_hw *hw)
 
 	status = AcpiEvaluateObject(handle, "_DSM", &acpi_arg, &acpi_buf);
 	if (ACPI_FAILURE(status)) {
-		device_printf(dev, "error evaluating _DSM\n");
+		printf("%s: error evaluating _DSM\n", __func__);
 		if (acpi_buf.Pointer != NULL)
 			AcpiOsFree(acpi_buf.Pointer);
 		return (ENXIO);
@@ -161,7 +166,8 @@ iichid_get_hw(device_t dev, ACPI_HANDLE handle, struct iichid_hw *hw)
 	/* the result will contain the register address (int type) */
 	result = (ACPI_OBJECT *) acpi_buf.Pointer;
 	if (result->Type != ACPI_TYPE_INTEGER) {
-		device_printf(dev, "_DSM should return descriptor register address as integer\n");
+		printf("%s: _DSM should return descriptor register address "
+		    "as integer\n", __func__);
 		AcpiOsFree(result);
 		return (ENXIO);
 	}
@@ -174,7 +180,7 @@ iichid_get_hw(device_t dev, ACPI_HANDLE handle, struct iichid_hw *hw)
 	/* get ACPI HID. It is a base part of the evdev device name */
 	status = AcpiGetObjectInfo(handle, &device_info);
 	if (ACPI_FAILURE(status)) {
-		device_printf(dev, "error evaluating AcpiGetObjectInfo\n");
+		printf("%s: error evaluating AcpiGetObjectInfo\n", __func__);
 		return (ENXIO);
 	}
 
@@ -183,13 +189,7 @@ iichid_get_hw(device_t dev, ACPI_HANDLE handle, struct iichid_hw *hw)
 		    sizeof(hw->hid));
 
 	AcpiOsFree(device_info);
-/*
-	device_printf(dev, "  ACPI Hardware ID: %s\n", hw->hid);
-	device_printf(dev, "  IICbus addr: 0x%02x\n", hw->device_addr);
-	device_printf(dev, "  IRQ: %d\n", hw->irq);
-	device_printf(dev, "  GPIO pin: %02X\n", hw->gpio_pin);
-	device_printf(dev, "  HID descriptor register: 0x%hx\n", hw->config_reg);
-*/
+
 	return (0);
 }
 
@@ -199,7 +199,6 @@ iichid_get_device_hw_cb(ACPI_HANDLE handle, UINT32 level, void *context,
 {
 	struct iichid_hw buf;
 	struct iichid_hw *hw = context;
-	device_t iicbus = hw->acpi_dev;
 	uint16_t addr = hw->device_addr;
 	UINT32 sta;
 
@@ -212,7 +211,7 @@ iichid_get_device_hw_cb(ACPI_HANDLE handle, UINT32 level, void *context,
 	     acpi_MatchHid(handle, "ACPI0C50")) &&
 	    (ACPI_FAILURE(acpi_GetInteger(handle, "_STA", &sta)) ||
 	     ACPI_DEVICE_PRESENT(sta)) &&
-	    iichid_get_hw(iicbus, handle, &buf) == 0) {
+	    iichid_get_hw(handle, &buf) == 0) {
 
 		if (addr == hw->device_addr)
 			/* XXX: need to break walking loop as well */
@@ -328,7 +327,7 @@ iichid_get_report(struct iichid* sc, uint8_t *buf, int len, uint8_t type,
 	int d, err;
 	uint8_t *tmprep;
 
-	device_printf(sc->dev, "HID command I2C_HID_CMD_GET_REPORT %d "
+	DPRINTF(sc, "HID command I2C_HID_CMD_GET_REPORT %d "
 	    "(type %d, len %d)\n", id, type, len);
 
 	/*
@@ -349,8 +348,8 @@ iichid_get_report(struct iichid* sc, uint8_t *buf, int len, uint8_t type,
 
 	d = tmprep[0] | tmprep[1] << 8;
 	if (d != report_len)
-		device_printf(sc->dev,
-		    "response size %d != expected length %d\n", d, report_len);
+		DPRINTF(sc, "response size %d != expected length %d\n",
+		    d, report_len);
 
 	if (report_id_len == 2)
 		d = tmprep[2] | tmprep[3] << 8;
@@ -358,13 +357,12 @@ iichid_get_report(struct iichid* sc, uint8_t *buf, int len, uint8_t type,
 		d = tmprep[2];
 
 	if (d != id) {
-		device_printf(sc->dev, "response report id %d != %d\n",
-		    d, id);
+		DPRINTF(sc, "response report id %d != %d\n", d, id);
 		free(tmprep, M_DEVBUF);
 		return (EBADMSG);
 	}
 
-	device_printf(sc->dev, "response: %*D\n", report_len, tmprep, " ");
+	DPRINTF(sc, "response: %*D\n", report_len, tmprep, " ");
 
 	memcpy(buf, tmprep + 2 + report_id_len, len);
 	free(tmprep, M_DEVBUF);
@@ -413,13 +411,13 @@ iichid_setup_callout(struct iichid *sc)
 {
 
 	if (sc->sampling_rate < 0) {
-		device_printf(sc->dev, "sampling_rate is below 0, can't setup callout\n");
+		DPRINTF(sc, "sampling_rate is below 0, can't setup callout\n");
 		return (EINVAL);
 	}
 
 	callout_init_mtx(&sc->periodic_callout, &sc->lock, 0);
 	sc->callout_setup=true;
-	device_printf(sc->dev, "successfully setup callout\n");
+	DPRINTF(sc, "successfully setup callout\n");
 	return (0);
 }
 
@@ -428,7 +426,8 @@ iichid_reset_callout(struct iichid *sc)
 {
 
 	if (sc->sampling_rate <= 0) {
-		device_printf(sc->dev, "sampling_rate is below or equal to 0, can't reset callout\n");
+		DPRINTF(sc, "sampling_rate is below or equal to 0, "
+		    "can't reset callout\n");
 		return (EINVAL);
 	}
 
@@ -444,7 +443,7 @@ iichid_teardown_callout(struct iichid *sc)
 {
 	callout_stop(&sc->periodic_callout);
 	sc->callout_setup=false;
-	device_printf(sc->dev, "tore callout down\n");
+	DPRINTF(sc, "tore callout down\n");
 }
 
 static int
@@ -457,18 +456,19 @@ iichid_setup_interrupt(struct iichid *sc)
 
 	if( sc->irq_res != NULL )
 	{
-		device_printf(sc->dev, "allocated irq at 0x%lx and rid %d\n", (uint64_t)sc->irq_res, sc->irq_rid);
+		DPRINTF(sc, "allocated irq at 0x%lx and rid %d\n",
+		    (uint64_t)sc->irq_res, sc->irq_rid);
 		int error = bus_setup_intr(sc->dev, sc->irq_res, INTR_TYPE_TTY | INTR_MPSAFE, NULL, iichid_intr, sc, &sc->irq_cookie);
 		if (error != 0)
 		{
-			device_printf(sc->dev, "Could not setup interrupt handler\n");
+			DPRINTF(sc, "Could not setup interrupt handler\n");
 			bus_release_resource(sc->dev, SYS_RES_IRQ, sc->irq_rid, sc->irq_res);
 			return error;
 		} else
-			device_printf(sc->dev, "successfully setup interrupt\n");
+			DPRINTF(sc, "successfully setup interrupt\n");
 
 	} else {
-		device_printf(sc->dev, "could not allocate IRQ resource\n");
+		DPRINTF(sc, "could not allocate IRQ resource\n");
 	}
 
 	return (0);
@@ -520,7 +520,7 @@ iichid_sysctl_sampling_rate_handler(SYSCTL_HANDLER_ARGS)
 	if (value > 0)
 		iichid_reset_callout(sc);
 
-	device_printf(sc->dev, "new sampling_rate value: %d\n", value);
+	DPRINTF(sc, "new sampling_rate value: %d\n", value);
 
 	mtx_unlock(&sc->lock);
 
@@ -602,9 +602,16 @@ iichid_init(struct iichid *sc, device_t dev)
 	if (error)
 		return (ENXIO);
 
+	DPRINTF(sc, "  ACPI Hardware ID  : %s\n", sc->hw.hid);
+	DPRINTF(sc, "  IICbus addr       : 0x%02X\n", sc->hw.device_addr);
+	DPRINTF(sc, "  IRQ               : %d\n", sc->hw.irq);
+	DPRINTF(sc, "  GPIO pin          : 0x%02X\n", sc->hw.gpio_pin);
+	DPRINTF(sc, "  HID descriptor reg: 0x%02X\n", sc->hw.config_reg);
+
 	error = iichid_fetch_hid_descriptor(dev, sc->hw.config_reg, &sc->desc);
 	if (error) {
-		device_printf(dev, "could not retrieve HID descriptor from device: %d\n", error);
+		device_printf(dev, "could not retrieve HID descriptor from "
+		    "the device: %d\n", error);
 		return (ENXIO);
 	}
 
@@ -664,7 +671,7 @@ iichid_identify_cb(ACPI_HANDLE handle, UINT32 level, void *context,
 	     acpi_MatchHid(handle, "ACPI0C50")) &&
 	    (ACPI_FAILURE(acpi_GetInteger(handle, "_STA", &sta)) ||
 	     ACPI_DEVICE_PRESENT(sta)) &&
-	    iichid_get_hw(iicbus, handle, &hw) == 0) {
+	    iichid_get_hw(handle, &hw) == 0) {
 
 		/* get a list of all children below iicbus */
 		if (device_get_children(iicbus, &children, &ccount) != 0)
