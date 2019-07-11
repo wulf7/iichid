@@ -730,7 +730,7 @@ iichid_identify_cb(ACPI_HANDLE handle, UINT32 level, void *context,
 	acpi_iichid_rl =
 	    BUS_GET_RESOURCE_LIST(device_get_parent(acpi_iichid), acpi_iichid);
 	resource_list_purge(acpi_iichid_rl);
-	acpi_parse_resources(iichid, handle, &acpi_res_parse_set, NULL);
+	acpi_parse_resources(child, handle, &acpi_res_parse_set, NULL);
 
 	return (AE_OK);
 }
