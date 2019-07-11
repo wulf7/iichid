@@ -564,15 +564,6 @@ iichid_set_intr(struct iichid *sc, iichid_intr_t intr, void *intr_sc)
 	if (sc->taskqueue == NULL)
 		return (ENXIO);
 
-#if 0
-	if (sc->hw.irq > 0) {
-		/* move IRQ resource to the initialized device */
-		u_long irq = bus_get_resource_start(sc->hw.acpi_dev, SYS_RES_IRQ, 0);
-		bus_delete_resource(sc->hw.acpi_dev, SYS_RES_IRQ, 0);
-		bus_set_resource(sc->dev, SYS_RES_IRQ, 0, irq, 1);
-	}
-#endif
-
 	/*
 	 * Fallback to HID descriptor input length
 	 * if report descriptor has not been fetched yet
@@ -679,14 +670,6 @@ iichid_destroy(struct iichid *sc)
 	}
 
 	mtx_unlock(&sc->lock);
-#if 0
-	if (sc->hw.irq > 0) {
-		/* return IRQ resource back to the ACPI driver */
-		u_long irq = bus_get_resource_start(sc->dev, SYS_RES_IRQ, 0);
-		bus_delete_resource(sc->dev, SYS_RES_IRQ, 0);
-		bus_set_resource(sc->hw.acpi_dev, SYS_RES_IRQ, 0, irq, 1);
-	}
-#endif
 }
 
 static ACPI_STATUS
@@ -694,8 +677,10 @@ iichid_identify_cb(ACPI_HANDLE handle, UINT32 level, void *context,
     void **status)
 {
 	struct iichid_hw hw;
+	devclass_t acpi_iichid_devclass;
+	struct resource_list *acpi_iichid_rl;
 	device_t iicbus = context;
-	device_t child, *children;
+	device_t child, *children, acpi_iichid;
 	int ccount, i;
 
 	if (!acpi_is_iichid(handle))
@@ -724,10 +709,28 @@ iichid_identify_cb(ACPI_HANDLE handle, UINT32 level, void *context,
 		return (AE_OK);
 	}
 
+	/*
+	 * Ensure dummy driver is attached. We are going to remove resources
+	 * from the ACPI device so don't let other drivers occupy its place.
+	 */
+	acpi_iichid = acpi_get_device(handle);
+	if (acpi_iichid == NULL)
+		return (AE_OK);
+
+	if (!device_is_alive(acpi_iichid))
+		device_probe_and_attach(acpi_iichid);
+
+	acpi_iichid_devclass = devclass_find("acpi_iichid");
+	if (device_get_devclass(acpi_iichid) != acpi_iichid_devclass)
+		return (AE_OK);
+
 	iicbus_set_addr(child, hw.device_addr);
-	if (hw.irq > 0 &&
-	    bus_set_resource(child, SYS_RES_IRQ, 0, hw.irq, 1) != 0)
-		device_printf(iicbus, "irq assignment failed");
+
+	/* Move all resources including IRQ from ACPI to I2C device */
+	acpi_iichid_rl =
+	    BUS_GET_RESOURCE_LIST(device_get_parent(acpi_iichid), acpi_iichid);
+	resource_list_purge(acpi_iichid_rl);
+	acpi_parse_resources(iichid, handle, &acpi_res_parse_set, NULL);
 
 	return (AE_OK);
 }
@@ -774,7 +777,6 @@ static int
 acpi_iichid_attach(device_t dev)
 {
 
-	device_printf(dev, "attached\n");
 	return (0);
 }
 
