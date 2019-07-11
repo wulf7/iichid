@@ -728,3 +728,69 @@ iichid_identify(driver_t *driver, device_t parent)
 MODULE_DEPEND(iichid, acpi, 1, 1, 1);
 MODULE_DEPEND(iichid, usb, 1, 1, 1);
 MODULE_VERSION(iichid, 1);
+
+/*
+ * Dummy ACPI driver. Used as bus resources holder for iichid.
+ */
+
+static char *iichid_ids[] = {
+	"PNP0C50",
+	"ACPI0C50",
+	NULL
+};
+
+static device_probe_t           acpi_iichid_probe;
+static device_attach_t          acpi_iichid_attach;
+static device_detach_t          acpi_iichid_detach;
+
+static int
+acpi_iichid_probe(device_t dev)
+{
+	if (acpi_disabled("iichid") ||
+#if __FreeBSD_version >= 1300000
+	    ACPI_ID_PROBE(device_get_parent(dev), dev, iichid_ids, NULL) > 0)
+#else
+	    ACPI_ID_PROBE(device_get_parent(dev), dev, iichid_ids) == NULL)
+#endif
+		return (ENXIO);
+
+	device_set_desc(dev, "HID over I2C (ACPI)");
+
+	return (BUS_PROBE_VENDOR);
+}
+
+static int
+acpi_iichid_attach(device_t dev)
+{
+
+	device_printf(dev, "attached\n");
+	return (0);
+}
+
+static int
+acpi_iichid_detach(device_t dev)
+{
+
+	return (0);
+}
+
+static devclass_t acpi_iichid_devclass;
+
+static device_method_t acpi_iichid_methods[] = {
+	/* device interface */
+	DEVMETHOD(device_probe, acpi_iichid_probe),
+	DEVMETHOD(device_attach, acpi_iichid_attach),
+	DEVMETHOD(device_detach, acpi_iichid_detach),
+
+	DEVMETHOD_END
+};
+
+static driver_t acpi_iichid_driver = {
+	.name = "acpi_iichid",
+	.methods = acpi_iichid_methods,
+	.size = 1,
+};
+
+DRIVER_MODULE(acpi_iichid, acpi, acpi_iichid_driver, acpi_iichid_devclass, NULL, 0);
+MODULE_DEPEND(acpi_iichid, acpi, 1, 1, 1);
+MODULE_VERSION(acpi_iichid, 1);
