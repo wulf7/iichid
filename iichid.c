@@ -65,6 +65,36 @@ __FBSDID("$FreeBSD$");
 #define	DPRINTF(sc, ...)
 #endif
 
+static char *iichid_ids[] = {
+	"PNP0C50",
+	"ACPI0C50",
+	NULL
+};
+
+static __inline bool
+acpi_is_iichid(ACPI_HANDLE handle)
+{
+	char	**ids;
+	UINT32	sta;
+
+	for (ids = iichid_ids; *ids != NULL; ids++) {
+		if (acpi_MatchHid(handle, *ids))
+			break;
+	}
+	if (*ids == NULL)
+                return (false);
+
+	/*
+	 * If no _STA method or if it failed, then assume that
+	 * the device is present.
+	 */
+	if (ACPI_FAILURE(acpi_GetInteger(handle, "_STA", &sta)) ||
+	    ACPI_DEVICE_PRESENT(sta))
+		return (true);
+
+	return (false);
+}
+
 static ACPI_STATUS
 iichid_res_walk_cb(ACPI_RESOURCE *res, void *context)
 {
@@ -200,17 +230,10 @@ iichid_get_device_hw_cb(ACPI_HANDLE handle, UINT32 level, void *context,
 	struct iichid_hw buf;
 	struct iichid_hw *hw = context;
 	uint16_t addr = hw->device_addr;
-	UINT32 sta;
 
 	bzero(&buf, sizeof(buf));
-	/*
-	 * If no _STA method or if it failed, then assume that
-	 * the device is present.
-	 */
-	if ((acpi_MatchHid(handle, "PNP0C50") ||
-	     acpi_MatchHid(handle, "ACPI0C50")) &&
-	    (ACPI_FAILURE(acpi_GetInteger(handle, "_STA", &sta)) ||
-	     ACPI_DEVICE_PRESENT(sta)) &&
+
+	if (acpi_is_iichid(handle) &&
 	    iichid_get_hw(handle, &buf) == 0) {
 
 		if (addr == hw->device_addr)
@@ -673,44 +696,38 @@ iichid_identify_cb(ACPI_HANDLE handle, UINT32 level, void *context,
 	struct iichid_hw hw;
 	device_t iicbus = context;
 	device_t child, *children;
-	UINT32 sta;
 	int ccount, i;
 
-	/*
-	 * If no _STA method or if it failed, then assume that
-	 * the device is present.
-	 */
-	if ((acpi_MatchHid(handle, "PNP0C50") ||
-	     acpi_MatchHid(handle, "ACPI0C50")) &&
-	    (ACPI_FAILURE(acpi_GetInteger(handle, "_STA", &sta)) ||
-	     ACPI_DEVICE_PRESENT(sta)) &&
-	    iichid_get_hw(handle, &hw) == 0) {
+	if (!acpi_is_iichid(handle))
+		 return (AE_OK);
 
-		/* get a list of all children below iicbus */
-		if (device_get_children(iicbus, &children, &ccount) != 0)
+	if (iichid_get_hw(handle, &hw) != 0)
+		return (AE_OK);
+
+	/* get a list of all children below iicbus */
+	if (device_get_children(iicbus, &children, &ccount) != 0)
 			return (AE_OK);
 
-		/* scan through to find out if I2C addr is already in use */
-		for (i = 0; i < ccount; i++) {
-			if (iicbus_get_addr(children[i]) == hw.device_addr) {
-				free(children, M_TEMP);
-				return (AE_OK);
-			}
-		}
-		free(children, M_TEMP);
-
-		/* No I2C devices tied to the addr found. Add a child */
-		child = BUS_ADD_CHILD(iicbus, 0, NULL, -1);
-		if (child == NULL) {
-			device_printf(iicbus, "add child failed\n");
+	/* scan through to find out if I2C addr is already in use */
+	for (i = 0; i < ccount; i++) {
+		if (iicbus_get_addr(children[i]) == hw.device_addr) {
+			free(children, M_TEMP);
 			return (AE_OK);
 		}
-
-		iicbus_set_addr(child, hw.device_addr);
-		if (hw.irq > 0 &&
-		    bus_set_resource(child, SYS_RES_IRQ, 0, hw.irq, 1) != 0)
-			device_printf(iicbus, "irq assignment failed");
 	}
+	free(children, M_TEMP);
+
+	/* No I2C devices tied to the addr found. Add a child */
+	child = BUS_ADD_CHILD(iicbus, 0, NULL, -1);
+	if (child == NULL) {
+		device_printf(iicbus, "add child failed\n");
+		return (AE_OK);
+	}
+
+	iicbus_set_addr(child, hw.device_addr);
+	if (hw.irq > 0 &&
+	    bus_set_resource(child, SYS_RES_IRQ, 0, hw.irq, 1) != 0)
+		device_printf(iicbus, "irq assignment failed");
 
 	return (AE_OK);
 }
@@ -732,12 +749,6 @@ MODULE_VERSION(iichid, 1);
 /*
  * Dummy ACPI driver. Used as bus resources holder for iichid.
  */
-
-static char *iichid_ids[] = {
-	"PNP0C50",
-	"ACPI0C50",
-	NULL
-};
 
 static device_probe_t           acpi_iichid_probe;
 static device_attach_t          acpi_iichid_attach;
