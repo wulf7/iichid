@@ -80,8 +80,6 @@ struct iichid_hw {
 	char		hid[16];
 	uint8_t		device_addr;
 	uint16_t	config_reg;
-	uint16_t	irq;
-	uint16_t	gpio_pin;
 };
 
 struct iichid {

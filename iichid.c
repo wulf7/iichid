@@ -96,44 +96,31 @@ acpi_is_iichid(ACPI_HANDLE handle)
 }
 
 static ACPI_STATUS
-iichid_res_walk_cb(ACPI_RESOURCE *res, void *context)
+iichid_addr_cb(ACPI_RESOURCE *res, void *context)
 {
-	struct iichid_hw *hw = context;
+	uint16_t *device_addr = context;
 
-	switch(res->Type) {
-	case ACPI_RESOURCE_TYPE_SERIAL_BUS:
-		if (res->Data.CommonSerialBus.Type !=
-		    ACPI_RESOURCE_SERIAL_TYPE_I2C) {
-			printf("%s: wrong bus type, should be %d is %d\n",
-			    __func__, ACPI_RESOURCE_SERIAL_TYPE_I2C,
-			    res->Data.CommonSerialBus.Type);
-			return (AE_TYPE);
-		} else {
-			hw->device_addr =
-			    le16toh(res->Data.I2cSerialBus.SlaveAddress);
-		}
-		break;
-	case ACPI_RESOURCE_TYPE_EXTENDED_IRQ:
-		if (res->Data.ExtendedIrq.InterruptCount > 0) {
-			hw->irq = res->Data.ExtendedIrq.Interrupts[0];
-		}
-		break;
-	case ACPI_RESOURCE_TYPE_GPIO:
-		if (res->Data.Gpio.ConnectionType ==
-		    ACPI_RESOURCE_GPIO_TYPE_INT) {
-			hw->gpio_pin = res->Data.Gpio.PinTable[0];
-		}
-		break;
-	case ACPI_RESOURCE_TYPE_END_TAG:
-		break;
-
-	default:
-		printf("%s: unexpected type %d while parsing Current Resource "
-		    "Settings (_CRS)\n", __func__, res->Type);
-		break;
+	if (res->Type == ACPI_RESOURCE_TYPE_SERIAL_BUS &&
+	    res->Data.CommonSerialBus.Type == ACPI_RESOURCE_SERIAL_TYPE_I2C) {
+		*device_addr = le16toh(res->Data.I2cSerialBus.SlaveAddress);
+		return (AE_CTRL_TERMINATE);
 	}
 
-	return AE_OK;
+	return (AE_OK);
+}
+
+static uint16_t
+acpi_get_iichid_addr(ACPI_HANDLE handle)
+{
+	ACPI_STATUS status;
+	uint16_t addr = 0;
+
+	/* _CRS holds device addr and needs a callback to evaluate */
+	status = AcpiWalkResources(handle, "_CRS", iichid_addr_cb, &addr);
+	if (ACPI_FAILURE(status))
+		return (0);
+
+	return (addr);
 }
 
 static int
@@ -171,13 +158,6 @@ iichid_get_hw(ACPI_HANDLE handle, struct iichid_hw *hw)
 		.Package.Count = 0,
 	}};
 
-	/* _CRS holds device addr and irq and needs a callback to evaluate */
-	status = AcpiWalkResources(handle, "_CRS", iichid_res_walk_cb, hw);
-	if (ACPI_FAILURE(status)) {
-		printf("%s: could not evaluate _CRS\n", __func__);
-		return (ENXIO);
-	}
-
 	/* Evaluate _DSM method to obtain HID Descriptor address */
 	acpi_arg.Pointer = args;
 	acpi_arg.Count = nitems(args);
@@ -190,7 +170,7 @@ iichid_get_hw(ACPI_HANDLE handle, struct iichid_hw *hw)
 		printf("%s: error evaluating _DSM\n", __func__);
 		if (acpi_buf.Pointer != NULL)
 			AcpiOsFree(acpi_buf.Pointer);
-		return (ENXIO);
+		return (status);
 	}
 
 	/* the result will contain the register address (int type) */
@@ -199,7 +179,7 @@ iichid_get_hw(ACPI_HANDLE handle, struct iichid_hw *hw)
 		printf("%s: _DSM should return descriptor register address "
 		    "as integer\n", __func__);
 		AcpiOsFree(result);
-		return (ENXIO);
+		return (AE_TYPE);
 	}
 
 	/* take it (much work done for one byte -.-) */
@@ -211,7 +191,7 @@ iichid_get_hw(ACPI_HANDLE handle, struct iichid_hw *hw)
 	status = AcpiGetObjectInfo(handle, &device_info);
 	if (ACPI_FAILURE(status)) {
 		printf("%s: error evaluating AcpiGetObjectInfo\n", __func__);
-		return (ENXIO);
+		return (status);
 	}
 
 	if (device_info->Valid & ACPI_VALID_HID)
@@ -220,25 +200,29 @@ iichid_get_hw(ACPI_HANDLE handle, struct iichid_hw *hw)
 
 	AcpiOsFree(device_info);
 
-	return (0);
+	return (AE_OK);
 }
 
 static ACPI_STATUS
 iichid_get_device_hw_cb(ACPI_HANDLE handle, UINT32 level, void *context,
-    void **status)
+    void **retval)
 {
 	struct iichid_hw buf;
 	struct iichid_hw *hw = context;
+	ACPI_STATUS status;
 	uint16_t addr = hw->device_addr;
 
 	bzero(&buf, sizeof(buf));
 
-	if (acpi_is_iichid(handle) &&
-	    iichid_get_hw(handle, &buf) == 0) {
+	if (acpi_is_iichid(handle) && acpi_get_iichid_addr(handle) == addr) {
 
-		if (addr == hw->device_addr)
-			/* XXX: need to break walking loop as well */
+		status = iichid_get_hw(handle, &buf);
+		if (ACPI_SUCCESS(status)) {
+			buf.device_addr = addr;
 			bcopy(&buf, hw, sizeof(struct iichid_hw));
+			return(AE_CTRL_TERMINATE);
+		} else
+			return(status);
 	}
 
 	return (AE_OK);
@@ -248,14 +232,15 @@ static int
 iichid_get_device_hw(device_t dev, uint16_t addr, struct iichid_hw *hw)
 {
 	ACPI_HANDLE ctrl_handle;
+	ACPI_STATUS status;
 	device_t iicbus = device_get_parent(dev);
 	hw->device_addr = iicbus_get_addr(dev);
 
 	ctrl_handle = acpi_get_handle(device_get_parent(iicbus));
-	AcpiWalkNamespace(ACPI_TYPE_DEVICE, ctrl_handle,
+	status = AcpiWalkNamespace(ACPI_TYPE_DEVICE, ctrl_handle,
 	    1, iichid_get_device_hw_cb, NULL, hw, NULL);
 
-	return (0);
+	return (ACPI_SUCCESS(status) ? 0 : ENXIO);
 }
 
 static int
@@ -628,8 +613,6 @@ iichid_init(struct iichid *sc, device_t dev)
 
 	DPRINTF(sc, "  ACPI Hardware ID  : %s\n", sc->hw.hid);
 	DPRINTF(sc, "  IICbus addr       : 0x%02X\n", sc->hw.device_addr);
-	DPRINTF(sc, "  IRQ               : %d\n", sc->hw.irq);
-	DPRINTF(sc, "  GPIO pin          : 0x%02X\n", sc->hw.gpio_pin);
 	DPRINTF(sc, "  HID descriptor reg: 0x%02X\n", sc->hw.config_reg);
 
 	error = iichid_fetch_hid_descriptor(dev, sc->hw.config_reg, &sc->desc);
@@ -676,26 +659,27 @@ static ACPI_STATUS
 iichid_identify_cb(ACPI_HANDLE handle, UINT32 level, void *context,
     void **status)
 {
-	struct iichid_hw hw;
 	devclass_t acpi_iichid_devclass;
 	struct resource_list *acpi_iichid_rl;
 	device_t iicbus = context;
 	device_t child, *children, acpi_iichid;
 	int ccount, i;
+	uint16_t device_addr;
 
 	if (!acpi_is_iichid(handle))
 		 return (AE_OK);
 
-	if (iichid_get_hw(handle, &hw) != 0)
+	device_addr = acpi_get_iichid_addr(handle);
+	if (device_addr == 0)
 		return (AE_OK);
 
 	/* get a list of all children below iicbus */
 	if (device_get_children(iicbus, &children, &ccount) != 0)
-			return (AE_OK);
+		return (AE_OK);
 
 	/* scan through to find out if I2C addr is already in use */
 	for (i = 0; i < ccount; i++) {
-		if (iicbus_get_addr(children[i]) == hw.device_addr) {
+		if (iicbus_get_addr(children[i]) == device_addr) {
 			free(children, M_TEMP);
 			return (AE_OK);
 		}
@@ -724,7 +708,7 @@ iichid_identify_cb(ACPI_HANDLE handle, UINT32 level, void *context,
 	if (device_get_devclass(acpi_iichid) != acpi_iichid_devclass)
 		return (AE_OK);
 
-	iicbus_set_addr(child, hw.device_addr);
+	iicbus_set_addr(child, device_addr);
 
 	/* Move all resources including IRQ from ACPI to I2C device */
 	acpi_iichid_rl =
