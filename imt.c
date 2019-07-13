@@ -242,6 +242,8 @@ static device_method_t imt_methods[] = {
 	DEVMETHOD(device_probe,		imt_probe),
 	DEVMETHOD(device_attach,	imt_attach),
 	DEVMETHOD(device_detach,	imt_detach),
+	DEVMETHOD(device_suspend,	iichid_suspend),
+	DEVMETHOD(device_resume,	iichid_resume),
 
 	DEVMETHOD_END
 };

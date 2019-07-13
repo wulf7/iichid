@@ -60,7 +60,7 @@ __FBSDID("$FreeBSD$");
 #define IICHID_DEBUG
 
 #ifdef IICHID_DEBUG
-#define	DPRINTF(sc, ...)	device_printf((sc)->dev, __VA_ARGS__);
+#define	DPRINTF(sc, ...)	device_printf((sc)->dev, __VA_ARGS__)
 #else
 #define	DPRINTF(sc, ...)
 #endif
@@ -256,6 +256,17 @@ iichid_fetch_buffer(device_t dev, void* cmd, int cmdlen, void *buf, int buflen)
 }
 
 static int
+iichid_write_register(device_t dev, void* cmd, int cmdlen)
+{
+	uint16_t addr = iicbus_get_addr(dev);
+	struct iic_msg msgs[] = {
+	    { addr << 1, IIC_M_WR, cmdlen, cmd },
+	};
+
+	return (iicbus_transfer(dev, msgs, nitems(msgs)));
+}
+
+static int
 iichid_fetch_input_report(struct iichid_softc* sc, uint8_t *data, int len,
     int *actual_len)
 {
@@ -280,6 +291,28 @@ iichid_fetch_hid_descriptor(device_t dev, uint16_t cmd, struct i2c_hid_desc *hid
 {
 
 	return (iichid_fetch_buffer(dev, &cmd, sizeof(cmd), hid_desc, sizeof(struct i2c_hid_desc)));
+}
+
+int
+iichid_set_power(device_t dev, bool sleep)
+{
+	struct iichid_softc *sc = device_get_softc(dev);
+	uint16_t cmdreg = htole16(sc->desc.wCommandRegister);
+	uint8_t power_state = sleep ? 1 : 0;
+	/* 0x08, 4 reserved bits plus opcode (4 bit) */
+	uint8_t cmd[] = {
+		cmdreg & 0xff,
+		cmdreg >> 8,
+		power_state,
+		I2C_HID_CMD_SET_POWER,
+	};
+	int error;
+
+	DPRINTF(sc, "HID command I2C_HID_CMD_SET_POWER(%d)\n", power_state);
+
+	error = iichid_write_register(dev, cmd, sizeof(cmd));
+
+	return (error);
 }
 
 int
@@ -747,6 +780,40 @@ iichid_identify(driver_t *driver, device_t parent)
 	ctrl_handle = acpi_get_handle(device_get_parent(parent));
 	AcpiWalkNamespace(ACPI_TYPE_DEVICE, ctrl_handle,
 	    1, iichid_identify_cb, NULL, parent, NULL);
+}
+
+int
+iichid_suspend(device_t dev)
+{
+	struct iichid_softc *sc = device_get_softc(dev);
+	int error;
+
+	DPRINTF(sc, "Suspend called, setting device to power_state 1\n");
+
+	error = iichid_set_power(dev, true);
+	if (error != 0)
+		DPRINTF(sc, "Could not set power_state, error: %d\n", error);
+	else
+		DPRINTF(sc, "Successfully set power_state\n");
+
+        return (error);
+}
+
+int
+iichid_resume(device_t dev)
+{
+	struct iichid_softc *sc = device_get_softc(dev);
+	int error;
+
+	DPRINTF(sc, "Suspend called, setting device to power_state 0\n");
+
+	error = iichid_set_power(dev, false);
+	if (error != 0)
+		DPRINTF(sc, "Could not set power_state, error: %d\n", error);
+	else
+		DPRINTF(sc, "Successfully set power_state\n");
+
+	return (error);
 }
 
 MODULE_DEPEND(iichid, acpi, 1, 1, 1);

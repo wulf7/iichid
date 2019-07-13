@@ -118,11 +118,14 @@ device_get_hid_softc(device_t dev)
 }
 
 void	iichid_set_intr(device_t, iichid_intr_t, void *);
+int	iichid_set_power(device_t dev, bool sleep);
 int	iichid_get_report_desc(device_t, void **, int *);
 int	iichid_get_report(device_t, void *, int, uint8_t, uint8_t);
 void	iichid_identify(driver_t *, device_t);
 int	iichid_probe(device_t);
 int	iichid_attach(device_t);
 int	iichid_detach(device_t);
+int	iichid_suspend(device_t);
+int	iichid_resume(device_t);
 
 #endif	/* _IICHID_H_ */
