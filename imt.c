@@ -277,7 +277,7 @@ static int
 imt_probe(device_t dev)
 {
 	struct iichid_softc *sc = device_get_softc(dev);
-	uint8_t *d_ptr;
+	void *d_ptr;
 	int d_len;
 	int error;
 	bool hid_ok;
@@ -287,7 +287,7 @@ imt_probe(device_t dev)
 	if (error > 0)
 		return (error);
 
-	error = iichid_get_report_desc(sc, &d_ptr, &d_len);
+	error = iichid_get_report_desc(dev, &d_ptr, &d_len);
 	if (error) {
 		device_printf(dev, "could not retrieve report descriptor from device: %d\n", error);
 		return (ENXIO);
@@ -311,12 +311,12 @@ imt_attach(device_t dev)
 	struct iichid_softc *iichid_sc = device_get_softc(dev);
 	struct imt_softc *sc;
 	int error;
-	uint8_t *d_ptr;
+	void *d_ptr;
 	int d_len;
 	size_t i;
 	bool hid_ok;
 
-	error = iichid_get_report_desc(iichid_sc, &d_ptr, &d_len);
+	error = iichid_get_report_desc(dev, &d_ptr, &d_len);
 	if (error) {
 		device_printf(dev, "could not retrieve report descriptor from device: %d\n", error);
 		return (ENXIO);

@@ -117,7 +117,7 @@ device_get_hid_softc(device_t dev)
 	return (sc->hid_softc);
 }
 
-int	iichid_get_report_desc(struct iichid_softc *, uint8_t **, int *);
+int	iichid_get_report_desc(device_t, void **, int *);
 int	iichid_get_report(struct iichid_softc *, uint8_t *, int, uint8_t,
 	    uint8_t);
 void	iichid_identify(driver_t *, device_t);

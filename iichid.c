@@ -283,8 +283,9 @@ iichid_fetch_hid_descriptor(device_t dev, uint16_t cmd, struct i2c_hid_desc *hid
 }
 
 int
-iichid_get_report_desc(struct iichid_softc* sc, uint8_t **buf, int *len)
+iichid_get_report_desc(device_t dev, void **buf, int *len)
 {
+	struct iichid_softc* sc = device_get_softc(dev);
 	int error;
 	uint16_t cmd = sc->desc.wReportDescRegister;
 	uint8_t *tmpbuf;
@@ -293,11 +294,11 @@ iichid_get_report_desc(struct iichid_softc* sc, uint8_t **buf, int *len)
 	    le16toh(cmd), le16toh(sc->desc.wReportDescLength));
 
 	tmpbuf = malloc(sc->desc.wReportDescLength, M_TEMP, M_WAITOK | M_ZERO);
-	error = iichid_fetch_buffer(sc->dev, &cmd, sizeof(cmd), tmpbuf,
+	error = iichid_fetch_buffer(dev, &cmd, sizeof(cmd), tmpbuf,
 	    le16toh(sc->desc.wReportDescLength));
 	if (error) {
 		free (tmpbuf, M_TEMP);
-		device_printf(sc->dev, "could not retrieve report descriptor "
+		device_printf(dev, "could not retrieve report descriptor "
 		    "(%d)\n", error);
 		return (error);
 	}
