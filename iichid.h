@@ -105,7 +105,17 @@ struct iichid_softc {
 
 	struct taskqueue	*taskqueue;
 	struct task		event_task;
+
+	void			*hid_softc;
 };
+
+static inline void *
+device_get_hid_softc(device_t dev)
+{
+	struct iichid_softc *sc = device_get_softc(dev);
+
+	return (sc->hid_softc);
+}
 
 int	iichid_get_report_desc(struct iichid_softc *, uint8_t **, int *);
 int	iichid_get_report(struct iichid_softc *, uint8_t *, int, uint8_t,

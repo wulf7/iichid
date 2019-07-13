@@ -201,8 +201,6 @@ struct imt_softc {
 	device_t dev;
 	struct mtx              lock;
 
-	struct iichid_softc	ih;
-
 	struct wmt_absinfo      ai[WMT_N_USAGES];
 	struct hid_location     locs[MAX_MT_SLOTS][WMT_N_USAGES];
 	struct hid_location     nconts_loc;
@@ -251,7 +249,7 @@ static device_method_t imt_methods[] = {
 static driver_t imt_driver = {
 	.name = "imt",
 	.methods = imt_methods,
-	.size = sizeof(struct imt_softc),
+	.size = sizeof(struct iichid_softc),
 };
 
 static const struct evdev_methods imt_evdev_methods = {
@@ -278,17 +276,17 @@ imt_ev_open(struct evdev_dev *evdev)
 static int
 imt_probe(device_t dev)
 {
-	struct imt_softc *sc = device_get_softc(dev);
+	struct iichid_softc *sc = device_get_softc(dev);
 	uint8_t *d_ptr;
 	int d_len;
 	int error;
 	bool hid_ok;
 
-	error = iichid_init(&sc->ih, dev);
+	error = iichid_init(sc, dev);
 	if (error)
 		return (error);
 
-	error = iichid_get_report_desc(&sc->ih, &d_ptr, &d_len);
+	error = iichid_get_report_desc(sc, &d_ptr, &d_len);
 	if (error) {
 		device_printf(dev, "could not retrieve report descriptor from device: %d\n", error);
 		return (ENXIO);
@@ -297,7 +295,7 @@ imt_probe(device_t dev)
 	hid_ok = wmt_hid_parse(NULL, d_ptr, d_len);
 	free(d_ptr, M_TEMP);
 	if (hid_ok) {
-		device_set_desc(dev, sc->ih.hw.hid);
+		device_set_desc(dev, sc->hw.hid);
 		error = BUS_PROBE_DEFAULT;
 	} else
 		error = ENXIO;
@@ -308,34 +306,36 @@ imt_probe(device_t dev)
 static int
 imt_attach(device_t dev)
 {
-	struct imt_softc *sc = device_get_softc(dev);
+	struct iichid_softc *iichid_sc = device_get_softc(dev);
+	struct imt_softc *sc;
 	int error;
 	uint8_t *d_ptr;
 	int d_len;
 	size_t i;
 	bool hid_ok;
 
-	sc->dev = dev;
-
-	error = iichid_get_report_desc(&sc->ih, &d_ptr, &d_len);
+	error = iichid_get_report_desc(iichid_sc, &d_ptr, &d_len);
 	if (error) {
 		device_printf(dev, "could not retrieve report descriptor from device: %d\n", error);
 		return (ENXIO);
 	}
 
+	sc = malloc(sizeof(struct imt_softc), M_DEVBUF, M_WAITOK | M_ZERO);
+	mtx_init(&sc->lock, "imt lock", NULL, MTX_DEF);
+	iichid_sc->hid_softc = sc;
+	iichid_sc->lock = sc->lock;
+	sc->dev = dev;
+
 	hid_ok = wmt_hid_parse(sc, d_ptr, d_len);
 	free(d_ptr, M_TEMP);
 	if (!hid_ok) {
 		DPRINTF("multi-touch HID descriptor not found\n");
-		return (ENXIO);
+		goto detach;
 	}
-
-	mtx_init(&sc->lock, "imt lock", NULL, MTX_DEF);
-	sc->ih.lock = sc->lock;
 
 	/* Fetch and parse "Contact count maximum" feature report */
 	if (sc->cont_max_rlen > 0 && sc->cont_max_rlen <= WMT_BSIZE) {
-		error = iichid_get_report(&sc->ih, sc->buf, sc->cont_max_rlen,
+		error = iichid_get_report(iichid_sc, sc->buf, sc->cont_max_rlen,
 		    I2C_HID_REPORT_TYPE_FEATURE, sc->cont_max_rid);
 		if (error == 0)
 			wmt_cont_max_parse(sc, sc->buf, sc->cont_max_rlen);
@@ -349,14 +349,14 @@ imt_attach(device_t dev)
 	/* Fetch THQA certificate to enable some devices like WaveShare */
 	if (sc->thqa_cert_rlen > 0 && sc->thqa_cert_rlen <= WMT_BSIZE &&
 	    sc->thqa_cert_rid != sc->cont_max_rid)
-		(void)iichid_get_report(&sc->ih, sc->buf, sc->thqa_cert_rlen,
+		(void)iichid_get_report(iichid_sc, sc->buf, sc->thqa_cert_rlen,
 		    I2C_HID_REPORT_TYPE_FEATURE, sc->thqa_cert_rid);
 
 	sc->evdev = evdev_alloc();
 	evdev_set_name(sc->evdev, device_get_desc(dev));
 	evdev_set_phys(sc->evdev, device_get_nameunit(dev));
-	evdev_set_id(sc->evdev, BUS_I2C, sc->ih.desc.wVendorID,
-	    sc->ih.desc.wProductID, sc->ih.desc.wVersionID);
+	evdev_set_id(sc->evdev, BUS_I2C, iichid_sc->desc.wVendorID,
+	    iichid_sc->desc.wProductID, iichid_sc->desc.wVersionID);
 //	evdev_set_serial(sc->evdev, usb_get_serial(uaa->device));
 	evdev_set_methods(sc->evdev, sc, &imt_evdev_methods);
 	evdev_set_flag(sc->evdev, EVDEV_FLAG_MT_STCOMPAT);
@@ -373,25 +373,28 @@ imt_attach(device_t dev)
 	if (error)
 		goto detach;
 
-	error = iichid_set_intr(&sc->ih, imt_intr, sc);
+	error = iichid_set_intr(iichid_sc, imt_intr, sc);
 	if (!error)
 		return (0);
 
 	evdev_free(sc->evdev);
 detach:
 	mtx_destroy(&sc->lock);
+	free(sc, M_DEVBUF);
 	return (ENXIO);
 }
 
 static int
 imt_detach(device_t dev)
 {
-	struct imt_softc *sc = device_get_softc(dev);
+	struct imt_softc *sc = device_get_hid_softc(dev);
+	struct iichid_softc *iichid_sc = device_get_softc(dev);
 
-	iichid_destroy(&sc->ih);
+	iichid_destroy(iichid_sc);
 	evdev_free(sc->evdev);
 
 	mtx_destroy(&sc->lock);
+	free(sc, M_DEVBUF);
 
 	return (0);
 }
