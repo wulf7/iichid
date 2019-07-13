@@ -417,7 +417,8 @@ iichid_event_task(void *context, int pending)
 		goto out;
 	}
 
-	sc->intr_handler(sc->intr_sc, ((uint8_t *)sc->input_buf) + 2, actual - 2);
+	sc->intr_handler(sc->intr_context, ((uint8_t *)sc->input_buf) + 2,
+	    actual - 2);
 
 out:
 	mtx_lock(&sc->lock);
@@ -537,13 +538,23 @@ iichid_sysctl_sampling_rate_handler(SYSCTL_HANDLER_ARGS)
 	return (0);
 }
 
-int
-iichid_set_intr(struct iichid_softc *sc, iichid_intr_t intr, void *intr_sc)
+void
+iichid_set_intr(device_t dev, iichid_intr_t intr, void *context)
 {
-	int error;
+	struct iichid_softc* sc = device_get_softc(dev);
 
 	sc->intr_handler = intr;
-	sc->intr_sc = intr_sc;
+	sc->intr_context = context;
+}
+
+int
+iichid_attach(device_t dev)
+{
+	struct iichid_softc* sc = device_get_softc(dev);
+	int error;
+
+	if (sc->intr_handler == NULL)
+		return (0);
 
 	TASK_INIT(&sc->event_task, 0, iichid_event_task, sc);
 	sc->taskqueue = taskqueue_create("imt_tq", M_WAITOK | M_ZERO,
@@ -633,9 +644,13 @@ iichid_probe(device_t dev)
 	return (BUS_PROBE_DEFAULT);
 }
 
-void
-iichid_destroy(struct iichid_softc *sc)
+int
+iichid_detach(device_t dev)
 {
+	struct iichid_softc *sc = device_get_softc(dev);
+
+	if (sc->intr_handler == NULL)
+		return(0);
 
 	if (sc->input_buf)
 		free(sc->input_buf, M_DEVBUF);
@@ -646,7 +661,8 @@ iichid_destroy(struct iichid_softc *sc)
 	iichid_teardown_interrupt(sc);
 
 	if (sc->irq_res)
-		bus_release_resource(sc->dev, SYS_RES_IRQ, sc->irq_rid, sc->irq_res);
+		bus_release_resource(dev, SYS_RES_IRQ, sc->irq_rid,
+		    sc->irq_res);
 
 	if (sc->taskqueue) {
 		taskqueue_block(sc->taskqueue);
@@ -655,6 +671,8 @@ iichid_destroy(struct iichid_softc *sc)
 	}
 
 	mtx_unlock(&sc->lock);
+
+	return (0);
 }
 
 static ACPI_STATUS

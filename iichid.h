@@ -90,7 +90,7 @@ struct iichid_softc {
 	struct i2c_hid_desc	desc;
 
 	iichid_intr_t		*intr_handler;
-	void			*intr_sc;
+	void			*intr_context;
 
 	uint8_t			*input_buf;
 	int			input_size;
@@ -117,11 +117,12 @@ device_get_hid_softc(device_t dev)
 	return (sc->hid_softc);
 }
 
+void	iichid_set_intr(device_t, iichid_intr_t, void *);
 int	iichid_get_report_desc(device_t, void **, int *);
 int	iichid_get_report(device_t, void *, int, uint8_t, uint8_t);
 void	iichid_identify(driver_t *, device_t);
 int	iichid_probe(device_t);
-void	iichid_destroy(struct iichid_softc *);
-int	iichid_set_intr(struct iichid_softc *, iichid_intr_t, void *);
+int	iichid_attach(device_t);
+int	iichid_detach(device_t);
 
 #endif	/* _IICHID_H_ */

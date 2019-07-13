@@ -375,7 +375,8 @@ imt_attach(device_t dev)
 	if (error)
 		goto detach;
 
-	error = iichid_set_intr(iichid_sc, imt_intr, sc);
+	iichid_set_intr(dev, imt_intr, sc);
+	error = iichid_attach(dev);
 	if (!error)
 		return (0);
 
@@ -390,9 +391,8 @@ static int
 imt_detach(device_t dev)
 {
 	struct imt_softc *sc = device_get_hid_softc(dev);
-	struct iichid_softc *iichid_sc = device_get_softc(dev);
 
-	iichid_destroy(iichid_sc);
+	(void)iichid_detach(dev);
 	evdev_free(sc->evdev);
 
 	mtx_destroy(&sc->lock);
