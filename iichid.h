@@ -117,15 +117,20 @@ device_get_hid_softc(device_t dev)
 	return (sc->hid_softc);
 }
 
+/* iichid soft context interface */
 void	iichid_set_intr(device_t, iichid_intr_t, void *);
+
+/* I2C bus interface */
 int	iichid_set_power(device_t dev, bool sleep);
 int	iichid_get_report_desc(device_t, void **, int *);
 int	iichid_get_report(device_t, void *, int, uint8_t, uint8_t);
-void	iichid_identify(driver_t *, device_t);
-int	iichid_probe(device_t);
-int	iichid_attach(device_t);
-int	iichid_detach(device_t);
-int	iichid_suspend(device_t);
-int	iichid_resume(device_t);
+
+/* Newbus device method stubs */
+device_identify_t	iichid_identify;
+device_probe_t		iichid_probe;
+device_attach_t		iichid_attach;
+device_detach_t		iichid_detach;
+device_suspend_t	iichid_suspend;
+device_resume_t		iichid_resume;
 
 #endif	/* _IICHID_H_ */
