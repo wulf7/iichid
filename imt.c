@@ -337,7 +337,7 @@ imt_attach(device_t dev)
 
 	/* Fetch and parse "Contact count maximum" feature report */
 	if (sc->cont_max_rlen > 0 && sc->cont_max_rlen <= WMT_BSIZE) {
-		error = iichid_get_report(iichid_sc, sc->buf, sc->cont_max_rlen,
+		error = iichid_get_report(dev, sc->buf, sc->cont_max_rlen,
 		    I2C_HID_REPORT_TYPE_FEATURE, sc->cont_max_rid);
 		if (error == 0)
 			wmt_cont_max_parse(sc, sc->buf, sc->cont_max_rlen);
@@ -351,7 +351,7 @@ imt_attach(device_t dev)
 	/* Fetch THQA certificate to enable some devices like WaveShare */
 	if (sc->thqa_cert_rlen > 0 && sc->thqa_cert_rlen <= WMT_BSIZE &&
 	    sc->thqa_cert_rid != sc->cont_max_rid)
-		(void)iichid_get_report(iichid_sc, sc->buf, sc->thqa_cert_rlen,
+		(void)iichid_get_report(dev, sc->buf, sc->thqa_cert_rlen,
 		    I2C_HID_REPORT_TYPE_FEATURE, sc->thqa_cert_rid);
 
 	sc->evdev = evdev_alloc();

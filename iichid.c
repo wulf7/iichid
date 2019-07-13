@@ -322,8 +322,7 @@ iichid_get_report_desc(device_t dev, void **buf, int *len)
 }
 
 int
-iichid_get_report(struct iichid_softc* sc, uint8_t *buf, int len, uint8_t type,
-    uint8_t id)
+iichid_get_report(device_t dev, void *buf, int len, uint8_t type, uint8_t id)
 {
 	/*
 	 * 7.2.2.4 - "The protocol is optimized for Report < 15.  If a
@@ -331,6 +330,7 @@ iichid_get_report(struct iichid_softc* sc, uint8_t *buf, int len, uint8_t type,
 	 * must be set to 1111 and a Third Byte is appended to the protocol.
 	 * This Third Byte contains the entire/actual report ID."
 	 */
+	struct iichid_softc* sc = device_get_softc(dev);
 	uint16_t dtareg = htole16(sc->desc.wDataRegister);
 	uint16_t cmdreg = htole16(sc->desc.wCommandRegister);
 	uint8_t cmd[] =	{   /*________|______id>=15_____|______id<15______*/
@@ -361,7 +361,7 @@ iichid_get_report(struct iichid_softc* sc, uint8_t *buf, int len, uint8_t type,
 	tmprep = malloc(report_len, M_DEVBUF, M_WAITOK | M_ZERO);
 
 	/* type 3 id 8: 22 00 38 02 23 00 */
-	err = iichid_fetch_buffer(sc->dev, &cmd, cmdlen, tmprep, report_len);
+	err = iichid_fetch_buffer(dev, &cmd, cmdlen, tmprep, report_len);
 	if (err != 0) {
 		free(tmprep, M_DEVBUF);
 		return (EIO);
