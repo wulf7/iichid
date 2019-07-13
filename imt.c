@@ -282,8 +282,9 @@ imt_probe(device_t dev)
 	int error;
 	bool hid_ok;
 
-	error = iichid_init(sc, dev);
-	if (error)
+	/* Run generic I2CHID probe routine and (not yet) initialize ivars */
+	error = iichid_probe(dev);
+	if (error > 0)
 		return (error);
 
 	error = iichid_get_report_desc(sc, &d_ptr, &d_len);
@@ -292,6 +293,7 @@ imt_probe(device_t dev)
 		return (ENXIO);
 	}
 
+	/* Check if report descriptor belongs to a HID multitouch device */
 	hid_ok = wmt_hid_parse(NULL, d_ptr, d_len);
 	free(d_ptr, M_TEMP);
 	if (hid_ok) {

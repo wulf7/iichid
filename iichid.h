@@ -121,7 +121,7 @@ int	iichid_get_report_desc(struct iichid_softc *, uint8_t **, int *);
 int	iichid_get_report(struct iichid_softc *, uint8_t *, int, uint8_t,
 	    uint8_t);
 void	iichid_identify(driver_t *, device_t);
-int	iichid_init(struct iichid_softc *, device_t);
+int	iichid_probe(device_t);
 void	iichid_destroy(struct iichid_softc *);
 int	iichid_set_intr(struct iichid_softc *, iichid_intr_t, void *);
 

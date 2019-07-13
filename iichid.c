@@ -595,9 +595,9 @@ iichid_set_intr(struct iichid_softc *sc, iichid_intr_t intr, void *intr_sc)
 }
 
 int
-iichid_init(struct iichid_softc *sc, device_t dev)
+iichid_probe(device_t dev)
 {
-//	device_t parent;
+	struct iichid_softc *sc = device_get_softc(dev);
 	uint16_t addr = iicbus_get_addr(dev);
 	int error;
 
@@ -629,7 +629,7 @@ iichid_init(struct iichid_softc *sc, device_t dev)
 		return (ENXIO);
 	}
 
-	return (0);
+	return (BUS_PROBE_DEFAULT);
 }
 
 void
