@@ -256,7 +256,8 @@ iichid_fetch_buffer(device_t dev, void* cmd, int cmdlen, void *buf, int buflen)
 }
 
 static int
-iichid_fetch_input_report(struct iichid* sc, uint8_t *data, int len, int *actual_len)
+iichid_fetch_input_report(struct iichid_softc* sc, uint8_t *data, int len,
+    int *actual_len)
 {
 	uint16_t cmd = sc->desc.wInputRegister;
 	int cmdlen = sizeof(cmd);
@@ -282,7 +283,7 @@ iichid_fetch_hid_descriptor(device_t dev, uint16_t cmd, struct i2c_hid_desc *hid
 }
 
 int
-iichid_get_report_desc(struct iichid* sc, uint8_t **buf, int *len)
+iichid_get_report_desc(struct iichid_softc* sc, uint8_t **buf, int *len)
 {
 	int error;
 	uint16_t cmd = sc->desc.wReportDescRegister;
@@ -320,7 +321,7 @@ iichid_get_report_desc(struct iichid* sc, uint8_t **buf, int *len)
 }
 
 int
-iichid_get_report(struct iichid* sc, uint8_t *buf, int len, uint8_t type,
+iichid_get_report(struct iichid_softc* sc, uint8_t *buf, int len, uint8_t type,
     uint8_t id)
 {
 	/*
@@ -392,7 +393,7 @@ iichid_get_report(struct iichid* sc, uint8_t *buf, int len, uint8_t type,
 static void
 iichid_intr(void *context)
 {
-	struct iichid *sc = context;
+	struct iichid_softc *sc = context;
 
 	taskqueue_enqueue(sc->taskqueue, &sc->event_task);
 }
@@ -400,7 +401,7 @@ iichid_intr(void *context)
 static void
 iichid_event_task(void *context, int pending)
 {
-	struct iichid *sc = context;
+	struct iichid_softc *sc = context;
 	int actual = 0;
 	int error;
 
@@ -426,7 +427,7 @@ out:
 }
 
 static int
-iichid_setup_callout(struct iichid *sc)
+iichid_setup_callout(struct iichid_softc *sc)
 {
 
 	if (sc->sampling_rate < 0) {
@@ -441,7 +442,7 @@ iichid_setup_callout(struct iichid *sc)
 }
 
 static int
-iichid_reset_callout(struct iichid *sc)
+iichid_reset_callout(struct iichid_softc *sc)
 {
 
 	if (sc->sampling_rate <= 0) {
@@ -458,7 +459,7 @@ iichid_reset_callout(struct iichid *sc)
 }
 
 static void
-iichid_teardown_callout(struct iichid *sc)
+iichid_teardown_callout(struct iichid_softc *sc)
 {
 	callout_stop(&sc->periodic_callout);
 	sc->callout_setup=false;
@@ -466,7 +467,7 @@ iichid_teardown_callout(struct iichid *sc)
 }
 
 static int
-iichid_setup_interrupt(struct iichid *sc)
+iichid_setup_interrupt(struct iichid_softc *sc)
 {
 	sc->irq_cookie = 0;
 
@@ -482,7 +483,7 @@ iichid_setup_interrupt(struct iichid *sc)
 }
 
 static void
-iichid_teardown_interrupt(struct iichid *sc)
+iichid_teardown_interrupt(struct iichid_softc *sc)
 {
 	if (sc->irq_cookie)
 		bus_teardown_intr(sc->dev, sc->irq_res, sc->irq_cookie);
@@ -494,7 +495,7 @@ static int
 iichid_sysctl_sampling_rate_handler(SYSCTL_HANDLER_ARGS)
 {
 	int err, value, oldval;
-	struct iichid *sc;
+	struct iichid_softc *sc;
 
 	sc = arg1;      
 
@@ -536,7 +537,7 @@ iichid_sysctl_sampling_rate_handler(SYSCTL_HANDLER_ARGS)
 }
 
 int
-iichid_set_intr(struct iichid *sc, iichid_intr_t intr, void *intr_sc)
+iichid_set_intr(struct iichid_softc *sc, iichid_intr_t intr, void *intr_sc)
 {
 	int error;
 
@@ -594,7 +595,7 @@ iichid_set_intr(struct iichid *sc, iichid_intr_t intr, void *intr_sc)
 }
 
 int
-iichid_init(struct iichid *sc, device_t dev)
+iichid_init(struct iichid_softc *sc, device_t dev)
 {
 //	device_t parent;
 	uint16_t addr = iicbus_get_addr(dev);
@@ -632,7 +633,7 @@ iichid_init(struct iichid *sc, device_t dev)
 }
 
 void
-iichid_destroy(struct iichid *sc)
+iichid_destroy(struct iichid_softc *sc)
 {
 
 	if (sc->input_buf)

@@ -201,7 +201,7 @@ struct imt_softc {
 	device_t dev;
 	struct mtx              lock;
 
-	struct iichid		ih;
+	struct iichid_softc	ih;
 
 	struct wmt_absinfo      ai[WMT_N_USAGES];
 	struct hid_location     locs[MAX_MT_SLOTS][WMT_N_USAGES];
