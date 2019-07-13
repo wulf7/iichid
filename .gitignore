@@ -1,0 +1,12 @@
+*.o
+*.ko
+*~
+*.patch
+*.rej
+*.orig
+*_if.h
+opt_*.h
+vnode_if_*.h
+export_syms
+machine
+x86
