@@ -365,11 +365,11 @@ iichid_get_report_desc(device_t dev, void **buf, int *len)
 	 * Do not rely on wMaxInputLength, as some devices may set it to
 	 * a wrong length. So traverse report descriptor and find the longest.
 	 */
-	sc->input_size = hid_report_size(tmpbuf, *len, hid_input, NULL) + 2;
-	if (sc->input_size != le16toh(sc->desc.wMaxInputLength))
+	sc->isize = hid_report_size(tmpbuf, *len, hid_input, &sc->iid) + 2;
+	if (sc->isize != le16toh(sc->desc.wMaxInputLength))
 		DPRINTF(sc, "determined (len=%d) and described (len=%d)"
 		    " input report lengths mismatch\n",
-		    sc->input_size, le16toh(sc->desc.wMaxInputLength));
+		    sc->isize, le16toh(sc->desc.wMaxInputLength));
 
 	return (0);
 }
@@ -467,20 +467,25 @@ iichid_event_task(void *context, int pending)
 	struct iichid_softc *sc = context;
 	int actual = 0;
 	int error;
+	int report_id;
+	int header_len = sc->iid != 0 ? 3 : 2;
 
-	error = iichid_fetch_input_report(sc, sc->input_buf, sc->input_size, &actual);
+	error = iichid_fetch_input_report(sc, sc->ibuf, sc->isize, &actual);
 	if (error != 0) {
 		device_printf(sc->dev, "an error occured\n");
 		return;
 	}
 
-	if (actual <= 2) {
+	if (actual <= header_len) {
 //		device_printf(sc->dev, "no data received\n");
 		return;
 	}
 
-	sc->intr_handler(sc->intr_context, ((uint8_t *)sc->input_buf) + 2,
-	    actual - 2);
+	report_id = sc->iid > 0 ? ((uint8_t *)sc->ibuf)[2] : 0;
+
+	/* DPRINTF(sc, "%*D\n", actual, sc->ibuf, " "); */
+	sc->intr_handler(sc->intr_context, (uint8_t *)sc->ibuf + header_len,
+	    actual - header_len, report_id);
 }
 
 static int
@@ -621,10 +626,10 @@ iichid_attach(device_t dev)
 	 * Fallback to HID descriptor input length
 	 * if report descriptor has not been fetched yet
 	 */
-	if (sc->input_size == 0)
-		sc->input_size = le16toh(sc->desc.wMaxInputLength);
+	if (sc->isize == 0)
+		sc->isize = le16toh(sc->desc.wMaxInputLength);
 
-	sc->input_buf = malloc(sc->input_size, M_DEVBUF, M_WAITOK | M_ZERO);
+	sc->ibuf = malloc(sc->isize, M_DEVBUF, M_WAITOK | M_ZERO);
 	taskqueue_start_threads(&sc->taskqueue, 1, PI_TTY, "%s taskq", device_get_nameunit(sc->dev));
 
 	sc->irq_rid = 0;
@@ -672,7 +677,7 @@ iichid_probe(device_t dev)
 		return (ENXIO);
 
 	sc->dev = dev;
-	sc->input_buf = NULL;
+	sc->ibuf = NULL;
 
 	/* Fetch hardware settings from ACPI */
 	error = iichid_get_device_hw(dev, addr, &sc->hw);
@@ -725,8 +730,8 @@ iichid_detach(device_t dev)
 	if (sc->intr_handler == NULL)
 		return(0);
 
-	if (sc->input_buf)
-		free(sc->input_buf, M_DEVBUF);
+	if (sc->ibuf)
+		free(sc->ibuf, M_DEVBUF);
 
 	(void)iichid_set_power(dev, false);
 

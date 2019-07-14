@@ -224,8 +224,8 @@ struct imt_softc {
 
 static bool wmt_hid_parse(struct imt_softc *, const void *, uint16_t);
 static void wmt_cont_max_parse(struct imt_softc *, const void *, uint16_t);
-static void wmt_process_report(struct imt_softc *, uint8_t *, int);
-static void imt_intr(void *, uint8_t *, int);
+
+static iichid_intr_t		imt_intr;
 
 static device_probe_t		imt_probe;
 static device_attach_t		imt_attach;
@@ -410,33 +410,9 @@ imt_detach(device_t dev)
 }
 
 static void
-imt_intr(void *context, uint8_t *buf, int len)
+imt_intr(void *context, void *buf, int len, uint8_t id)
 {
 	struct imt_softc *sc = context;
-
-	/* Ignore irrelevant reports */
-	if (sc->report_id && *buf != sc->report_id)
-		return;
-
-	/* Make sure we don't process old data */
-	if (len < sc->isize)
-		bzero(buf + len, sc->isize - len);
-
-	/* Strip leading "report ID" byte */
-	if (sc->report_id) {
-		len--;
-		buf++;
-	}
-
-//	printf("%*D\n", len, buf, " ");
-	mtx_lock(&sc->lock);
-	wmt_process_report(sc, buf, len);
-	mtx_unlock(&sc->lock);
-}
-
-static void
-wmt_process_report(struct imt_softc *sc, uint8_t *buf, int len)
-{
 	size_t usage;
 	uint32_t *slot_data = sc->slot_data;
 	uint32_t cont;
@@ -444,6 +420,14 @@ wmt_process_report(struct imt_softc *sc, uint8_t *buf, int len)
 	uint32_t width;
 	uint32_t height;
 	int32_t slot;
+
+	/* Ignore irrelevant reports */
+	if (sc->report_id != id)
+		return;
+
+	/* Make sure we don't process old data */
+	if (len < sc->isize)
+		bzero((uint8_t *)buf + len, sc->isize - len);
 
 	nconts = hid_get_data_unsigned(buf, len, &sc->nconts_loc);
 
@@ -462,6 +446,8 @@ wmt_process_report(struct imt_softc *sc, uint8_t *buf, int len)
 		DPRINTF("Contact count overflow %u\n", (unsigned)nconts);
 		nconts = sc->nconts_max;
 	}
+
+	mtx_lock(&sc->lock);
 
 	/* Use protocol Type B for reporting events */
 	for (cont = 0; cont < nconts; cont++) {
@@ -517,6 +503,8 @@ wmt_process_report(struct imt_softc *sc, uint8_t *buf, int len)
 		}
 	}
 	evdev_sync(sc->evdev);
+
+	mtx_unlock(&sc->lock);
 }
 
 /*

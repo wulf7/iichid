@@ -74,7 +74,7 @@ struct i2c_hid_desc {
 	uint32_t reserved;
 } __packed;
 
-typedef void iichid_intr_t(void *context, uint8_t *buf, int len);
+typedef void iichid_intr_t(void *context, void *buf, int len, uint8_t id);
 
 struct iichid_hw {
 	char		hid[16];
@@ -92,8 +92,9 @@ struct iichid_softc {
 	iichid_intr_t		*intr_handler;
 	void			*intr_context;
 
-	uint8_t			*input_buf;
-	int			input_size;
+	uint8_t			*ibuf;
+	int			isize;
+	uint8_t			iid;
 
 	int			irq_rid;
 	struct resource		*irq_res;
