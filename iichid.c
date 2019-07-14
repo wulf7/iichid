@@ -673,6 +673,12 @@ iichid_probe(device_t dev)
 	uint16_t addr = iicbus_get_addr(dev);
 	int error;
 
+	if (sc->probe_done)
+		return (sc->probe_result);
+
+	sc->probe_done = true;
+	sc->probe_result = ENXIO;
+
 	if (addr == 0)
 		return (ENXIO);
 
@@ -719,7 +725,8 @@ iichid_probe(device_t dev)
 		return (ENXIO);
 	}
 
-	return (BUS_PROBE_DEFAULT);
+	sc->probe_result = BUS_PROBE_DEFAULT;
+	return (sc->probe_result);
 }
 
 int

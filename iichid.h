@@ -86,6 +86,9 @@ struct iichid_softc {
 	device_t		dev;
 	struct mtx		lock;
 
+	bool			probe_done;
+	int			probe_result;
+
 	struct iichid_hw	hw;
 	struct i2c_hid_desc	desc;
 
