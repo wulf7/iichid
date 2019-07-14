@@ -449,7 +449,16 @@ iichid_intr(void *context)
 {
 	struct iichid_softc *sc = context;
 
-	taskqueue_enqueue(sc->taskqueue, &sc->event_task);
+	if (sc->callout_setup && sc->sampling_rate > 0 &&
+	    taskqueue_poll_is_busy(sc->taskqueue, &sc->event_task))
+		/* Don't poll too fast. Let previous task to be completed */
+		/* DPRINTF(sc, "Taskqueue is busy. Skip the sample\n") */;
+	else
+		taskqueue_enqueue(sc->taskqueue, &sc->event_task);
+
+	if (sc->callout_setup && sc->sampling_rate > 0)
+		callout_reset(&sc->periodic_callout, hz / sc->sampling_rate,
+		    iichid_intr, sc);
 }
 
 static void
@@ -462,23 +471,16 @@ iichid_event_task(void *context, int pending)
 	error = iichid_fetch_input_report(sc, sc->input_buf, sc->input_size, &actual);
 	if (error != 0) {
 		device_printf(sc->dev, "an error occured\n");
-		goto out;
+		return;
 	}
 
 	if (actual <= 2) {
 //		device_printf(sc->dev, "no data received\n");
-		goto out;
+		return;
 	}
 
 	sc->intr_handler(sc->intr_context, ((uint8_t *)sc->input_buf) + 2,
 	    actual - 2);
-
-out:
-	mtx_lock(&sc->lock);
-	if (sc->callout_setup && sc->sampling_rate > 0)
-		callout_reset(&sc->periodic_callout, hz / sc->sampling_rate,
-		    iichid_intr, sc);
-	mtx_unlock(&sc->lock);
 }
 
 static int
