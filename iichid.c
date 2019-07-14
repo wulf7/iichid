@@ -294,11 +294,11 @@ iichid_fetch_hid_descriptor(device_t dev, uint16_t cmd, struct i2c_hid_desc *hid
 }
 
 int
-iichid_set_power(device_t dev, bool sleep)
+iichid_set_power(device_t dev, bool enable)
 {
 	struct iichid_softc *sc = device_get_softc(dev);
 	uint16_t cmdreg = htole16(sc->desc.wCommandRegister);
-	uint8_t power_state = sleep ? 1 : 0;
+	uint8_t power_state = enable ? 0 : 1;
 	/* 0x08, 4 reserved bits plus opcode (4 bit) */
 	uint8_t cmd[] = {
 		cmdreg & 0xff,
@@ -309,6 +309,26 @@ iichid_set_power(device_t dev, bool sleep)
 	int error;
 
 	DPRINTF(sc, "HID command I2C_HID_CMD_SET_POWER(%d)\n", power_state);
+
+	error = iichid_write_register(dev, cmd, sizeof(cmd));
+
+	return (error);
+}
+
+int
+iichid_reset(device_t dev)
+{
+	struct iichid_softc *sc = device_get_softc(dev);
+	uint16_t cmdreg = htole16(sc->desc.wCommandRegister);
+	uint8_t cmd[] = {
+		cmdreg & 0xff,
+		cmdreg >> 8,
+		0,
+		I2C_HID_CMD_RESET,
+	};
+	int error;
+
+	DPRINTF(sc, "HID command I2C_HID_CMD_RESET\n");
 
 	error = iichid_write_register(dev, cmd, sizeof(cmd));
 
@@ -674,6 +694,24 @@ iichid_probe(device_t dev)
 		return (ENXIO);
 	}
 
+	error = iichid_set_power(dev, true);
+	if (error) {
+		device_printf(dev, "failed to power on: %d\n", error);
+		return (ENXIO);
+	}
+	/*
+	 * Windows driver sleeps for 1ms between the SET_POWER and RESET
+	 * commands. So we too as some devices may depend on this.
+	 */
+	tsleep(sc, 0, "iichid", (hz + 999) / 1000);
+
+	error = iichid_reset(dev);
+	if (error) {
+		device_printf(dev, "failed to reset hardware: %d\n", error);
+		(void)iichid_set_power(dev, false);
+		return (ENXIO);
+	}
+
 	return (BUS_PROBE_DEFAULT);
 }
 
@@ -687,6 +725,8 @@ iichid_detach(device_t dev)
 
 	if (sc->input_buf)
 		free(sc->input_buf, M_DEVBUF);
+
+	(void)iichid_set_power(dev, false);
 
 	mtx_lock(&sc->lock);
 
@@ -790,7 +830,7 @@ iichid_suspend(device_t dev)
 
 	DPRINTF(sc, "Suspend called, setting device to power_state 1\n");
 
-	error = iichid_set_power(dev, true);
+	error = iichid_set_power(dev, false);
 	if (error != 0)
 		DPRINTF(sc, "Could not set power_state, error: %d\n", error);
 	else
@@ -807,7 +847,7 @@ iichid_resume(device_t dev)
 
 	DPRINTF(sc, "Suspend called, setting device to power_state 0\n");
 
-	error = iichid_set_power(dev, false);
+	error = iichid_set_power(dev, true);
 	if (error != 0)
 		DPRINTF(sc, "Could not set power_state, error: %d\n", error);
 	else

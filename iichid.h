@@ -122,6 +122,7 @@ void	iichid_set_intr(device_t, iichid_intr_t, void *);
 
 /* I2C bus interface */
 int	iichid_set_power(device_t dev, bool sleep);
+int	iichid_reset(device_t dev);
 int	iichid_get_report_desc(device_t, void **, int *);
 int	iichid_get_report(device_t, void *, int, uint8_t, uint8_t);
 

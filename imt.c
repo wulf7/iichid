@@ -292,17 +292,21 @@ imt_probe(device_t dev)
 	error = iichid_get_report_desc(dev, &d_ptr, &d_len);
 	if (error) {
 		device_printf(dev, "could not retrieve report descriptor from device: %d\n", error);
-		return (ENXIO);
+		error = ENXIO;
+		goto out;
 	}
 
 	/* Check if report descriptor belongs to a HID multitouch device */
 	hid_ok = wmt_hid_parse(NULL, d_ptr, d_len);
 	free(d_ptr, M_TEMP);
-	if (hid_ok) {
+	error = hid_ok ? BUS_PROBE_DEFAULT : ENXIO;
+
+out:
+	if (error <= 0)
 		device_set_desc(dev, sc->hw.hid);
-		error = BUS_PROBE_DEFAULT;
-	} else
-		error = ENXIO;
+	else
+		/* XXX Layering violation. This call should belong to iichid */
+		(void)iichid_set_power(dev, false);
 
 	return (error);
 }
@@ -386,6 +390,8 @@ imt_attach(device_t dev)
 detach:
 	mtx_destroy(&sc->lock);
 	free(sc, M_DEVBUF);
+	/* XXX: Layering violation. This call should belong to iichid */
+	(void)iichid_set_power(dev, false);
 	return (ENXIO);
 }
 
