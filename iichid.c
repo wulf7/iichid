@@ -497,7 +497,6 @@ iichid_setup_callout(struct iichid_softc *sc)
 		return (EINVAL);
 	}
 
-	callout_init_mtx(&sc->periodic_callout, &sc->lock, 0);
 	sc->callout_setup=true;
 	DPRINTF(sc, "successfully setup callout\n");
 	return (0);
@@ -641,6 +640,8 @@ iichid_attach(device_t dev)
 	    taskqueue_thread_enqueue, &sc->taskqueue);
 	if (sc->taskqueue == NULL)
 		return (ENXIO);
+
+	callout_init_mtx(&sc->periodic_callout, &sc->lock, 0);
 
 	/*
 	 * Fallback to HID descriptor input length
