@@ -456,7 +456,7 @@ iichid_intr(void *context)
 	else
 		taskqueue_enqueue(sc->taskqueue, &sc->event_task);
 
-	if (sc->callout_setup && sc->sampling_rate > 0)
+	if (sc->callout_setup && sc->sampling_rate > 0 && sc->open)
 		callout_reset(&sc->periodic_callout, hz / sc->sampling_rate,
 		    iichid_intr, sc);
 }
@@ -581,13 +581,15 @@ iichid_sysctl_sampling_rate_handler(SYSCTL_HANDLER_ARGS)
 
 	if (oldval < 0 && value >= 0) {
 		iichid_teardown_interrupt(sc);
-		iichid_setup_callout(sc);
+		if (sc->open)
+			iichid_setup_callout(sc);
 	} else if (oldval >= 0 && value < 0) {
-		iichid_teardown_callout(sc);
+		if (sc->open)
+			iichid_teardown_callout(sc);
 		iichid_setup_interrupt(sc);
 	}
 
-	if (value > 0)
+	if (sc->open && value > 0)
 		iichid_reset_callout(sc);
 
 	DPRINTF(sc, "new sampling_rate value: %d\n", value);
@@ -613,6 +615,11 @@ iichid_open(device_t dev)
 
 	sc->open = true;
 
+	if (sc->sampling_rate >= 0) {
+		iichid_setup_callout(sc);
+		iichid_reset_callout(sc);
+	}
+
 	return (0);
 }
 
@@ -622,6 +629,8 @@ iichid_close(device_t dev)
 	struct iichid_softc* sc = device_get_softc(dev);
 
 	sc->open = true;
+
+	iichid_teardown_callout(sc);
 
 	return (0);
 }
@@ -673,11 +682,6 @@ iichid_attach(device_t dev)
 			sc->sampling_rate = IICHID_DEFAULT_SAMPLING_RATE;
 		}
 	}
-	if (sc->sampling_rate >= 0) {
-		iichid_setup_callout(sc);
-		iichid_reset_callout(sc);
-	}
-
 	SYSCTL_ADD_PROC(device_get_sysctl_ctx(sc->dev),
 		SYSCTL_CHILDREN(device_get_sysctl_tree(sc->dev)),
 		OID_AUTO, "sampling_rate", CTLTYPE_INT | CTLFLAG_RWTUN,
@@ -768,7 +772,6 @@ iichid_detach(device_t dev)
 
 	mtx_lock(&sc->lock);
 
-	iichid_teardown_callout(sc);
 	iichid_teardown_interrupt(sc);
 
 	if (sc->irq_res)
