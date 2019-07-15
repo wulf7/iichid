@@ -608,6 +608,26 @@ iichid_set_intr(device_t dev, iichid_intr_t intr, void *context)
 }
 
 int
+iichid_open(device_t dev)
+{
+	struct iichid_softc* sc = device_get_softc(dev);
+
+	sc->open = true;
+
+	return (0);
+}
+
+int
+iichid_close(device_t dev)
+{
+	struct iichid_softc* sc = device_get_softc(dev);
+
+	sc->open = true;
+
+	return (0);
+}
+
+int
 iichid_attach(device_t dev)
 {
 	struct iichid_softc* sc = device_get_softc(dev);

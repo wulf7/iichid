@@ -110,6 +110,8 @@ struct iichid_softc {
 	struct taskqueue	*taskqueue;
 	struct task		event_task;
 
+	bool			open;
+
 	void			*hid_softc;
 };
 
@@ -123,6 +125,8 @@ device_get_hid_softc(device_t dev)
 
 /* iichid soft context interface */
 void	iichid_set_intr(device_t, iichid_intr_t, void *);
+int	iichid_open(device_t);
+int	iichid_close(device_t);
 
 /* I2C bus interface */
 int	iichid_set_power(device_t dev, bool sleep);

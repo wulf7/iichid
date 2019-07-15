@@ -262,17 +262,17 @@ static const struct evdev_methods imt_evdev_methods = {
 static int
 imt_ev_close(struct evdev_dev *evdev)
 {
-//	struct imt_softc *sc = evdev_get_softc(evdev);
+	device_t dev = evdev_get_softc(evdev);
 
-	return (0);
+	return (iichid_close(dev));
 }
 
 static int
 imt_ev_open(struct evdev_dev *evdev)
 {
-//	struct imt_softc *sc = evdev_get_softc(evdev);
+	device_t dev = evdev_get_softc(evdev);
 
-	return (0);
+	return (iichid_open(dev));
 }
 
 static int
@@ -366,7 +366,7 @@ imt_attach(device_t dev)
 	evdev_set_id(sc->evdev, BUS_I2C, iichid_sc->desc.wVendorID,
 	    iichid_sc->desc.wProductID, iichid_sc->desc.wVersionID);
 //	evdev_set_serial(sc->evdev, usb_get_serial(uaa->device));
-	evdev_set_methods(sc->evdev, sc, &imt_evdev_methods);
+	evdev_set_methods(sc->evdev, dev, &imt_evdev_methods);
 	evdev_set_flag(sc->evdev, EVDEV_FLAG_MT_STCOMPAT);
 	evdev_support_prop(sc->evdev, INPUT_PROP_DIRECT);
 	evdev_support_event(sc->evdev, EV_SYN);
