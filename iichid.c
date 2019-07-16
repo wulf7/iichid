@@ -496,22 +496,40 @@ iichid_event_task(void *context, int pending)
 	mtx_unlock(sc->intr_mtx);
 }
 
+static int
+iichid_set_power_state(struct iichid_softc *sc)
+{
+	int error = 0;
+	bool power_on;
+
+	sx_assert(&sc->lock, SA_XLOCKED);
+
+	power_on = sc->open & !sc->suspend;
+	if (power_on != sc->power_on) {
+		error = iichid_set_power(sc->dev, power_on);
+		mtx_lock(sc->intr_mtx);
+		if (sc->sampling_rate >= 0 && sc->intr_handler != NULL) {
+			if (power_on) {
+				iichid_setup_callout(sc);
+				iichid_reset_callout(sc);
+			} else
+				iichid_teardown_callout(sc);
+		}
+		mtx_unlock(sc->intr_mtx);
+		sc->power_on = power_on;
+	}
+
+	return (error);
+}
+
 static void
 iichid_power_task(void *context, int pending)
 {
 	struct iichid_softc *sc = context;
-	bool open = sc->open;
 
-	(void)iichid_set_power(sc->dev, open);
-	mtx_lock(sc->intr_mtx);
-	if (sc->sampling_rate >= 0) {
-		if (open) {
-			iichid_setup_callout(sc);
-			iichid_reset_callout(sc);
-		} else
-			iichid_teardown_callout(sc);
-	}
-	mtx_unlock(sc->intr_mtx);
+	sx_xlock(&sc->lock);
+	(void)iichid_set_power_state(sc);
+	sx_unlock(&sc->lock);
 }
 
 static int
@@ -660,6 +678,12 @@ iichid_close(device_t dev)
 
 	DPRINTF(sc, "iichid device close\n");
 
+	/*
+	 * 8.2 - The HOST determines that there are no active applications
+	 * that are currently using the specific HID DEVICE. The HOST
+	 * is recommended to issue a HIPO command to the DEVICE to force
+	 * the DEVICE in to a lower power state.
+	 */
 	sc->open = false;
 	taskqueue_enqueue(sc->taskqueue, &sc->power_task);
 
@@ -674,6 +698,7 @@ iichid_attach(device_t dev)
 
 	sx_init(&sc->lock, device_get_nameunit(dev));
 
+	sc->power_on = false;
 	(void)iichid_set_power(dev, false);
 
 	if (sc->intr_handler == NULL)
@@ -900,14 +925,19 @@ iichid_suspend(device_t dev)
 	struct iichid_softc *sc = device_get_softc(dev);
 	int error;
 
-	if (!sc->open) {
-		DPRINTF(sc, "Suspend called, device is already sleeping\n");
-		return (0);
-	}
-
 	DPRINTF(sc, "Suspend called, setting device to power_state 1\n");
 
-	error = iichid_set_power(dev, false);
+	/*
+	 * 8.2 - The HOST is going into a deep power optimized state and wishes
+	 * to put all the devices into a low power state also. The HOST
+	 * is recommended to issue a HIPO command to the DEVICE to force
+	 * the DEVICE in to a lower power state
+         */
+	sx_xlock(&sc->lock);
+	sc->suspend = true;
+	error = iichid_set_power_state(sc);
+	sx_unlock(&sc->lock);
+
 	if (error != 0)
 		DPRINTF(sc, "Could not set power_state, error: %d\n", error);
 	else
@@ -922,14 +952,13 @@ iichid_resume(device_t dev)
 	struct iichid_softc *sc = device_get_softc(dev);
 	int error;
 
-	if (!sc->open) {
-		DPRINTF(sc, "Resume called, skip power up of unused device\n");
-		return (0);
-	}
-
 	DPRINTF(sc, "Resume called, setting device to power_state 0\n");
 
-	error = iichid_set_power(dev, true);
+	sx_xlock(&sc->lock);
+	sc->suspend = false;
+	error = iichid_set_power_state(sc);
+	sx_unlock(&sc->lock);
+
 	if (error != 0)
 		DPRINTF(sc, "Could not set power_state, error: %d\n", error);
 	else

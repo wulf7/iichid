@@ -114,6 +114,8 @@ struct iichid_softc {
 
 	/* XXX: Need barriers or atomic type? */
 	volatile bool		open;
+	bool			suspend;
+	bool			power_on;
 
 	void			*hid_softc;
 };
