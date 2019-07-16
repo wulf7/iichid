@@ -454,12 +454,7 @@ iichid_intr(void *context)
 {
 	struct iichid_softc *sc = context;
 
-	if (sc->callout_setup && sc->sampling_rate > 0 &&
-	    taskqueue_poll_is_busy(sc->taskqueue, &sc->event_task))
-		/* Don't poll too fast. Let previous task to be completed */
-		/* DPRINTF(sc, "Taskqueue is busy. Skip the sample\n") */;
-	else
-		taskqueue_enqueue(sc->taskqueue, &sc->event_task);
+	taskqueue_enqueue(sc->taskqueue, &sc->event_task);
 
 	if (sc->callout_setup && sc->sampling_rate > 0 && sc->open)
 		callout_reset(&sc->periodic_callout, hz / sc->sampling_rate,
