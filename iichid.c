@@ -484,8 +484,11 @@ iichid_event_task(void *context, int pending)
 	report_id = sc->iid > 0 ? ((uint8_t *)sc->ibuf)[2] : 0;
 
 	/* DPRINTF(sc, "%*D\n", actual, sc->ibuf, " "); */
-	sc->intr_handler(sc->intr_context, (uint8_t *)sc->ibuf + header_len,
-	    actual - header_len, report_id);
+	mtx_lock(sc->intr_mtx);
+	if (sc->open)
+		sc->intr_handler(sc->intr_context, (uint8_t *)sc->ibuf +
+		    header_len, actual - header_len, report_id);
+	mtx_unlock(sc->intr_mtx);
 }
 
 static void
@@ -608,18 +611,22 @@ iichid_sysctl_sampling_rate_handler(SYSCTL_HANDLER_ARGS)
 }
 
 void
-iichid_set_intr(device_t dev, iichid_intr_t intr, void *context)
+iichid_set_intr(device_t dev, struct mtx *mtx, iichid_intr_t intr,
+    void *context)
 {
 	struct iichid_softc* sc = device_get_softc(dev);
 
 	sc->intr_handler = intr;
 	sc->intr_context = context;
+	sc->intr_mtx = mtx;
 }
 
 int
 iichid_open(device_t dev)
 {
 	struct iichid_softc* sc = device_get_softc(dev);
+
+	mtx_assert(sc->intr_mtx, MA_OWNED);
 
 	DPRINTF(sc, "iichid device open\n");
 
@@ -638,6 +645,8 @@ int
 iichid_close(device_t dev)
 {
 	struct iichid_softc* sc = device_get_softc(dev);
+
+	mtx_assert(sc->intr_mtx, MA_OWNED);
 
 	DPRINTF(sc, "iichid device close\n");
 

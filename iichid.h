@@ -94,6 +94,7 @@ struct iichid_softc {
 
 	iichid_intr_t		*intr_handler;
 	void			*intr_context;
+	struct mtx		*intr_mtx;
 
 	uint8_t			*ibuf;
 	int			isize;
@@ -126,7 +127,7 @@ device_get_hid_softc(device_t dev)
 }
 
 /* iichid soft context interface */
-void	iichid_set_intr(device_t, iichid_intr_t, void *);
+void	iichid_set_intr(device_t, struct mtx *, iichid_intr_t, void *);
 int	iichid_open(device_t);
 int	iichid_close(device_t);
 

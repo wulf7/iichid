@@ -381,7 +381,7 @@ imt_attach(device_t dev)
 	if (error)
 		goto detach;
 
-	iichid_set_intr(dev, imt_intr, sc);
+	iichid_set_intr(dev, &sc->lock, imt_intr, sc);
 	error = iichid_attach(dev);
 	if (!error)
 		return (0);
@@ -421,6 +421,8 @@ imt_intr(void *context, void *buf, int len, uint8_t id)
 	uint32_t height;
 	int32_t slot;
 
+	mtx_assert(&sc->lock, MA_OWNED);
+
 	/* Ignore irrelevant reports */
 	if (sc->report_id != id)
 		return;
@@ -446,8 +448,6 @@ imt_intr(void *context, void *buf, int len, uint8_t id)
 		DPRINTF("Contact count overflow %u\n", (unsigned)nconts);
 		nconts = sc->nconts_max;
 	}
-
-	mtx_lock(&sc->lock);
 
 	/* Use protocol Type B for reporting events */
 	for (cont = 0; cont < nconts; cont++) {
@@ -503,8 +503,6 @@ imt_intr(void *context, void *buf, int len, uint8_t id)
 		}
 	}
 	evdev_sync(sc->evdev);
-
-	mtx_unlock(&sc->lock);
 }
 
 /*
