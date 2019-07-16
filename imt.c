@@ -331,7 +331,6 @@ imt_attach(device_t dev)
 	sc = malloc(sizeof(struct imt_softc), M_DEVBUF, M_WAITOK | M_ZERO);
 	mtx_init(&sc->lock, "imt lock", NULL, MTX_DEF);
 	iichid_sc->hid_softc = sc;
-	iichid_sc->lock = sc->lock;
 	sc->dev = dev;
 
 	hid_ok = wmt_hid_parse(sc, d_ptr, d_len);

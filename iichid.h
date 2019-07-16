@@ -84,7 +84,7 @@ struct iichid_hw {
 
 struct iichid_softc {
 	device_t		dev;
-	struct mtx		lock;
+	struct sx		lock;
 
 	bool			probe_done;
 	int			probe_result;

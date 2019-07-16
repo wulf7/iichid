@@ -39,6 +39,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/rman.h>
 #include <sys/sysctl.h>
 #include <sys/systm.h>
+#include <sys/sx.h>
 #include <sys/taskqueue.h>
 
 #include <machine/resource.h>
@@ -70,6 +71,10 @@ static char *iichid_ids[] = {
 	"ACPI0C50",
 	NULL
 };
+
+static int	iichid_setup_callout(struct iichid_softc *);
+static int	iichid_reset_callout(struct iichid_softc *);
+static void	iichid_teardown_callout(struct iichid_softc *);
 
 static __inline bool
 acpi_is_iichid(ACPI_HANDLE handle)
@@ -495,8 +500,18 @@ static void
 iichid_power_task(void *context, int pending)
 {
 	struct iichid_softc *sc = context;
+	bool open = sc->open;
 
-	(void)iichid_set_power(sc->dev, sc->open);
+	(void)iichid_set_power(sc->dev, open);
+	mtx_lock(sc->intr_mtx);
+	if (sc->sampling_rate >= 0) {
+		if (open) {
+			iichid_setup_callout(sc);
+			iichid_reset_callout(sc);
+		} else
+			iichid_teardown_callout(sc);
+	}
+	mtx_unlock(sc->intr_mtx);
 }
 
 static int
@@ -571,20 +586,20 @@ iichid_sysctl_sampling_rate_handler(SYSCTL_HANDLER_ARGS)
 
 	sc = arg1;      
 
-	mtx_lock(&sc->lock);
+	mtx_lock(sc->intr_mtx);
 
 	value = sc->sampling_rate;
 	oldval = sc->sampling_rate;
 	err = sysctl_handle_int(oidp, &value, 0, req);
 
 	if (err != 0 || req->newptr == NULL || value == sc->sampling_rate) {
-		mtx_unlock(&sc->lock);
+		mtx_unlock(sc->intr_mtx);
 		return (err);
 	}
 
 	/* Can't switch to interrupt mode if it is not supported */
 	if (sc->irq_res == NULL && value < 0) {
-		mtx_unlock(&sc->lock);
+		mtx_unlock(sc->intr_mtx);
 		return (err);
 	}
 
@@ -605,7 +620,7 @@ iichid_sysctl_sampling_rate_handler(SYSCTL_HANDLER_ARGS)
 
 	DPRINTF(sc, "new sampling_rate value: %d\n", value);
 
-	mtx_unlock(&sc->lock);
+	mtx_unlock(sc->intr_mtx);
 
 	return (0);
 }
@@ -633,11 +648,6 @@ iichid_open(device_t dev)
 	sc->open = true;
 	taskqueue_enqueue(sc->taskqueue, &sc->power_task);
 
-	if (sc->sampling_rate >= 0) {
-		iichid_setup_callout(sc);
-		iichid_reset_callout(sc);
-	}
-
 	return (0);
 }
 
@@ -653,8 +663,6 @@ iichid_close(device_t dev)
 	sc->open = false;
 	taskqueue_enqueue(sc->taskqueue, &sc->power_task);
 
-	iichid_teardown_callout(sc);
-
 	return (0);
 }
 
@@ -664,6 +672,8 @@ iichid_attach(device_t dev)
 	struct iichid_softc* sc = device_get_softc(dev);
 	int error;
 
+	sx_init(&sc->lock, device_get_nameunit(dev));
+
 	(void)iichid_set_power(dev, false);
 
 	if (sc->intr_handler == NULL)
@@ -671,12 +681,11 @@ iichid_attach(device_t dev)
 
 	TASK_INIT(&sc->event_task, 0, iichid_event_task, sc);
 	TASK_INIT(&sc->power_task, 0, iichid_power_task, sc);
+	/* taskqueue_create can't fail with M_WAITOK mflag passed */
 	sc->taskqueue = taskqueue_create("imt_tq", M_WAITOK | M_ZERO,
 	    taskqueue_thread_enqueue, &sc->taskqueue);
-	if (sc->taskqueue == NULL)
-		return (ENXIO);
 
-	callout_init_mtx(&sc->periodic_callout, &sc->lock, 0);
+	callout_init_mtx(&sc->periodic_callout, sc->intr_mtx, 0);
 
 	/*
 	 * Fallback to HID descriptor input length
@@ -794,8 +803,6 @@ iichid_detach(device_t dev)
 	if (sc->ibuf)
 		free(sc->ibuf, M_DEVBUF);
 
-	mtx_lock(&sc->lock);
-
 	iichid_teardown_interrupt(sc);
 
 	if (sc->irq_res)
@@ -808,7 +815,7 @@ iichid_detach(device_t dev)
 		taskqueue_free(sc->taskqueue);
 	}
 
-	mtx_unlock(&sc->lock);
+	sx_destroy(&sc->lock);
 
 	return (0);
 }
