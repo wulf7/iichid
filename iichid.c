@@ -618,7 +618,7 @@ iichid_sysctl_sampling_rate_handler(SYSCTL_HANDLER_ARGS)
 	/* Can't switch to interrupt mode if it is not supported */
 	if (sc->irq_res == NULL && value < 0) {
 		mtx_unlock(sc->intr_mtx);
-		return (err);
+		return (EINVAL);
 	}
 
 	sc->sampling_rate = value;
