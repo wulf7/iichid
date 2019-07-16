@@ -488,6 +488,14 @@ iichid_event_task(void *context, int pending)
 	    actual - header_len, report_id);
 }
 
+static void
+iichid_power_task(void *context, int pending)
+{
+	struct iichid_softc *sc = context;
+
+	(void)iichid_set_power(sc->dev, sc->open);
+}
+
 static int
 iichid_setup_callout(struct iichid_softc *sc)
 {
@@ -613,7 +621,10 @@ iichid_open(device_t dev)
 {
 	struct iichid_softc* sc = device_get_softc(dev);
 
+	DPRINTF(sc, "iichid device open\n");
+
 	sc->open = true;
+	taskqueue_enqueue(sc->taskqueue, &sc->power_task);
 
 	if (sc->sampling_rate >= 0) {
 		iichid_setup_callout(sc);
@@ -628,7 +639,10 @@ iichid_close(device_t dev)
 {
 	struct iichid_softc* sc = device_get_softc(dev);
 
-	sc->open = true;
+	DPRINTF(sc, "iichid device close\n");
+
+	sc->open = false;
+	taskqueue_enqueue(sc->taskqueue, &sc->power_task);
 
 	iichid_teardown_callout(sc);
 
@@ -641,10 +655,13 @@ iichid_attach(device_t dev)
 	struct iichid_softc* sc = device_get_softc(dev);
 	int error;
 
+	(void)iichid_set_power(dev, false);
+
 	if (sc->intr_handler == NULL)
 		return (0);
 
 	TASK_INIT(&sc->event_task, 0, iichid_event_task, sc);
+	TASK_INIT(&sc->power_task, 0, iichid_power_task, sc);
 	sc->taskqueue = taskqueue_create("imt_tq", M_WAITOK | M_ZERO,
 	    taskqueue_thread_enqueue, &sc->taskqueue);
 	if (sc->taskqueue == NULL)
@@ -768,8 +785,6 @@ iichid_detach(device_t dev)
 	if (sc->ibuf)
 		free(sc->ibuf, M_DEVBUF);
 
-	(void)iichid_set_power(dev, false);
-
 	mtx_lock(&sc->lock);
 
 	iichid_teardown_interrupt(sc);
@@ -780,7 +795,7 @@ iichid_detach(device_t dev)
 
 	if (sc->taskqueue) {
 		taskqueue_block(sc->taskqueue);
-		taskqueue_drain(sc->taskqueue, &sc->event_task);
+		taskqueue_drain_all(sc->taskqueue);
 		taskqueue_free(sc->taskqueue);
 	}
 
@@ -869,6 +884,11 @@ iichid_suspend(device_t dev)
 	struct iichid_softc *sc = device_get_softc(dev);
 	int error;
 
+	if (!sc->open) {
+		DPRINTF(sc, "Suspend called, device is already sleeping\n");
+		return (0);
+	}
+
 	DPRINTF(sc, "Suspend called, setting device to power_state 1\n");
 
 	error = iichid_set_power(dev, false);
@@ -886,7 +906,12 @@ iichid_resume(device_t dev)
 	struct iichid_softc *sc = device_get_softc(dev);
 	int error;
 
-	DPRINTF(sc, "Suspend called, setting device to power_state 0\n");
+	if (!sc->open) {
+		DPRINTF(sc, "Resume called, skip power up of unused device\n");
+		return (0);
+	}
+
+	DPRINTF(sc, "Resume called, setting device to power_state 0\n");
 
 	error = iichid_set_power(dev, true);
 	if (error != 0)

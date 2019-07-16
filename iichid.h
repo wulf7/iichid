@@ -109,8 +109,10 @@ struct iichid_softc {
 
 	struct taskqueue	*taskqueue;
 	struct task		event_task;
+	struct task		power_task;
 
-	bool			open;
+	/* XXX: Need barriers or atomic type? */
+	volatile bool		open;
 
 	void			*hid_softc;
 };
