@@ -359,6 +359,11 @@ imt_attach(device_t dev)
 		(void)iichid_get_report(dev, sc->buf, sc->thqa_cert_rlen,
 		    I2C_HID_REPORT_TYPE_FEATURE, sc->thqa_cert_rid);
 
+	iichid_set_intr(dev, &sc->lock, imt_intr, sc);
+	error = iichid_attach(dev);
+	if (error)
+		goto detach;
+
 	sc->evdev = evdev_alloc();
 	evdev_set_name(sc->evdev, device_get_desc(dev));
 	evdev_set_phys(sc->evdev, device_get_nameunit(dev));
@@ -377,15 +382,10 @@ imt_attach(device_t dev)
 	}
 
 	error = evdev_register_mtx(sc->evdev, &sc->lock);
-	if (error)
-		goto detach;
-
-	iichid_set_intr(dev, &sc->lock, imt_intr, sc);
-	error = iichid_attach(dev);
 	if (!error)
 		return (0);
 
-	evdev_free(sc->evdev);
+	(void)iichid_detach(dev);
 detach:
 	mtx_destroy(&sc->lock);
 	free(sc, M_DEVBUF);
@@ -399,8 +399,8 @@ imt_detach(device_t dev)
 {
 	struct imt_softc *sc = device_get_hid_softc(dev);
 
-	(void)iichid_detach(dev);
 	evdev_free(sc->evdev);
+	(void)iichid_detach(dev);
 
 	mtx_destroy(&sc->lock);
 	free(sc, M_DEVBUF);
