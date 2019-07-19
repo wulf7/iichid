@@ -142,7 +142,7 @@ iichid_get_hw(ACPI_HANDLE handle, struct iichid_hw *hw)
 	 * the configuration register of the HID device
 	 */
 	/* 3cdff6f7-4267-4555-ad05-b30a3d8938de */
-	static uint8_t dsm_guid[] = {
+	static uint8_t dsm_guid[ACPI_UUID_LENGTH] = {
 		0xF7, 0xF6, 0xDF, 0x3C, 0x67, 0x42, 0x55, 0x45,
 		0xAD, 0x05, 0xB3, 0x0A, 0x3D, 0x89, 0x38, 0xDE,
 	};
@@ -150,7 +150,7 @@ iichid_get_hw(ACPI_HANDLE handle, struct iichid_hw *hw)
 	/* prepare 4 arguments */
 	static ACPI_OBJECT args[] = {{
 		.Buffer.Type = ACPI_TYPE_BUFFER,
-		.Buffer.Length = sizeof(dsm_guid),
+		.Buffer.Length = ACPI_UUID_LENGTH,
 		.Buffer.Pointer = dsm_guid,
 	}, {
 		.Integer.Type = ACPI_TYPE_INTEGER,
