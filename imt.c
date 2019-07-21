@@ -219,6 +219,9 @@ struct imt_softc {
 	uint8_t                 cont_max_rid;
 	uint32_t                thqa_cert_rlen;
 	uint8_t                 thqa_cert_rid;
+	struct hid_location	input_mode_loc;
+	uint32_t		input_mode_rlen;
+	uint8_t			input_mode_rid;
 
 	uint8_t			buf[WMT_BSIZE] __aligned(4);
 };
@@ -584,8 +587,10 @@ wmt_hid_parse(struct imt_softc *sc, const void *d_ptr, uint16_t d_len)
 	uint8_t report_id = 0;
 	uint8_t cont_max_rid = 0;
 	uint8_t thqa_cert_rid = 0;
+	uint8_t input_mode_rid = 0;
 	bool touch_coll = false;
 	bool finger_coll = false;
+	bool conf_coll = false;
 	bool cont_count_found = false;
 	bool scan_time_found = false;
 
@@ -601,10 +606,16 @@ wmt_hid_parse(struct imt_softc *sc, const void *d_ptr, uint16_t d_len)
 			if (hi.collevel == 1 && hi.usage ==
 			    HID_USAGE2(HUP_DIGITIZERS, HUD_TOUCHSCREEN))
 				touch_coll = true;
+			if (hi.collevel == 1 && hi.usage ==
+			    HID_USAGE2(HUP_DIGITIZERS, HUD_CONFIG))
+				conf_coll = true;
 			break;
 		case hid_endcollection:
 			if (hi.collevel == 0 && touch_coll)
 				touch_coll = false;
+			break;
+			if (hi.collevel == 0 && conf_coll)
+				conf_coll = false;
 			break;
 		case hid_feature:
 			if (hi.collevel == 1 && touch_coll && hi.usage ==
@@ -619,6 +630,13 @@ wmt_hid_parse(struct imt_softc *sc, const void *d_ptr, uint16_t d_len)
 				cont_max_rid = hi.report_ID;
 				if (sc != NULL)
 					sc->cont_max_loc = hi.loc;
+			}
+			if (hi.collevel == 1 && conf_coll &&
+			    WMT_HI_ABSOLUTE(hi) && hi.usage ==
+			      HID_USAGE2(HUP_DIGITIZERS, HUD_INPUT_MODE)) {
+				input_mode_rid = hi.report_ID;
+				if (sc != NULL)
+					sc->input_mode_loc = hi.loc;
 			}
 			break;
 		default:
@@ -771,12 +789,16 @@ wmt_hid_parse(struct imt_softc *sc, const void *d_ptr, uint16_t d_len)
 	if (thqa_cert_rid > 0)
 		sc->thqa_cert_rlen = wmt_hid_report_size(d_ptr, d_len,
 		    hid_feature, thqa_cert_rid);
+	if (input_mode_rid > 0)
+		sc->input_mode_rlen = wmt_hid_report_size(d_ptr, d_len,
+		    hid_feature, input_mode_rid);
 
 	sc->report_id = report_id;
 	sc->caps = caps;
 	sc->nconts_per_report = cont;
 	sc->cont_max_rid = cont_max_rid;
 	sc->thqa_cert_rid = thqa_cert_rid;
+	sc->input_mode_rid = input_mode_rid;
 
 	/* Announce information about the touch device */
 	device_printf(sc->dev,
