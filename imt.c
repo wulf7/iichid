@@ -81,6 +81,12 @@ enum {
 	WMT_N_TRANSFER,
 };
 
+enum imt_input_mode {
+	IMT_INPUT_MODE_MOUSE =		0x0,
+	IMT_INPUT_MODE_MT_TOUCHSCREEN =	0x2,
+	IMT_INPUT_MODE_MT_TOUCHPAD =	0x3,
+};
+
 enum {
 	WMT_TIP_SWITCH,
 #define	WMT_SLOT	WMT_TIP_SWITCH
@@ -200,6 +206,7 @@ struct wmt_absinfo {
 struct imt_softc {
 	device_t dev;
 	struct mtx              lock;
+	int			type;
 
 	struct wmt_absinfo      ai[WMT_N_USAGES];
 	struct hid_location     locs[MAX_MT_SLOTS][WMT_N_USAGES];
@@ -226,8 +233,9 @@ struct imt_softc {
 	uint8_t			buf[WMT_BSIZE] __aligned(4);
 };
 
-static bool wmt_hid_parse(struct imt_softc *, const void *, uint16_t);
+static int wmt_hid_parse(struct imt_softc *, const void *, uint16_t);
 static void wmt_cont_max_parse(struct imt_softc *, const void *, uint16_t);
+static int imt_set_input_mode(struct imt_softc *, enum imt_input_mode);
 
 static iichid_intr_t		imt_intr;
 
@@ -286,7 +294,7 @@ imt_probe(device_t dev)
 	void *d_ptr;
 	int d_len;
 	int error;
-	bool hid_ok;
+	int hid_type;
 
 	/* Run generic I2CHID probe routine and (not yet) initialize ivars */
 	error = iichid_probe(dev);
@@ -301,9 +309,9 @@ imt_probe(device_t dev)
 	}
 
 	/* Check if report descriptor belongs to a HID multitouch device */
-	hid_ok = wmt_hid_parse(NULL, d_ptr, d_len);
+	hid_type = wmt_hid_parse(NULL, d_ptr, d_len);
 	free(d_ptr, M_TEMP);
-	error = hid_ok ? BUS_PROBE_DEFAULT : ENXIO;
+	error = hid_type != 0 ? BUS_PROBE_DEFAULT : ENXIO;
 
 out:
 	if (error <= 0)
@@ -324,7 +332,6 @@ imt_attach(device_t dev)
 	void *d_ptr;
 	int d_len;
 	size_t i;
-	bool hid_ok;
 
 	error = iichid_get_report_desc(dev, &d_ptr, &d_len);
 	if (error) {
@@ -337,9 +344,9 @@ imt_attach(device_t dev)
 	iichid_sc->hid_softc = sc;
 	sc->dev = dev;
 
-	hid_ok = wmt_hid_parse(sc, d_ptr, d_len);
+	sc->type = wmt_hid_parse(sc, d_ptr, d_len);
 	free(d_ptr, M_TEMP);
-	if (!hid_ok) {
+	if (sc->type == 0) {
 		DPRINTF("multi-touch HID descriptor not found\n");
 		goto detach;
 	}
@@ -368,6 +375,14 @@ imt_attach(device_t dev)
 	if (error)
 		goto detach;
 
+	if (sc->type == HUD_TOUCHPAD && sc->input_mode_rlen != 0) {
+		error = imt_set_input_mode(sc, IMT_INPUT_MODE_MT_TOUCHPAD);
+		if (error) {
+			DPRINTF("Failed to set input mode: %d\n", error);
+			goto detach;
+		}
+	}
+
 	sc->evdev = evdev_alloc();
 	evdev_set_name(sc->evdev, device_get_desc(dev));
 	evdev_set_phys(sc->evdev, device_get_nameunit(dev));
@@ -376,7 +391,13 @@ imt_attach(device_t dev)
 //	evdev_set_serial(sc->evdev, usb_get_serial(uaa->device));
 	evdev_set_methods(sc->evdev, dev, &imt_evdev_methods);
 	evdev_set_flag(sc->evdev, EVDEV_FLAG_MT_STCOMPAT);
-	evdev_support_prop(sc->evdev, INPUT_PROP_DIRECT);
+	switch (sc->type) {
+	case HUD_TOUCHSCREEN:
+		evdev_support_prop(sc->evdev, INPUT_PROP_DIRECT);
+		break;
+	case HUD_TOUCHPAD:
+		evdev_support_prop(sc->evdev, INPUT_PROP_POINTER);
+	}
 	evdev_support_event(sc->evdev, EV_SYN);
 	evdev_support_event(sc->evdev, EV_ABS);
 	WMT_FOREACH_USAGE(sc->caps, i) {
@@ -575,13 +596,14 @@ wmt_hid_report_size(const void *buf, uint16_t len, enum hid_kind k, uint8_t id)
 	return ((temp + 7) / 8);
 }
 
-static bool
+static int
 wmt_hid_parse(struct imt_softc *sc, const void *d_ptr, uint16_t d_len)
 {
 	struct hid_item hi;
 	struct hid_data *hd;
 	size_t i;
 	size_t cont = 0;
+	int type = 0;
 	uint32_t caps = 0;
 	int32_t cont_count_max = 0;
 	uint8_t report_id = 0;
@@ -605,6 +627,9 @@ wmt_hid_parse(struct imt_softc *sc, const void *d_ptr, uint16_t d_len)
 		case hid_collection:
 			if (hi.collevel == 1 && hi.usage ==
 			    HID_USAGE2(HUP_DIGITIZERS, HUD_TOUCHSCREEN))
+				touch_coll = true;
+			if (hi.collevel == 1 && hi.usage ==
+			    HID_USAGE2(HUP_DIGITIZERS, HUD_TOUCHPAD))
 				touch_coll = true;
 			if (hi.collevel == 1 && hi.usage ==
 			    HID_USAGE2(HUP_DIGITIZERS, HUD_CONFIG))
@@ -647,7 +672,7 @@ wmt_hid_parse(struct imt_softc *sc, const void *d_ptr, uint16_t d_len)
 
 	/* Maximum contact count is required usage */
 	if (cont_max_rid == 0)
-		return (false);
+		return (0);
 
 	touch_coll = false;
 
@@ -657,8 +682,15 @@ wmt_hid_parse(struct imt_softc *sc, const void *d_ptr, uint16_t d_len)
 		switch (hi.kind) {
 		case hid_collection:
 			if (hi.collevel == 1 && hi.usage ==
-			    HID_USAGE2(HUP_DIGITIZERS, HUD_TOUCHSCREEN))
+			    HID_USAGE2(HUP_DIGITIZERS, HUD_TOUCHSCREEN)) {
 				touch_coll = true;
+				type = HUD_TOUCHSCREEN;
+			}
+			if (hi.collevel == 1 && hi.usage ==
+			    HID_USAGE2(HUP_DIGITIZERS, HUD_TOUCHPAD)) {
+				touch_coll = true;
+				type = HUD_TOUCHPAD;
+			}
 			else if (touch_coll && hi.collevel == 2 &&
 			    (report_id == 0 || report_id == hi.report_ID) &&
 			    hi.usage == HID_USAGE2(HUP_DIGITIZERS, HUD_FINGER))
@@ -747,15 +779,15 @@ wmt_hid_parse(struct imt_softc *sc, const void *d_ptr, uint16_t d_len)
 
 	/* Check for required HID Usages */
 	if (!cont_count_found || !scan_time_found || cont == 0)
-		return (false);
+		return (0);
 	for (i = 0; i < WMT_N_USAGES; i++) {
 		if (wmt_hid_map[i].required && !USAGE_SUPPORTED(caps, i))
-			return (false);
+			return (0);
 	}
 
 	/* Stop probing here */
 	if (sc == NULL)
-		return (true);
+		return (type);
 
 	/*
 	 * According to specifications 'Contact Count Maximum' should be read
@@ -811,7 +843,7 @@ wmt_hid_parse(struct imt_softc *sc, const void *d_ptr, uint16_t d_len)
 	    USAGE_SUPPORTED(sc->caps, WMT_PRESSURE) ? "P" : "",
 	    (int)sc->ai[WMT_X].min, (int)sc->ai[WMT_Y].min,
 	    (int)sc->ai[WMT_X].max, (int)sc->ai[WMT_Y].max);
-	return (true);
+	return (type);
 }
 
 static void
@@ -833,6 +865,28 @@ wmt_cont_max_parse(struct imt_softc *sc, const void *r_ptr, uint16_t r_len)
 		device_printf(sc->dev, "%d feature report contacts",
 		    cont_count_max);
 	}
+}
+
+static int
+imt_set_input_mode(struct imt_softc *sc, enum imt_input_mode mode)
+{
+	int error;
+
+	if (sc->input_mode_rlen == 0 && sc->input_mode_rlen > WMT_BSIZE)
+		return (EINVAL);
+
+	error = iichid_get_report(sc->dev, sc->buf, sc->input_mode_rlen,
+	    I2C_HID_REPORT_TYPE_FEATURE, sc->input_mode_rid);
+	if (error)
+		return (error);
+
+	hid_put_data_unsigned(sc->buf, sc->input_mode_rlen,
+	    &sc->input_mode_loc, mode);
+
+	error = iichid_set_report(sc->dev, sc->buf, sc->input_mode_rlen,
+	    I2C_HID_REPORT_TYPE_FEATURE, sc->input_mode_rid);
+
+	return (error);
 }
 
 DRIVER_MODULE_ORDERED(imt, iicbus, imt_driver, imt_devclass, NULL, 0, SI_ORDER_ANY);
