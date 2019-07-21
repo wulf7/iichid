@@ -861,7 +861,7 @@ wmt_cont_max_parse(struct imt_softc *sc, const void *r_ptr, uint16_t r_len)
 	if (cont_count_max > 0 &&
 	    cont_count_max != sc->ai[WMT_SLOT].max + 1) {
 		sc->ai[WMT_SLOT].max = cont_count_max - 1;
-		device_printf(sc->dev, "%d feature report contacts",
+		device_printf(sc->dev, "%d feature report contacts\n",
 		    cont_count_max);
 	}
 }
