@@ -449,6 +449,52 @@ iichid_get_report(device_t dev, void *buf, int len, uint8_t type, uint8_t id)
 	return (0);
 }
 
+int
+iichid_set_report(device_t dev, void *buf, int len, uint8_t type, uint8_t id)
+{
+	/*
+	 * 7.2.2.4 - "The protocol is optimized for Report < 15.  If a
+	 * report ID >= 15 is necessary, then the Report ID in the Low Byte
+	 * must be set to 1111 and a Third Byte is appended to the protocol.
+	 * This Third Byte contains the entire/actual report ID."
+	 */
+	struct iichid_softc* sc = device_get_softc(dev);
+	uint16_t dtareg = htole16(type == I2C_HID_REPORT_TYPE_FEATURE ?
+	    sc->desc.wDataRegister : sc->desc.wOutputRegister);
+	uint16_t cmdreg = htole16(sc->desc.wCommandRegister);
+	uint16_t replen = htole16(2 + (id != 0 ? 1 : 0) + len);
+	uint8_t cmd[] =	{   /*________|______id>=15_____|______id<15______*/
+						  cmdreg & 0xff		   ,
+						   cmdreg >> 8		   ,
+			    (id >= 15 ? 15 | (type << 4): id | (type << 4)),
+					      I2C_HID_CMD_SET_REPORT	   ,
+			    (id >= 15 ?		id	:   dtareg & 0xff ),
+			    (id >= 15 ?   dtareg & 0xff	:   dtareg >> 8   ),
+			    (id >= 15 ?   dtareg >> 8	:   replen & 0xff ),
+			    (id >= 15 ?   replen & 0xff	:   replen >> 8   ),
+			    (id >= 15 ?   replen >> 8	:	id	  ),
+			    (id >= 15 ?		id	:	0	  ),
+			};
+	int cmdlen    =	    (id >= 15 ?		10	:	9	  );
+	int error;
+	uint8_t *finalcmd;
+
+	DPRINTF(sc, "HID command I2C_HID_CMD_SET_REPORT %d (type %d, len %d): "
+	    "%*D\n", id, type, len, len, buf, " ");
+
+	finalcmd = malloc(cmdlen + len, M_DEVBUF, M_WAITOK | M_ZERO);
+
+	memcpy(finalcmd, cmd, cmdlen);
+	memcpy(finalcmd + cmdlen, buf, len);
+
+	/* type 3 id 4: 22 00 34 03 23 00 04 00 04 03 */
+	error = iichid_write_register(dev, finalcmd, cmdlen + len);
+
+	free(finalcmd, M_DEVBUF);
+
+	return (error);
+}
+
 static void
 iichid_intr(void *context)
 {
