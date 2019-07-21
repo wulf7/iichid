@@ -656,8 +656,7 @@ wmt_hid_parse(struct imt_softc *sc, const void *d_ptr, uint16_t d_len)
 				if (sc != NULL)
 					sc->cont_max_loc = hi.loc;
 			}
-			if (hi.collevel == 1 && conf_coll &&
-			    WMT_HI_ABSOLUTE(hi) && hi.usage ==
+			if (conf_coll && WMT_HI_ABSOLUTE(hi) && hi.usage ==
 			      HID_USAGE2(HUP_DIGITIZERS, HUD_INPUT_MODE)) {
 				input_mode_rid = hi.report_ID;
 				if (sc != NULL)
