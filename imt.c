@@ -60,17 +60,32 @@ __FBSDID("$FreeBSD$");
 #include <dev/usb/usbdi.h>
 #include <dev/usb/usbhid.h>
 
-#define USB_DEBUG_VAR wmt_debug
-#include <dev/usb/usb_debug.h>
-
 #include "iichid.h"
 
-#ifdef USB_DEBUG
+#define	IMT_DEBUG
+#define	IMT_DEBUG_VAR	wmt_debug
+
+/* Check if debugging is enabled. */
+#ifdef IMT_DEBUG_VAR
+#ifdef IMT_DEBUG
+#define	DPRINTFN(n,fmt,...) do {					\
+	if ((IMT_DEBUG_VAR) >= (n)) {					\
+		printf("%s: " fmt, __FUNCTION__ ,##__VA_ARGS__);	\
+	}								\
+} while (0)
+#define	DPRINTF(...)	DPRINTFN(1, __VA_ARGS__)
+#else
+#define	DPRINTF(...) do { } while (0)
+#define	DPRINTFN(...) do { } while (0)
+#endif
+#endif
+
+#ifdef IMT_DEBUG
 static int wmt_debug = 0;
 
-static SYSCTL_NODE(_hw_usb, OID_AUTO, imt, CTLFLAG_RW, 0,
+static SYSCTL_NODE(_hw, OID_AUTO, imt, CTLFLAG_RW, 0,
     "I2C MSWindows 7/8/10 compatible Multi-touch Device");
-SYSCTL_INT(_hw_usb_imt, OID_AUTO, debug, CTLFLAG_RWTUN,
+SYSCTL_INT(_hw_imt, OID_AUTO, debug, CTLFLAG_RWTUN,
     &wmt_debug, 1, "Debug level");
 #endif
 
@@ -358,8 +373,7 @@ imt_attach(device_t dev)
 		if (error == 0)
 			wmt_cont_max_parse(sc, sc->buf, sc->cont_max_rlen);
 		else
-			DPRINTF("usbd_req_get_report error=(%s)\n",
-			    usbd_errstr(err));
+			DPRINTF("usbd_req_get_report error=%d\n", error);
 	} else
 		DPRINTF("Feature report %hhu size invalid or too large: %u\n",
 		    sc->cont_max_rid, sc->cont_max_rlen);
@@ -448,8 +462,10 @@ imt_intr(void *context, void *buf, int len, uint8_t id)
 	mtx_assert(&sc->lock, MA_OWNED);
 
 	/* Ignore irrelevant reports */
-	if (sc->report_id != id)
+	if (sc->report_id != id) {
+		DPRINTF("Skip report with unexpected ID: %hhu\n", id);
 		return;
+	}
 
 	/* Make sure we don't process old data */
 	if (len < sc->isize)
@@ -482,7 +498,7 @@ imt_intr(void *context, void *buf, int len, uint8_t id)
 	if (cont_count != 0)
 		sc->nconts_todo = cont_count;
 
-#ifdef USB_DEBUG
+#ifdef IMT_DEBUG
 	DPRINTFN(6, "cont_count:%2u", (unsigned)cont_count);
 	if (wmt_debug >= 6) {
 		WMT_FOREACH_USAGE(sc->caps, usage) {
@@ -509,7 +525,7 @@ imt_intr(void *context, void *buf, int len, uint8_t id)
 		slot = evdev_get_mt_slot_by_tracking_id(sc->evdev,
 		    slot_data[WMT_CONTACTID]);
 
-#ifdef USB_DEBUG
+#ifdef IMT_DEBUG
 		DPRINTFN(6, "cont%01x: data = ", cont);
 		if (wmt_debug >= 6) {
 			WMT_FOREACH_USAGE(sc->caps, usage) {
