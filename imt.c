@@ -483,7 +483,7 @@ imt_intr(void *context, void *buf, int len, uint8_t id)
 		sc->nconts_todo = cont_count;
 
 #ifdef USB_DEBUG
-	DPRINTFN(6, "nconts = %u   ", (unsigned)nconts);
+	DPRINTFN(6, "cont_count:%2u", (unsigned)cont_count);
 	if (wmt_debug >= 6) {
 		WMT_FOREACH_USAGE(sc->caps, usage) {
 			if (wmt_hid_map[usage].usage != WMT_NO_USAGE)
