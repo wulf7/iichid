@@ -890,10 +890,11 @@ imt_set_input_mode(struct imt_softc *sc, enum imt_input_mode mode)
 	if (sc->input_mode_rlen == 0 && sc->input_mode_rlen > WMT_BSIZE)
 		return (EINVAL);
 
+	/* Input Mode report is not strictly required to be readable */
 	error = iichid_get_report(sc->dev, sc->buf, sc->input_mode_rlen,
 	    I2C_HID_REPORT_TYPE_FEATURE, sc->input_mode_rid);
 	if (error)
-		return (error);
+		bzero(sc->buf, sc->input_mode_rlen);
 
 	hid_put_data_unsigned(sc->buf, sc->input_mode_rlen,
 	    &sc->input_mode_loc, mode);
