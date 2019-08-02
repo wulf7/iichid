@@ -209,43 +209,40 @@ iichid_get_hw(ACPI_HANDLE handle, struct iichid_hw *hw)
 }
 
 static ACPI_STATUS
-iichid_get_device_hw_cb(ACPI_HANDLE handle, UINT32 level, void *context,
+iichid_get_handle_cb(ACPI_HANDLE handle, UINT32 level, void *context,
     void **retval)
 {
-	struct iichid_hw buf;
-	struct iichid_hw *hw = context;
-	ACPI_STATUS status;
-	uint16_t addr = hw->device_addr;
-
-	bzero(&buf, sizeof(buf));
+	ACPI_HANDLE *dev_handle = context;
+	uint16_t addr = (uintptr_t) *dev_handle;
 
 	if (acpi_is_iichid(handle) && acpi_get_iichid_addr(handle) == addr) {
 
-		status = iichid_get_hw(handle, &buf);
-		if (ACPI_SUCCESS(status)) {
-			buf.device_addr = addr;
-			bcopy(&buf, hw, sizeof(struct iichid_hw));
-			return(AE_CTRL_TERMINATE);
-		} else
-			return(status);
+		*dev_handle = handle;
+		return(AE_CTRL_TERMINATE);
 	}
 
 	return (AE_OK);
 }
 
-static int
-iichid_get_device_hw(device_t dev, uint16_t addr, struct iichid_hw *hw)
+static ACPI_HANDLE
+iichid_get_handle(device_t dev)
 {
-	ACPI_HANDLE ctrl_handle;
+	ACPI_HANDLE ctrl_handle, dev_handle;
 	ACPI_STATUS status;
 	device_t iicbus = device_get_parent(dev);
-	hw->device_addr = iicbus_get_addr(dev);
+	dev_handle = (void *)(uintptr_t) iicbus_get_addr(dev);
 
 	ctrl_handle = acpi_get_handle(device_get_parent(iicbus));
 	status = AcpiWalkNamespace(ACPI_TYPE_DEVICE, ctrl_handle,
-	    1, iichid_get_device_hw_cb, NULL, hw, NULL);
+	    1, iichid_get_handle_cb, NULL, &dev_handle, NULL);
 
-	return (ACPI_SUCCESS(status) ? 0 : ENXIO);
+	if (ACPI_FAILURE(status))
+		return (NULL);
+
+	if (dev_handle == (void *)(uintptr_t)iicbus_get_addr(dev))
+		return (NULL);
+
+	return (dev_handle);
 }
 
 static int
@@ -796,6 +793,7 @@ int
 iichid_probe(device_t dev)
 {
 	struct iichid_softc *sc = device_get_softc(dev);
+	ACPI_HANDLE handle;
 	uint16_t addr = iicbus_get_addr(dev);
 	int error;
 
@@ -812,8 +810,11 @@ iichid_probe(device_t dev)
 	sc->ibuf = NULL;
 
 	/* Fetch hardware settings from ACPI */
-	error = iichid_get_device_hw(dev, addr, &sc->hw);
-	if (error)
+	handle = iichid_get_handle(dev);
+	if (handle == NULL)
+		return (ENXIO);
+
+	if (ACPI_FAILURE(iichid_get_hw(handle, &sc->hw)))
 		return (ENXIO);
 
 	DPRINTF(sc, "  ACPI Hardware ID  : %s\n", sc->hw.hid);
