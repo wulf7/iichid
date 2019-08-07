@@ -854,7 +854,7 @@ iichid_probe(device_t dev)
 		return (ENXIO);
 
 	DPRINTF(sc, "  ACPI Hardware ID  : %s\n", sc->hw.hid);
-	DPRINTF(sc, "  IICbus addr       : 0x%02X\n", sc->hw.device_addr);
+	DPRINTF(sc, "  IICbus addr       : 0x%02X\n", addr);
 	DPRINTF(sc, "  HID descriptor reg: 0x%02X\n", sc->hw.config_reg);
 
 	/* Sometimes an I2C HID has power state methods, turn it on in case */

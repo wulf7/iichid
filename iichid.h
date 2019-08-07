@@ -78,7 +78,6 @@ typedef void iichid_intr_t(void *context, void *buf, int len, uint8_t id);
 
 struct iichid_hw {
 	char		hid[16];
-	uint8_t		device_addr;
 	uint16_t	config_reg;
 };
 
