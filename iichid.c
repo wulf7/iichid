@@ -132,7 +132,6 @@ static int
 iichid_get_hw(ACPI_HANDLE handle, struct iichid_hw *hw)
 {
 	ACPI_OBJECT *result;
-	ACPI_OBJECT_LIST acpi_arg;
 	ACPI_BUFFER acpi_buf;
 	ACPI_STATUS status;
 	ACPI_DEVICE_INFO *device_info;
@@ -147,34 +146,9 @@ iichid_get_hw(ACPI_HANDLE handle, struct iichid_hw *hw)
 		0xAD, 0x05, 0xB3, 0x0A, 0x3D, 0x89, 0x38, 0xDE,
 	};
 
-	/* prepare 4 arguments */
-	static ACPI_OBJECT args[] = {{
-		.Buffer.Type = ACPI_TYPE_BUFFER,
-		.Buffer.Length = ACPI_UUID_LENGTH,
-		.Buffer.Pointer = dsm_guid,
-	}, {
-		.Integer.Type = ACPI_TYPE_INTEGER,
-		.Integer.Value = 1,
-	}, {
-		.Integer.Type = ACPI_TYPE_INTEGER,
-		.Integer.Value = 1,
-	}, {
-		.Package.Type = ACPI_TYPE_PACKAGE,
-		.Package.Count = 0,
-	}};
-
-	/* Evaluate _DSM method to obtain HID Descriptor address */
-	acpi_arg.Pointer = args;
-	acpi_arg.Count = nitems(args);
-
-	acpi_buf.Pointer = NULL;
-	acpi_buf.Length = ACPI_ALLOCATE_BUFFER;
-
-	status = AcpiEvaluateObject(handle, "_DSM", &acpi_arg, &acpi_buf);
+	status = acpi_EvaluateDSM(handle, dsm_guid, 1, 1, NULL, &acpi_buf);
 	if (ACPI_FAILURE(status)) {
 		printf("%s: error evaluating _DSM\n", __func__);
-		if (acpi_buf.Pointer != NULL)
-			AcpiOsFree(acpi_buf.Pointer);
 		return (status);
 	}
 
@@ -187,7 +161,6 @@ iichid_get_hw(ACPI_HANDLE handle, struct iichid_hw *hw)
 		return (AE_TYPE);
 	}
 
-	/* take it (much work done for one byte -.-) */
 	hw->config_reg = result->Integer.Value;
 
 	AcpiOsFree(result);
