@@ -140,7 +140,9 @@ int	iichid_get_report(device_t, void *, int, uint8_t, uint8_t);
 int	iichid_set_report(device_t, void *, int, uint8_t, uint8_t);
 
 /* Newbus device method stubs */
+#ifndef HAVE_ACPI_IICBUS
 device_identify_t	iichid_identify;
+#endif
 device_probe_t		iichid_probe;
 device_attach_t		iichid_attach;
 device_detach_t		iichid_detach;

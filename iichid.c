@@ -100,6 +100,7 @@ acpi_is_iichid(ACPI_HANDLE handle)
 	return (false);
 }
 
+#ifndef HAVE_ACPI_IICBUS
 static ACPI_STATUS
 iichid_addr_cb(ACPI_RESOURCE *res, void *context)
 {
@@ -127,6 +128,7 @@ acpi_get_iichid_addr(ACPI_HANDLE handle)
 
 	return (addr);
 }
+#endif /* HAVE_ACPI_IICBUS */
 
 static int
 iichid_get_hw(ACPI_HANDLE handle, struct iichid_hw *hw)
@@ -216,6 +218,7 @@ iichid_set_acpi_power(ACPI_HANDLE handle, int state)
 	return (AcpiEvaluateObject(method_handle, NULL, NULL, NULL));
 }
 
+#ifndef HAVE_ACPI_IICBUS
 static ACPI_STATUS
 iichid_get_handle_cb(ACPI_HANDLE handle, UINT32 level, void *context,
     void **retval)
@@ -252,6 +255,7 @@ iichid_get_handle(device_t dev)
 
 	return (dev_handle);
 }
+#endif /* HAVE_ACPI_IICBUS */
 
 static int
 iichid_fetch_buffer(device_t dev, void* cmd, int cmdlen, void *buf, int buflen)
@@ -812,6 +816,8 @@ iichid_probe(device_t dev)
 	sc->probe_done = true;
 	sc->probe_result = ENXIO;
 
+	if (acpi_disabled("iichid"))
+		 return (ENXIO);
 	if (addr == 0)
 		return (ENXIO);
 
@@ -819,8 +825,15 @@ iichid_probe(device_t dev)
 	sc->ibuf = NULL;
 
 	/* Fetch hardware settings from ACPI */
+#ifdef HAVE_ACPI_IICBUS
+	handle = acpi_get_handle(dev);
+#else
 	handle = iichid_get_handle(dev);
+#endif
 	if (handle == NULL)
+		return (ENXIO);
+
+	if (!acpi_is_iichid(handle))
 		return (ENXIO);
 
 	if (ACPI_FAILURE(iichid_get_hw(handle, &sc->hw)))
@@ -904,6 +917,7 @@ iichid_detach(device_t dev)
 	return (0);
 }
 
+#ifndef HAVE_ACPI_IICBUS
 static ACPI_STATUS
 iichid_identify_cb(ACPI_HANDLE handle, UINT32 level, void *context,
     void **status)
@@ -977,6 +991,7 @@ iichid_identify(driver_t *driver, device_t parent)
 	AcpiWalkNamespace(ACPI_TYPE_DEVICE, ctrl_handle,
 	    1, iichid_identify_cb, NULL, parent, NULL);
 }
+#endif /* HAVE_ACPI_IICBUS */
 
 int
 iichid_suspend(device_t dev)
@@ -1030,6 +1045,7 @@ MODULE_DEPEND(iichid, acpi, 1, 1, 1);
 MODULE_DEPEND(iichid, usb, 1, 1, 1);
 MODULE_VERSION(iichid, 1);
 
+#ifndef HAVE_ACPI_IICBUS
 /*
  * Dummy ACPI driver. Used as bus resources holder for iichid.
  */
@@ -1088,3 +1104,5 @@ static driver_t acpi_iichid_driver = {
 DRIVER_MODULE(acpi_iichid, acpi, acpi_iichid_driver, acpi_iichid_devclass, NULL, 0);
 MODULE_DEPEND(acpi_iichid, acpi, 1, 1, 1);
 MODULE_VERSION(acpi_iichid, 1);
+
+#endif /* HAVE_ACPI_IICBUS */

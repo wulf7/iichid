@@ -265,7 +265,9 @@ static devclass_t imt_devclass;
 
 static device_method_t imt_methods[] = {
 
+#ifndef HAVE_ACPI_IICBUS
 	DEVMETHOD(device_identify,	iichid_identify),
+#endif
 	DEVMETHOD(device_probe,		imt_probe),
 	DEVMETHOD(device_attach,	imt_attach),
 	DEVMETHOD(device_detach,	imt_detach),
