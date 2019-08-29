@@ -78,7 +78,6 @@ typedef void iichid_intr_t(void *context, void *buf, int len, uint8_t id);
 
 struct iichid_hw {
 	char		hid[16];
-	uint16_t	config_reg;
 };
 
 struct iichid_softc {
@@ -89,6 +88,7 @@ struct iichid_softc {
 	int			probe_result;
 
 	struct iichid_hw	hw;
+	uint16_t		config_reg;
 	struct i2c_hid_desc	desc;
 
 	iichid_intr_t		*intr_handler;

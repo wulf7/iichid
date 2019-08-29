@@ -130,13 +130,12 @@ acpi_get_iichid_addr(ACPI_HANDLE handle)
 }
 #endif /* HAVE_ACPI_IICBUS */
 
-static int
-iichid_get_hw(ACPI_HANDLE handle, struct iichid_hw *hw)
+static ACPI_STATUS
+iichid_get_config_reg(ACPI_HANDLE handle, uint16_t *config_reg)
 {
 	ACPI_OBJECT *result;
 	ACPI_BUFFER acpi_buf;
 	ACPI_STATUS status;
-	ACPI_DEVICE_INFO *device_info;
 
 	/*
 	 * function (_DSM) to be evaluated to retrieve the address of
@@ -159,28 +158,14 @@ iichid_get_hw(ACPI_HANDLE handle, struct iichid_hw *hw)
 	if (result->Type != ACPI_TYPE_INTEGER) {
 		printf("%s: _DSM should return descriptor register address "
 		    "as integer\n", __func__);
-		AcpiOsFree(result);
-		return (AE_TYPE);
+		status = AE_TYPE;
+	} else {
+		*config_reg = result->Integer.Value & 0xFFFF;
+		status = AE_OK;
 	}
-
-	hw->config_reg = result->Integer.Value;
 
 	AcpiOsFree(result);
-
-	/* get ACPI HID. It is a base part of the evdev device name */
-	status = AcpiGetObjectInfo(handle, &device_info);
-	if (ACPI_FAILURE(status)) {
-		printf("%s: error evaluating AcpiGetObjectInfo\n", __func__);
-		return (status);
-	}
-
-	if (device_info->Valid & ACPI_VALID_HID)
-		strlcpy(hw->hid, device_info->HardwareId.String,
-		    sizeof(hw->hid));
-
-	AcpiOsFree(device_info);
-
-	return (AE_OK);
+	return (status);
 }
 
 /*
@@ -807,6 +792,7 @@ iichid_probe(device_t dev)
 	struct iichid_softc *sc = device_get_softc(dev);
 	ACPI_HANDLE handle;
 	ACPI_STATUS status;
+	ACPI_DEVICE_INFO *device_info;
 	uint16_t addr = iicbus_get_addr(dev);
 	int error;
 
@@ -836,12 +822,25 @@ iichid_probe(device_t dev)
 	if (!acpi_is_iichid(handle))
 		return (ENXIO);
 
-	if (ACPI_FAILURE(iichid_get_hw(handle, &sc->hw)))
+	if (ACPI_FAILURE(iichid_get_config_reg(handle, &sc->config_reg)))
 		return (ENXIO);
+
+	/* get ACPI HID. It is a base part of the evdev device name */
+	status = AcpiGetObjectInfo(handle, &device_info);
+	if (ACPI_FAILURE(status)) {
+		device_printf(dev, "error evaluating AcpiGetObjectInfo\n");
+		return (ENXIO);
+	}
+
+	if (device_info->Valid & ACPI_VALID_HID)
+		strlcpy(sc->hw.hid, device_info->HardwareId.String,
+		    sizeof(sc->hw.hid));
+
+	AcpiOsFree(device_info);
 
 	DPRINTF(sc, "  ACPI Hardware ID  : %s\n", sc->hw.hid);
 	DPRINTF(sc, "  IICbus addr       : 0x%02X\n", addr);
-	DPRINTF(sc, "  HID descriptor reg: 0x%02X\n", sc->hw.config_reg);
+	DPRINTF(sc, "  HID descriptor reg: 0x%02X\n", sc->config_reg);
 
 	/* Sometimes an I2C HID has power state methods, turn it on in case */
 	status = iichid_set_acpi_power(handle, ACPI_STATE_D0);
@@ -851,7 +850,7 @@ iichid_probe(device_t dev)
 		DPRINTF(sc, "failed to set power state - %s\n",
 		    AcpiFormatException(status));
 
-	error = iichid_fetch_hid_descriptor(dev, sc->hw.config_reg, &sc->desc);
+	error = iichid_fetch_hid_descriptor(dev, sc->config_reg, &sc->desc);
 	if (error) {
 		device_printf(dev, "could not retrieve HID descriptor from "
 		    "the device: %d\n", error);
