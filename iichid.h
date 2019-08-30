@@ -78,6 +78,9 @@ typedef void iichid_intr_t(void *context, void *buf, int len, uint8_t id);
 
 struct iichid_hw {
 	char		hid[16];
+	uint16_t	idVendor;
+	uint16_t	idProduct;
+	uint16_t	idVersion;
 };
 
 struct iichid_softc {

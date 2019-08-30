@@ -863,6 +863,10 @@ iichid_probe(device_t dev)
 		return (ENXIO);
 	}
 
+	sc->hw.idVendor = le16toh(sc->desc.wVendorID);
+	sc->hw.idProduct = le16toh(sc->desc.wProductID);
+	sc->hw.idVersion = le16toh(sc->desc.wVersionID);
+
 	error = iichid_set_power(dev, true);
 	if (error) {
 		device_printf(dev, "failed to power on: %d\n", error);

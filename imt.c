@@ -345,6 +345,7 @@ imt_attach(device_t dev)
 {
 	struct iichid_softc *iichid_sc = device_get_softc(dev);
 	struct imt_softc *sc;
+	struct iichid_hw *iichid_hw;
 	int error;
 	void *d_ptr;
 	int d_len;
@@ -359,6 +360,7 @@ imt_attach(device_t dev)
 	sc = malloc(sizeof(struct imt_softc), M_DEVBUF, M_WAITOK | M_ZERO);
 	mtx_init(&sc->lock, "imt lock", NULL, MTX_DEF);
 	iichid_sc->hid_softc = sc;
+	iichid_hw = &iichid_sc->hw;
 	sc->dev = dev;
 
 	sc->type = wmt_hid_parse(sc, d_ptr, d_len);
@@ -402,8 +404,8 @@ imt_attach(device_t dev)
 	sc->evdev = evdev_alloc();
 	evdev_set_name(sc->evdev, device_get_desc(dev));
 	evdev_set_phys(sc->evdev, device_get_nameunit(dev));
-	evdev_set_id(sc->evdev, BUS_I2C, iichid_sc->desc.wVendorID,
-	    iichid_sc->desc.wProductID, iichid_sc->desc.wVersionID);
+	evdev_set_id(sc->evdev, BUS_I2C, iichid_hw->idVendor,
+	    iichid_hw->idProduct, iichid_hw->idVersion);
 //	evdev_set_serial(sc->evdev, usb_get_serial(uaa->device));
 	evdev_set_methods(sc->evdev, dev, &imt_evdev_methods);
 	evdev_set_flag(sc->evdev, EVDEV_FLAG_MT_STCOMPAT);
