@@ -265,14 +265,9 @@ static devclass_t imt_devclass;
 
 static device_method_t imt_methods[] = {
 
-#ifndef HAVE_ACPI_IICBUS
-	DEVMETHOD(device_identify,	iichid_identify),
-#endif
 	DEVMETHOD(device_probe,		imt_probe),
 	DEVMETHOD(device_attach,	imt_attach),
 	DEVMETHOD(device_detach,	imt_detach),
-	DEVMETHOD(device_suspend,	iichid_suspend),
-	DEVMETHOD(device_resume,	iichid_resume),
 
 	DEVMETHOD_END
 };
@@ -280,7 +275,7 @@ static device_method_t imt_methods[] = {
 static driver_t imt_driver = {
 	.name = "imt",
 	.methods = imt_methods,
-	.size = sizeof(struct iichid_softc),
+	.size = sizeof(struct imt_softc),
 };
 
 static const struct evdev_methods imt_evdev_methods = {
@@ -293,7 +288,7 @@ imt_ev_close(struct evdev_dev *evdev)
 {
 	device_t dev = evdev_get_softc(evdev);
 
-	return (iichid_close(dev));
+	return (iichid_close(device_get_parent(dev)));
 }
 
 static int
@@ -301,24 +296,20 @@ imt_ev_open(struct evdev_dev *evdev)
 {
 	device_t dev = evdev_get_softc(evdev);
 
-	return (iichid_open(dev));
+	return (iichid_open(device_get_parent(dev)));
 }
 
 static int
 imt_probe(device_t dev)
 {
-	struct iichid_softc *sc = device_get_softc(dev);
+	device_t iichid = device_get_parent(dev);
+	struct iichid_softc *iichid_sc = device_get_softc(iichid);
 	void *d_ptr;
 	int d_len;
 	int error;
 	int hid_type;
 
-	/* Run generic I2CHID probe routine and (not yet) initialize ivars */
-	error = iichid_probe(dev);
-	if (error > 0)
-		return (error);
-
-	error = iichid_get_report_desc(dev, &d_ptr, &d_len);
+	error = iichid_get_report_desc(iichid, &d_ptr, &d_len);
 	if (error) {
 		device_printf(dev, "could not retrieve report descriptor from device: %d\n", error);
 		error = ENXIO;
@@ -332,10 +323,7 @@ imt_probe(device_t dev)
 
 out:
 	if (error <= 0)
-		device_set_desc(dev, sc->hw.hid);
-	else
-		/* XXX Layering violation. This call should belong to iichid */
-		(void)iichid_set_power(dev, false);
+		device_set_desc(dev, iichid_sc->hw.hid);
 
 	return (error);
 }
@@ -343,23 +331,22 @@ out:
 static int
 imt_attach(device_t dev)
 {
-	struct iichid_softc *iichid_sc = device_get_softc(dev);
-	struct imt_softc *sc;
+	struct imt_softc *sc = device_get_softc(dev);
+	device_t iichid = device_get_parent(dev);
+	struct iichid_softc *iichid_sc = device_get_softc(iichid);
 	struct iichid_hw *iichid_hw;
 	int error;
 	void *d_ptr;
 	int d_len;
 	size_t i;
 
-	error = iichid_get_report_desc(dev, &d_ptr, &d_len);
+	error = iichid_get_report_desc(iichid, &d_ptr, &d_len);
 	if (error) {
 		device_printf(dev, "could not retrieve report descriptor from device: %d\n", error);
 		return (ENXIO);
 	}
 
-	sc = malloc(sizeof(struct imt_softc), M_DEVBUF, M_WAITOK | M_ZERO);
 	mtx_init(&sc->lock, "imt lock", NULL, MTX_DEF);
-	iichid_sc->hid_softc = sc;
 	iichid_hw = &iichid_sc->hw;
 	sc->dev = dev;
 
@@ -372,7 +359,7 @@ imt_attach(device_t dev)
 
 	/* Fetch and parse "Contact count maximum" feature report */
 	if (sc->cont_max_rlen > 0 && sc->cont_max_rlen <= WMT_BSIZE) {
-		error = iichid_get_report(dev, sc->buf, sc->cont_max_rlen,
+		error = iichid_get_report(iichid, sc->buf, sc->cont_max_rlen,
 		    I2C_HID_REPORT_TYPE_FEATURE, sc->cont_max_rid);
 		if (error == 0)
 			wmt_cont_max_parse(sc, sc->buf, sc->cont_max_rlen);
@@ -385,13 +372,8 @@ imt_attach(device_t dev)
 	/* Fetch THQA certificate to enable some devices like WaveShare */
 	if (sc->thqa_cert_rlen > 0 && sc->thqa_cert_rlen <= WMT_BSIZE &&
 	    sc->thqa_cert_rid != sc->cont_max_rid)
-		(void)iichid_get_report(dev, sc->buf, sc->thqa_cert_rlen,
+		(void)iichid_get_report(iichid, sc->buf, sc->thqa_cert_rlen,
 		    I2C_HID_REPORT_TYPE_FEATURE, sc->thqa_cert_rid);
-
-	iichid_set_intr(dev, &sc->lock, imt_intr, sc);
-	error = iichid_attach(dev);
-	if (error)
-		goto detach;
 
 	if (sc->type == HUD_TOUCHPAD && sc->input_mode_rlen != 0) {
 		error = imt_set_input_mode(sc, IMT_INPUT_MODE_MT_TOUCHPAD);
@@ -400,6 +382,8 @@ imt_attach(device_t dev)
 			goto detach;
 		}
 	}
+
+	iichid_set_intr(iichid, &sc->lock, imt_intr, sc);
 
 	sc->evdev = evdev_alloc();
 	evdev_set_name(sc->evdev, device_get_desc(dev));
@@ -428,22 +412,18 @@ imt_attach(device_t dev)
 	if (!error)
 		return (0);
 
-	(void)iichid_detach(dev);
 detach:
 	mtx_destroy(&sc->lock);
 	free(sc, M_DEVBUF);
-	/* XXX: Layering violation. This call should belong to iichid */
-	(void)iichid_set_power(dev, false);
 	return (ENXIO);
 }
 
 static int
 imt_detach(device_t dev)
 {
-	struct imt_softc *sc = device_get_hid_softc(dev);
+	struct imt_softc *sc = device_get_softc(dev);
 
 	evdev_free(sc->evdev);
-	(void)iichid_detach(dev);
 
 	mtx_destroy(&sc->lock);
 	free(sc, M_DEVBUF);
@@ -889,13 +869,14 @@ wmt_cont_max_parse(struct imt_softc *sc, const void *r_ptr, uint16_t r_len)
 static int
 imt_set_input_mode(struct imt_softc *sc, enum imt_input_mode mode)
 {
+	device_t iichid = device_get_parent(sc->dev);
 	int error;
 
 	if (sc->input_mode_rlen == 0 && sc->input_mode_rlen > WMT_BSIZE)
 		return (EINVAL);
 
 	/* Input Mode report is not strictly required to be readable */
-	error = iichid_get_report(sc->dev, sc->buf, sc->input_mode_rlen,
+	error = iichid_get_report(iichid, sc->buf, sc->input_mode_rlen,
 	    I2C_HID_REPORT_TYPE_FEATURE, sc->input_mode_rid);
 	if (error)
 		bzero(sc->buf, sc->input_mode_rlen);
@@ -903,14 +884,13 @@ imt_set_input_mode(struct imt_softc *sc, enum imt_input_mode mode)
 	hid_put_data_unsigned(sc->buf, sc->input_mode_rlen,
 	    &sc->input_mode_loc, mode);
 
-	error = iichid_set_report(sc->dev, sc->buf, sc->input_mode_rlen,
+	error = iichid_set_report(iichid, sc->buf, sc->input_mode_rlen,
 	    I2C_HID_REPORT_TYPE_FEATURE, sc->input_mode_rid);
 
 	return (error);
 }
 
-DRIVER_MODULE_ORDERED(imt, iicbus, imt_driver, imt_devclass, NULL, 0, SI_ORDER_ANY);
-MODULE_DEPEND(imt, iicbus, IICBUS_MINVER, IICBUS_PREFVER, IICBUS_MAXVER);
+DRIVER_MODULE(imt, iichid, imt_driver, imt_devclass, NULL, 0);
 MODULE_DEPEND(imt, iichid, 1, 1, 1);
 MODULE_DEPEND(imt, usb, 1, 1, 1);
 MODULE_DEPEND(imt, evdev, 1, 1, 1);

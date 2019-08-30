@@ -292,7 +292,7 @@ iichid_fetch_hid_descriptor(device_t dev, uint16_t cmd, struct i2c_hid_desc *hid
 	return (iichid_fetch_buffer(dev, &cmd, sizeof(cmd), hid_desc, sizeof(struct i2c_hid_desc)));
 }
 
-int
+static int
 iichid_set_power(device_t dev, bool enable)
 {
 	struct iichid_softc *sc = device_get_softc(dev);
@@ -314,7 +314,7 @@ iichid_set_power(device_t dev, bool enable)
 	return (error);
 }
 
-int
+static int
 iichid_reset(device_t dev)
 {
 	struct iichid_softc *sc = device_get_softc(dev);
@@ -687,6 +687,7 @@ iichid_set_intr(device_t dev, struct mtx *mtx, iichid_intr_t intr,
 	sc->intr_handler = intr;
 	sc->intr_context = context;
 	sc->intr_mtx = mtx;
+	callout_init_mtx(&sc->periodic_callout, sc->intr_mtx, 0);
 }
 
 int
@@ -720,32 +721,86 @@ iichid_close(device_t dev)
 	 * the DEVICE in to a lower power state.
 	 */
 	sc->open = false;
+	/* Avoid mutex use after free on child detach */
+	if (sc->power_on && sc->sampling_rate >= 0 &&
+	    sc->intr_handler != NULL) {
+		iichid_teardown_callout(sc);
+		sc->power_on = false;
+	}
 	taskqueue_enqueue(sc->taskqueue, &sc->power_task);
 
 	return (0);
 }
 
-int
+static int
 iichid_attach(device_t dev)
 {
 	struct iichid_softc* sc = device_get_softc(dev);
+	ACPI_HANDLE handle;
+	ACPI_STATUS status;
+	ACPI_DEVICE_INFO *device_info;
+	uint16_t addr = iicbus_get_addr(dev);
 	int error;
+
+	/* Fetch hardware settings from ACPI */
+#ifdef HAVE_ACPI_IICBUS
+	handle = acpi_get_handle(dev);
+#else
+	handle = iichid_get_handle(dev);
+#endif
+	if (handle == NULL)
+		return (ENXIO);
+
+	/* get ACPI HID. It is a base part of the evdev device name */
+	status = AcpiGetObjectInfo(handle, &device_info);
+	if (ACPI_FAILURE(status)) {
+		device_printf(dev, "error evaluating AcpiGetObjectInfo\n");
+		return (ENXIO);
+	}
+
+	if (device_info->Valid & ACPI_VALID_HID)
+		strlcpy(sc->hw.hid, device_info->HardwareId.String,
+		    sizeof(sc->hw.hid));
+
+	AcpiOsFree(device_info);
+
+	DPRINTF(sc, "  ACPI Hardware ID  : %s\n", sc->hw.hid);
+	DPRINTF(sc, "  IICbus addr       : 0x%02X\n", addr);
+	DPRINTF(sc, "  HID descriptor reg: 0x%02X\n", sc->config_reg);
+
+	sc->hw.idVendor = le16toh(sc->desc.wVendorID);
+	sc->hw.idProduct = le16toh(sc->desc.wProductID);
+	sc->hw.idVersion = le16toh(sc->desc.wVersionID);
+
+	error = iichid_set_power(dev, true);
+	if (error) {
+		device_printf(dev, "failed to power on: %d\n", error);
+		return (ENXIO);
+	}
+	/*
+	 * Windows driver sleeps for 1ms between the SET_POWER and RESET
+	 * commands. So we too as some devices may depend on this.
+	 */
+	if (cold)
+		DELAY(1000);
+	else
+		tsleep(sc, 0, "iichid", (hz + 999) / 1000);
+
+	error = iichid_reset(dev);
+	if (error) {
+		device_printf(dev, "failed to reset hardware: %d\n", error);
+		error = ENXIO;
+		goto done;
+	}
 
 	sx_init(&sc->lock, device_get_nameunit(dev));
 
 	sc->power_on = false;
-	(void)iichid_set_power(dev, false);
-
-	if (sc->intr_handler == NULL)
-		return (0);
-
 	TASK_INIT(&sc->event_task, 0, iichid_event_task, sc);
 	TASK_INIT(&sc->power_task, 0, iichid_power_task, sc);
 	/* taskqueue_create can't fail with M_WAITOK mflag passed */
 	sc->taskqueue = taskqueue_create("imt_tq", M_WAITOK | M_ZERO,
 	    taskqueue_thread_enqueue, &sc->taskqueue);
-
-	callout_init_mtx(&sc->periodic_callout, sc->intr_mtx, 0);
 
 	/*
 	 * Fallback to HID descriptor input length
@@ -783,16 +838,28 @@ iichid_attach(device_t dev)
 		sc, 0,
 		iichid_sysctl_sampling_rate_handler, "I", "sampling rate in num/second");
 
-	return (0);
+	sc->child = device_add_child(dev, NULL, -1);
+	if (sc->child == NULL) {
+		device_printf(sc->dev, "Could not add I2C device\n");
+		error = ENXIO;
+		goto done;
+	}
+
+	error = bus_generic_attach(dev);
+	if (error)
+		device_printf(dev, "failed to attach child: error %d\n", error);
+
+done:
+	(void)iichid_set_power(dev, false);
+	return (error);
 }
 
-int
+static int
 iichid_probe(device_t dev)
 {
 	struct iichid_softc *sc = device_get_softc(dev);
 	ACPI_HANDLE handle;
 	ACPI_STATUS status;
-	ACPI_DEVICE_INFO *device_info;
 	uint16_t addr = iicbus_get_addr(dev);
 	int error;
 
@@ -810,7 +877,6 @@ iichid_probe(device_t dev)
 	sc->dev = dev;
 	sc->ibuf = NULL;
 
-	/* Fetch hardware settings from ACPI */
 #ifdef HAVE_ACPI_IICBUS
 	handle = acpi_get_handle(dev);
 #else
@@ -824,23 +890,6 @@ iichid_probe(device_t dev)
 
 	if (ACPI_FAILURE(iichid_get_config_reg(handle, &sc->config_reg)))
 		return (ENXIO);
-
-	/* get ACPI HID. It is a base part of the evdev device name */
-	status = AcpiGetObjectInfo(handle, &device_info);
-	if (ACPI_FAILURE(status)) {
-		device_printf(dev, "error evaluating AcpiGetObjectInfo\n");
-		return (ENXIO);
-	}
-
-	if (device_info->Valid & ACPI_VALID_HID)
-		strlcpy(sc->hw.hid, device_info->HardwareId.String,
-		    sizeof(sc->hw.hid));
-
-	AcpiOsFree(device_info);
-
-	DPRINTF(sc, "  ACPI Hardware ID  : %s\n", sc->hw.hid);
-	DPRINTF(sc, "  IICbus addr       : 0x%02X\n", addr);
-	DPRINTF(sc, "  HID descriptor reg: 0x%02X\n", sc->config_reg);
 
 	/* Sometimes an I2C HID has power state methods, turn it on in case */
 	status = iichid_set_acpi_power(handle, ACPI_STATE_D0);
@@ -863,45 +912,19 @@ iichid_probe(device_t dev)
 		return (ENXIO);
 	}
 
-	sc->hw.idVendor = le16toh(sc->desc.wVendorID);
-	sc->hw.idProduct = le16toh(sc->desc.wProductID);
-	sc->hw.idVersion = le16toh(sc->desc.wVersionID);
-
-	error = iichid_set_power(dev, true);
-	if (error) {
-		device_printf(dev, "failed to power on: %d\n", error);
-		return (ENXIO);
-	}
-	/*
-	 * Windows driver sleeps for 1ms between the SET_POWER and RESET
-	 * commands. So we too as some devices may depend on this.
-	 */
-	if (cold)
-		DELAY(1000);
-	else
-		tsleep(sc, 0, "iichid", (hz + 999) / 1000);
-
-	error = iichid_reset(dev);
-	if (error) {
-		device_printf(dev, "failed to reset hardware: %d\n", error);
-		(void)iichid_set_power(dev, false);
-		return (ENXIO);
-	}
-
 	sc->probe_result = BUS_PROBE_DEFAULT;
 	return (sc->probe_result);
 }
 
-int
+static int
 iichid_detach(device_t dev)
 {
 	struct iichid_softc *sc = device_get_softc(dev);
 
-	if (sc->intr_handler == NULL)
-		return(0);
-
-	if (sc->ibuf)
-		free(sc->ibuf, M_DEVBUF);
+	if (device_is_attached(dev))
+		bus_generic_detach(dev);
+	if (sc->child)
+		device_delete_child(dev, sc->child);
 
 	iichid_teardown_interrupt(sc);
 
@@ -914,6 +937,9 @@ iichid_detach(device_t dev)
 		taskqueue_drain_all(sc->taskqueue);
 		taskqueue_free(sc->taskqueue);
 	}
+
+	if (sc->ibuf)
+		free(sc->ibuf, M_DEVBUF);
 
 	sx_destroy(&sc->lock);
 
@@ -985,7 +1011,7 @@ iichid_identify_cb(ACPI_HANDLE handle, UINT32 level, void *context,
 	return (AE_OK);
 }
 
-void
+static void
 iichid_identify(driver_t *driver, device_t parent)
 {
 	ACPI_HANDLE	ctrl_handle;
@@ -996,7 +1022,7 @@ iichid_identify(driver_t *driver, device_t parent)
 }
 #endif /* HAVE_ACPI_IICBUS */
 
-int
+static int
 iichid_suspend(device_t dev)
 {
 	struct iichid_softc *sc = device_get_softc(dev);
@@ -1023,7 +1049,7 @@ iichid_suspend(device_t dev)
         return (error);
 }
 
-int
+static int
 iichid_resume(device_t dev)
 {
 	struct iichid_softc *sc = device_get_softc(dev);
@@ -1044,6 +1070,30 @@ iichid_resume(device_t dev)
 	return (error);
 }
 
+static devclass_t iichid_devclass;
+
+static device_method_t iichid_methods[] = {
+
+#ifndef HAVE_ACPI_IICBUS
+	DEVMETHOD(device_identify,      iichid_identify),
+#endif
+        DEVMETHOD(device_probe,         iichid_probe),
+        DEVMETHOD(device_attach,        iichid_attach),
+        DEVMETHOD(device_detach,        iichid_detach),
+        DEVMETHOD(device_suspend,       iichid_suspend),
+        DEVMETHOD(device_resume,        iichid_resume),
+
+        DEVMETHOD_END
+};
+
+static driver_t iichid_driver = {
+        .name = "iichid",
+        .methods = iichid_methods,
+        .size = sizeof(struct iichid_softc),
+};
+
+DRIVER_MODULE(iichid, iicbus, iichid_driver, iichid_devclass, NULL, 0);
+MODULE_DEPEND(iichid, iicbus, IICBUS_MINVER, IICBUS_PREFVER, IICBUS_MAXVER);
 MODULE_DEPEND(iichid, acpi, 1, 1, 1);
 MODULE_DEPEND(iichid, usb, 1, 1, 1);
 MODULE_VERSION(iichid, 1);

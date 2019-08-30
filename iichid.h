@@ -85,6 +85,7 @@ struct iichid_hw {
 
 struct iichid_softc {
 	device_t		dev;
+	device_t		child;
 	struct sx		lock;
 
 	bool			probe_done;
@@ -118,17 +119,7 @@ struct iichid_softc {
 	volatile bool		open;
 	bool			suspend;
 	bool			power_on;
-
-	void			*hid_softc;
 };
-
-static inline void *
-device_get_hid_softc(device_t dev)
-{
-	struct iichid_softc *sc = device_get_softc(dev);
-
-	return (sc->hid_softc);
-}
 
 /* iichid soft context interface */
 void	iichid_set_intr(device_t, struct mtx *, iichid_intr_t, void *);
@@ -136,20 +127,8 @@ int	iichid_open(device_t);
 int	iichid_close(device_t);
 
 /* I2C bus interface */
-int	iichid_set_power(device_t dev, bool sleep);
-int	iichid_reset(device_t dev);
 int	iichid_get_report_desc(device_t, void **, int *);
 int	iichid_get_report(device_t, void *, int, uint8_t, uint8_t);
 int	iichid_set_report(device_t, void *, int, uint8_t, uint8_t);
-
-/* Newbus device method stubs */
-#ifndef HAVE_ACPI_IICBUS
-device_identify_t	iichid_identify;
-#endif
-device_probe_t		iichid_probe;
-device_attach_t		iichid_attach;
-device_detach_t		iichid_detach;
-device_suspend_t	iichid_suspend;
-device_resume_t		iichid_resume;
 
 #endif	/* _IICHID_H_ */
