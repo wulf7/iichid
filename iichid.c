@@ -383,6 +383,7 @@ iichid_get_report(device_t dev, void *buf, int len, uint8_t type, uint8_t id)
 	 * This Third Byte contains the entire/actual report ID."
 	 */
 	struct iichid_softc* sc = device_get_softc(dev);
+	uint16_t addr = iicbus_get_addr(dev);
 	uint16_t dtareg = htole16(sc->desc.wDataRegister);
 	uint16_t cmdreg = htole16(sc->desc.wCommandRegister);
 	uint8_t cmd[] =	{   /*________|______id>=15_____|______id<15______*/
@@ -395,10 +396,14 @@ iichid_get_report(device_t dev, void *buf, int len, uint8_t type, uint8_t id)
 			    (id >= 15 ?   dtareg >> 8	:	0	  ),
 			};
 	int cmdlen    =	    (id >= 15 ?		7	:	6	  );
-	int report_id_len = (id >= 15 ?		2	:	1	  );
-	int report_len = len + 2;
+	int hdrlen    =	    (id >= 15 ?		4	:	3	  );
+	uint8_t hdr[4] = { 0, 0, 0, 0 };
 	int d, err;
-	uint8_t *tmprep;
+	struct iic_msg msgs[] = {
+	    { addr << 1, IIC_M_WR | IIC_M_NOSTOP, cmdlen, cmd },
+	    { addr << 1, IIC_M_RD | IIC_M_NOSTOP, hdrlen, hdr },
+	    { addr << 1, IIC_M_RD | IIC_M_NOSTART, len, buf },
+	};
 
 	DPRINTF(sc, "HID command I2C_HID_CMD_GET_REPORT %d "
 	    "(type %d, len %d)\n", id, type, len);
@@ -409,36 +414,22 @@ iichid_get_report(device_t dev, void *buf, int len, uint8_t type, uint8_t id)
 	 * Allocate len + 2 + 2 bytes, read into that temporary
 	 * buffer, and then copy only the report back out to buf.
 	 */
-	report_len += report_id_len;
-	tmprep = malloc(report_len, M_DEVBUF, M_WAITOK | M_ZERO);
-
-	/* type 3 id 8: 22 00 38 02 23 00 */
-	err = iichid_fetch_buffer(dev, &cmd, cmdlen, tmprep, report_len);
-	if (err != 0) {
-		free(tmprep, M_DEVBUF);
+	err = iicbus_transfer(dev, msgs, nitems(msgs));
+	if (err != 0)
 		return (EIO);
-	}
 
-	d = tmprep[0] | tmprep[1] << 8;
-	if (d != report_len)
+	d = hdr[0] | hdr[1] << 8;
+	if (d != hdrlen + len)
 		DPRINTF(sc, "response size %d != expected length %d\n",
-		    d, report_len);
+		    d, hdrlen + len);
 
-	if (report_id_len == 2)
-		d = tmprep[2] | tmprep[3] << 8;
-	else
-		d = tmprep[2];
-
+	d = hdrlen == 4 ? hdr[2] | hdr[3] << 8 : hdr[2];
 	if (d != id) {
 		DPRINTF(sc, "response report id %d != %d\n", d, id);
-		free(tmprep, M_DEVBUF);
 		return (EBADMSG);
 	}
 
-	DPRINTF(sc, "response: %*D\n", report_len, tmprep, " ");
-
-	memcpy(buf, tmprep + 2 + report_id_len, len);
-	free(tmprep, M_DEVBUF);
+	DPRINTF(sc, "response: %*D %*D\n", hdrlen, hdr, " ", len, buf, " ");
 
 	return (0);
 }
