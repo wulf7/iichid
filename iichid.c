@@ -719,16 +719,19 @@ iichid_get_report_desc(device_t dev, void **buf, int *len)
 	int error;
 	uint8_t *tmpbuf;
 
-	tmpbuf = malloc(le16toh(sc->desc.wReportDescLength), M_TEMP,
-	    M_WAITOK | M_ZERO);
-	error = iichid_cmd_get_report_desc(sc, tmpbuf,
-	    le16toh(sc->desc.wReportDescLength));
-	if (error) {
-		free (tmpbuf, M_TEMP);
-		return (error);
+	if (sc->rep_desc == NULL) {
+		tmpbuf = malloc(le16toh(sc->desc.wReportDescLength), M_DEVBUF,
+		    M_WAITOK | M_ZERO);
+		error = iichid_cmd_get_report_desc(sc, tmpbuf,
+		    le16toh(sc->desc.wReportDescLength));
+		if (error) {
+			free (tmpbuf, M_TEMP);
+			return (error);
+		}
+		sc->rep_desc = tmpbuf;
 	}
 
-	*buf = tmpbuf;
+	*buf = sc->rep_desc;
 	*len = le16toh(sc->desc.wReportDescLength);
 
 	/*
@@ -967,8 +970,8 @@ iichid_detach(device_t dev)
 		taskqueue_free(sc->taskqueue);
 	}
 
-	if (sc->ibuf)
-		free(sc->ibuf, M_DEVBUF);
+	free(sc->rep_desc, M_DEVBUF);
+	free(sc->ibuf, M_DEVBUF);
 
 	sx_destroy(&sc->lock);
 

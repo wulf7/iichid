@@ -99,6 +99,7 @@ struct iichid_softc {
 	void			*intr_context;
 	struct mtx		*intr_mtx;
 
+	uint8_t			*rep_desc;
 	uint8_t			*ibuf;
 	int			isize;
 	uint8_t			iid;

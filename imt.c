@@ -318,7 +318,6 @@ imt_probe(device_t dev)
 
 	/* Check if report descriptor belongs to a HID multitouch device */
 	hid_type = wmt_hid_parse(NULL, d_ptr, d_len);
-	free(d_ptr, M_TEMP);
 	error = hid_type != 0 ? BUS_PROBE_DEFAULT : ENXIO;
 
 out:
@@ -349,7 +348,6 @@ imt_attach(device_t dev)
 	sc->dev = dev;
 
 	sc->type = wmt_hid_parse(sc, d_ptr, d_len);
-	free(d_ptr, M_TEMP);
 	if (sc->type == 0) {
 		DPRINTF("multi-touch HID descriptor not found\n");
 		goto detach;
