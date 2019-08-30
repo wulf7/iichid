@@ -334,47 +334,35 @@ iichid_reset(device_t dev)
 	return (error);
 }
 
-int
-iichid_get_report_desc(device_t dev, void **buf, int *len)
+static int
+iichid_cmd_get_report_desc( struct iichid_softc* sc, void *buf, int len)
 {
-	struct iichid_softc* sc = device_get_softc(dev);
-	int error;
 	uint16_t cmd = sc->desc.wReportDescRegister;
-	uint8_t *tmpbuf;
+	uint16_t addr = iicbus_get_addr(sc->dev);
+	struct iic_msg msgs[] = {
+	    { addr << 1, IIC_M_WR | IIC_M_NOSTOP, 2, (uint8_t *)&cmd },
+	    { addr << 1, IIC_M_RD, len, buf },
+	};
+	int error;
 
 	DPRINTF(sc, "HID command I2C_HID_REPORT_DESCR at 0x%x with size %d\n",
-	    le16toh(cmd), le16toh(sc->desc.wReportDescLength));
+	    le16toh(cmd), len);
 
-	tmpbuf = malloc(sc->desc.wReportDescLength, M_TEMP, M_WAITOK | M_ZERO);
-	error = iichid_fetch_buffer(dev, &cmd, sizeof(cmd), tmpbuf,
-	    le16toh(sc->desc.wReportDescLength));
+	error = iicbus_transfer(sc->dev, msgs, nitems(msgs));
 	if (error) {
-		free (tmpbuf, M_TEMP);
-		device_printf(dev, "could not retrieve report descriptor "
+		device_printf(sc->dev, "could not retrieve report descriptor "
 		    "(%d)\n", error);
 		return (error);
 	}
 
-	*buf = tmpbuf;
-	*len = le16toh(sc->desc.wReportDescLength);
-
-	DPRINTF(sc, "HID report descriptor: %*D\n", *len, tmpbuf, " ");
-
-	/*
-	 * Do not rely on wMaxInputLength, as some devices may set it to
-	 * a wrong length. So traverse report descriptor and find the longest.
-	 */
-	sc->isize = hid_report_size(tmpbuf, *len, hid_input, &sc->iid) + 2;
-	if (sc->isize != le16toh(sc->desc.wMaxInputLength))
-		DPRINTF(sc, "determined (len=%d) and described (len=%d)"
-		    " input report lengths mismatch\n",
-		    sc->isize, le16toh(sc->desc.wMaxInputLength));
+	DPRINTF(sc, "HID report descriptor: %*D\n", len, buf, " ");
 
 	return (0);
 }
 
-int
-iichid_get_report(device_t dev, void *buf, int len, uint8_t type, uint8_t id)
+static int
+iichid_cmd_get_report(struct iichid_softc* sc, void *buf, int len,
+    uint8_t type, uint8_t id)
 {
 	/*
 	 * 7.2.2.4 - "The protocol is optimized for Report < 15.  If a
@@ -382,8 +370,7 @@ iichid_get_report(device_t dev, void *buf, int len, uint8_t type, uint8_t id)
 	 * must be set to 1111 and a Third Byte is appended to the protocol.
 	 * This Third Byte contains the entire/actual report ID."
 	 */
-	struct iichid_softc* sc = device_get_softc(dev);
-	uint16_t addr = iicbus_get_addr(dev);
+	uint16_t addr = iicbus_get_addr(sc->dev);
 	uint16_t dtareg = htole16(sc->desc.wDataRegister);
 	uint16_t cmdreg = htole16(sc->desc.wCommandRegister);
 	uint8_t cmd[] =	{   /*________|______id>=15_____|______id<15______*/
@@ -398,7 +385,7 @@ iichid_get_report(device_t dev, void *buf, int len, uint8_t type, uint8_t id)
 	int cmdlen    =	    (id >= 15 ?		7	:	6	  );
 	int hdrlen    =	    (id >= 15 ?		4	:	3	  );
 	uint8_t hdr[4] = { 0, 0, 0, 0 };
-	int d, err;
+	int d, error;
 	struct iic_msg msgs[] = {
 	    { addr << 1, IIC_M_WR | IIC_M_NOSTOP, cmdlen, cmd },
 	    { addr << 1, IIC_M_RD | IIC_M_NOSTOP, hdrlen, hdr },
@@ -414,8 +401,8 @@ iichid_get_report(device_t dev, void *buf, int len, uint8_t type, uint8_t id)
 	 * Allocate len + 2 + 2 bytes, read into that temporary
 	 * buffer, and then copy only the report back out to buf.
 	 */
-	err = iicbus_transfer(dev, msgs, nitems(msgs));
-	if (err != 0)
+	error = iicbus_transfer(sc->dev, msgs, nitems(msgs));
+	if (error != 0)
 		return (EIO);
 
 	d = hdr[0] | hdr[1] << 8;
@@ -434,8 +421,9 @@ iichid_get_report(device_t dev, void *buf, int len, uint8_t type, uint8_t id)
 	return (0);
 }
 
-int
-iichid_set_report(device_t dev, void *buf, int len, uint8_t type, uint8_t id)
+static int
+iichid_cmd_set_report(struct iichid_softc* sc, void *buf, int len,
+    uint8_t type, uint8_t id)
 {
 	/*
 	 * 7.2.2.4 - "The protocol is optimized for Report < 15.  If a
@@ -443,11 +431,11 @@ iichid_set_report(device_t dev, void *buf, int len, uint8_t type, uint8_t id)
 	 * must be set to 1111 and a Third Byte is appended to the protocol.
 	 * This Third Byte contains the entire/actual report ID."
 	 */
-	struct iichid_softc* sc = device_get_softc(dev);
+	uint16_t addr = iicbus_get_addr(sc->dev);
 	uint16_t dtareg = htole16(type == I2C_HID_REPORT_TYPE_FEATURE ?
 	    sc->desc.wDataRegister : sc->desc.wOutputRegister);
 	uint16_t cmdreg = htole16(sc->desc.wCommandRegister);
-	uint16_t replen = htole16(2 + (id != 0 ? 1 : 0) + len);
+	uint16_t replen = 2 + (id != 0 ? 1 : 0) + len;
 	uint8_t cmd[] =	{   /*________|______id>=15_____|______id<15______*/
 						  cmdreg & 0xff		   ,
 						   cmdreg >> 8		   ,
@@ -462,20 +450,18 @@ iichid_set_report(device_t dev, void *buf, int len, uint8_t type, uint8_t id)
 			};
 	int cmdlen    =	    (id >= 15 ?		10	:	9	  );
 	int error;
-	uint8_t *finalcmd;
+	struct iic_msg msgs[] = {
+	    { addr << 1, IIC_M_WR | IIC_M_NOSTOP, cmdlen, cmd },
+	    { addr << 1, IIC_M_WR | IIC_M_NOSTART, len, buf },
+	};
 
 	DPRINTF(sc, "HID command I2C_HID_CMD_SET_REPORT %d (type %d, len %d): "
 	    "%*D\n", id, type, len, len, buf, " ");
 
-	finalcmd = malloc(cmdlen + len, M_DEVBUF, M_WAITOK | M_ZERO);
-
-	memcpy(finalcmd, cmd, cmdlen);
-	memcpy(finalcmd + cmdlen, buf, len);
-
 	/* type 3 id 4: 22 00 34 03 23 00 04 00 04 03 */
-	error = iichid_write_register(dev, finalcmd, cmdlen + len);
-
-	free(finalcmd, M_DEVBUF);
+	error = iicbus_transfer(sc->dev, msgs, nitems(msgs));
+	if (error != 0)
+		return (EIO);
 
 	return (error);
 }
@@ -721,6 +707,57 @@ iichid_close(device_t dev)
 	taskqueue_enqueue(sc->taskqueue, &sc->power_task);
 
 	return (0);
+}
+
+/*
+ * HID interface
+ */
+int
+iichid_get_report_desc(device_t dev, void **buf, int *len)
+{
+	struct iichid_softc* sc = device_get_softc(dev);
+	int error;
+	uint8_t *tmpbuf;
+
+	tmpbuf = malloc(le16toh(sc->desc.wReportDescLength), M_TEMP,
+	    M_WAITOK | M_ZERO);
+	error = iichid_cmd_get_report_desc(sc, tmpbuf,
+	    le16toh(sc->desc.wReportDescLength));
+	if (error) {
+		free (tmpbuf, M_TEMP);
+		return (error);
+	}
+
+	*buf = tmpbuf;
+	*len = le16toh(sc->desc.wReportDescLength);
+
+	/*
+	 * Do not rely on wMaxInputLength, as some devices may set it to
+	 * a wrong length. So traverse report descriptor and find the longest.
+	 */
+	sc->isize = hid_report_size(tmpbuf, *len, hid_input, &sc->iid) + 2;
+	if (sc->isize != le16toh(sc->desc.wMaxInputLength))
+		DPRINTF(sc, "determined (len=%d) and described (len=%d)"
+		    " input report lengths mismatch\n",
+		    sc->isize, le16toh(sc->desc.wMaxInputLength));
+
+	return (0);
+}
+
+int
+iichid_get_report(device_t dev, void *buf, int len, uint8_t type, uint8_t id)
+{
+	struct iichid_softc* sc = device_get_softc(dev);
+
+	return (iichid_cmd_get_report(sc, buf, len, type, id));
+}
+
+int
+iichid_set_report(device_t dev, void *buf, int len, uint8_t type, uint8_t id)
+{
+	struct iichid_softc* sc = device_get_softc(dev);
+
+	return (iichid_cmd_set_report(sc, buf, len, type, id));
 }
 
 static int
