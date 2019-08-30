@@ -303,7 +303,7 @@ static int
 imt_probe(device_t dev)
 {
 	device_t iichid = device_get_parent(dev);
-	struct iichid_softc *iichid_sc = device_get_softc(iichid);
+	struct iichid_hw *hw = device_get_ivars(dev);
 	void *d_ptr;
 	int d_len;
 	int error;
@@ -323,7 +323,7 @@ imt_probe(device_t dev)
 
 out:
 	if (error <= 0)
-		device_set_desc(dev, iichid_sc->hw.hid);
+		device_set_desc(dev, hw->hid);
 
 	return (error);
 }
@@ -333,8 +333,7 @@ imt_attach(device_t dev)
 {
 	struct imt_softc *sc = device_get_softc(dev);
 	device_t iichid = device_get_parent(dev);
-	struct iichid_softc *iichid_sc = device_get_softc(iichid);
-	struct iichid_hw *iichid_hw;
+	struct iichid_hw *hw = device_get_ivars(dev);
 	int error;
 	void *d_ptr;
 	int d_len;
@@ -347,7 +346,6 @@ imt_attach(device_t dev)
 	}
 
 	mtx_init(&sc->lock, "imt lock", NULL, MTX_DEF);
-	iichid_hw = &iichid_sc->hw;
 	sc->dev = dev;
 
 	sc->type = wmt_hid_parse(sc, d_ptr, d_len);
@@ -388,8 +386,8 @@ imt_attach(device_t dev)
 	sc->evdev = evdev_alloc();
 	evdev_set_name(sc->evdev, device_get_desc(dev));
 	evdev_set_phys(sc->evdev, device_get_nameunit(dev));
-	evdev_set_id(sc->evdev, BUS_I2C, iichid_hw->idVendor,
-	    iichid_hw->idProduct, iichid_hw->idVersion);
+	evdev_set_id(sc->evdev, BUS_I2C, hw->idVendor, hw->idProduct,
+	    hw->idVersion);
 //	evdev_set_serial(sc->evdev, usb_get_serial(uaa->device));
 	evdev_set_methods(sc->evdev, dev, &imt_evdev_methods);
 	evdev_set_flag(sc->evdev, EVDEV_FLAG_MT_STCOMPAT);

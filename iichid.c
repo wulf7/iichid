@@ -845,6 +845,7 @@ iichid_attach(device_t dev)
 		goto done;
 	}
 
+	device_set_ivars(sc->child, &sc->hw);
 	error = bus_generic_attach(dev);
 	if (error)
 		device_printf(dev, "failed to attach child: error %d\n", error);
