@@ -744,33 +744,9 @@ int
 iichid_get_report_desc(device_t dev, void **buf, int *len)
 {
 	struct iichid_softc* sc = device_get_softc(dev);
-	int error;
-	uint8_t *tmpbuf;
-
-	if (sc->rep_desc == NULL) {
-		tmpbuf = malloc(le16toh(sc->desc.wReportDescLength), M_DEVBUF,
-		    M_WAITOK | M_ZERO);
-		error = iichid_cmd_get_report_desc(sc, tmpbuf,
-		    le16toh(sc->desc.wReportDescLength));
-		if (error) {
-			free (tmpbuf, M_TEMP);
-			return (error);
-		}
-		sc->rep_desc = tmpbuf;
-	}
 
 	*buf = sc->rep_desc;
 	*len = le16toh(sc->desc.wReportDescLength);
-
-	/*
-	 * Do not rely on wMaxInputLength, as some devices may set it to
-	 * a wrong length. So traverse report descriptor and find the longest.
-	 */
-	sc->isize = hid_report_size(tmpbuf, *len, hid_input, &sc->iid) + 2;
-	if (sc->isize != le16toh(sc->desc.wMaxInputLength))
-		DPRINTF(sc, "determined (len=%d) and described (len=%d)"
-		    " input report lengths mismatch\n",
-		    sc->isize, le16toh(sc->desc.wMaxInputLength));
 
 	return (0);
 }
@@ -848,9 +824,31 @@ iichid_attach(device_t dev)
 	error = iichid_reset(dev);
 	if (error) {
 		device_printf(dev, "failed to reset hardware: %d\n", error);
-		error = ENXIO;
-		goto done;
+		return (ENXIO);
 	}
+
+	sc->rep_desc = malloc(le16toh(sc->desc.wReportDescLength), M_DEVBUF,
+	    M_WAITOK | M_ZERO);
+	error = iichid_cmd_get_report_desc(sc, sc->rep_desc,
+	    le16toh(sc->desc.wReportDescLength));
+	if (error) {
+		device_printf(dev, "failed to fetch report descriptor: %d\n",
+		    error);
+		free (sc->rep_desc, M_TEMP);
+		return (ENXIO);
+	}
+
+	/*
+	 * Do not rely on wMaxInputLength, as some devices may set it to
+	 * a wrong length. Traverse report descriptor and find the longest.
+	 */
+	sc->isize = hid_report_size(sc->rep_desc,
+	     le16toh(sc->desc.wReportDescLength), hid_input, &sc->iid) + 2;
+	if (sc->isize != le16toh(sc->desc.wMaxInputLength))
+		DPRINTF(sc, "determined (len=%d) and described (len=%d)"
+		    " input report lengths mismatch\n",
+		    sc->isize, le16toh(sc->desc.wMaxInputLength));
+	sc->ibuf = malloc(sc->isize, M_DEVBUF, M_WAITOK | M_ZERO);
 
 	sx_init(&sc->lock, device_get_nameunit(dev));
 
@@ -860,15 +858,6 @@ iichid_attach(device_t dev)
 	/* taskqueue_create can't fail with M_WAITOK mflag passed */
 	sc->taskqueue = taskqueue_create("imt_tq", M_WAITOK | M_ZERO,
 	    taskqueue_thread_enqueue, &sc->taskqueue);
-
-	/*
-	 * Fallback to HID descriptor input length
-	 * if report descriptor has not been fetched yet
-	 */
-	if (sc->isize == 0)
-		sc->isize = le16toh(sc->desc.wMaxInputLength);
-
-	sc->ibuf = malloc(sc->isize, M_DEVBUF, M_WAITOK | M_ZERO);
 
 	sc->irq_rid = 0;
 	sc->sampling_rate = -1;
