@@ -286,10 +286,34 @@ iichid_fetch_input_report(struct iichid_softc* sc, uint8_t *data, int len,
 }
 
 static int
-iichid_fetch_hid_descriptor(device_t dev, uint16_t cmd, struct i2c_hid_desc *hid_desc)
+iichid_cmd_get_hid_desc(struct iichid_softc *sc, uint16_t config_reg,
+    struct i2c_hid_desc *hid_desc)
 {
+	/*
+	 * 5.2.2 - HID Descriptor Retrieval
+	 * register is passed from the controller
+	 */
+	uint16_t addr = iicbus_get_addr(sc->dev);
+	uint16_t cmd = htole16(config_reg);
+	struct iic_msg msgs[] = {
+	    { addr << 1, IIC_M_WR | IIC_M_NOSTOP, 2, (uint8_t *)&cmd },
+	    { addr << 1, IIC_M_RD, sizeof(*hid_desc), (uint8_t *)hid_desc },
+	};
+	int error;
 
-	return (iichid_fetch_buffer(dev, &cmd, sizeof(cmd), hid_desc, sizeof(struct i2c_hid_desc)));
+	DPRINTF(sc, "HID command I2C_HID_CMD_DESCR at 0x%x\n", config_reg);
+
+	error = iicbus_transfer(sc->dev, msgs, nitems(msgs));
+	if (error) {
+		device_printf(sc->dev, "could not retrieve HID descriptor: "
+		    "(%d)\n", error);
+		return (EIO);
+	}
+
+	DPRINTF(sc, "HID descriptor: %*D\n",
+	    (int)sizeof(struct i2c_hid_desc), hid_desc, " ");
+
+	return (0);
 }
 
 static int
@@ -931,7 +955,7 @@ iichid_probe(device_t dev)
 		DPRINTF(sc, "failed to set power state - %s\n",
 		    AcpiFormatException(status));
 
-	error = iichid_fetch_hid_descriptor(dev, sc->config_reg, &sc->desc);
+	error = iichid_cmd_get_hid_desc(sc, sc->config_reg, &sc->desc);
 	if (error) {
 		device_printf(dev, "could not retrieve HID descriptor from "
 		    "the device: %d\n", error);
