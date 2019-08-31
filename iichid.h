@@ -122,12 +122,13 @@ struct iichid_softc {
 	bool			power_on;
 };
 
-/* iichid soft context interface */
-void	iichid_set_intr(device_t, struct mtx *, iichid_intr_t, void *);
-int	iichid_open(device_t);
-int	iichid_close(device_t);
+/* iichid interrupts interface */
+void	iichid_intr_setup(device_t, struct mtx *, iichid_intr_t, void *);
+void	iichid_intr_unsetup(device_t);
+int	iichid_intr_start(device_t);
+int	iichid_intr_stop(device_t);
 
-/* I2C bus interface */
+/* HID interface */
 int	iichid_get_report_desc(device_t, void **, int *);
 int	iichid_get_report(device_t, void *, int, uint8_t, uint8_t);
 int	iichid_set_report(device_t, void *, int, uint8_t, uint8_t);

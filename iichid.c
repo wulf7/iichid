@@ -680,7 +680,7 @@ iichid_sysctl_sampling_rate_handler(SYSCTL_HANDLER_ARGS)
 }
 
 void
-iichid_set_intr(device_t dev, struct mtx *mtx, iichid_intr_t intr,
+iichid_intr_setup(device_t dev, struct mtx *mtx, iichid_intr_t intr,
     void *context)
 {
 	struct iichid_softc* sc = device_get_softc(dev);
@@ -689,10 +689,20 @@ iichid_set_intr(device_t dev, struct mtx *mtx, iichid_intr_t intr,
 	sc->intr_context = context;
 	sc->intr_mtx = mtx;
 	callout_init_mtx(&sc->periodic_callout, sc->intr_mtx, 0);
+	taskqueue_start_threads(&sc->taskqueue, 1, PI_TTY,
+	    "%s taskq", device_get_nameunit(sc->dev));
+}
+
+void
+iichid_intr_unsetup(device_t dev)
+{
+	struct iichid_softc* sc = device_get_softc(dev);
+
+	taskqueue_drain_all(sc->taskqueue);
 }
 
 int
-iichid_open(device_t dev)
+iichid_intr_start(device_t dev)
 {
 	struct iichid_softc* sc = device_get_softc(dev);
 
@@ -707,7 +717,7 @@ iichid_open(device_t dev)
 }
 
 int
-iichid_close(device_t dev)
+iichid_intr_stop(device_t dev)
 {
 	struct iichid_softc* sc = device_get_softc(dev);
 
@@ -722,12 +732,6 @@ iichid_close(device_t dev)
 	 * the DEVICE in to a lower power state.
 	 */
 	sc->open = false;
-	/* Avoid mutex use after free on child detach */
-	if (sc->power_on && sc->sampling_rate >= 0 &&
-	    sc->intr_handler != NULL) {
-		iichid_teardown_callout(sc);
-		sc->power_on = false;
-	}
 	taskqueue_enqueue(sc->taskqueue, &sc->power_task);
 
 	return (0);
@@ -865,7 +869,6 @@ iichid_attach(device_t dev)
 		sc->isize = le16toh(sc->desc.wMaxInputLength);
 
 	sc->ibuf = malloc(sc->isize, M_DEVBUF, M_WAITOK | M_ZERO);
-	taskqueue_start_threads(&sc->taskqueue, 1, PI_TTY, "%s taskq", device_get_nameunit(sc->dev));
 
 	sc->irq_rid = 0;
 	sc->sampling_rate = -1;
@@ -988,11 +991,9 @@ iichid_detach(device_t dev)
 		bus_release_resource(dev, SYS_RES_IRQ, sc->irq_rid,
 		    sc->irq_res);
 
-	if (sc->taskqueue) {
-		taskqueue_block(sc->taskqueue);
-		taskqueue_drain_all(sc->taskqueue);
+	if (sc->taskqueue)
 		taskqueue_free(sc->taskqueue);
-	}
+	sc->taskqueue = NULL;
 
 	free(sc->rep_desc, M_DEVBUF);
 	free(sc->ibuf, M_DEVBUF);

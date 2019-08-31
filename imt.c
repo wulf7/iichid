@@ -288,7 +288,7 @@ imt_ev_close(struct evdev_dev *evdev)
 {
 	device_t dev = evdev_get_softc(evdev);
 
-	return (iichid_close(device_get_parent(dev)));
+	return (iichid_intr_stop(device_get_parent(dev)));
 }
 
 static int
@@ -296,7 +296,7 @@ imt_ev_open(struct evdev_dev *evdev)
 {
 	device_t dev = evdev_get_softc(evdev);
 
-	return (iichid_open(device_get_parent(dev)));
+	return (iichid_intr_start(device_get_parent(dev)));
 }
 
 static int
@@ -379,7 +379,7 @@ imt_attach(device_t dev)
 		}
 	}
 
-	iichid_set_intr(iichid, &sc->lock, imt_intr, sc);
+	iichid_intr_setup(iichid, &sc->lock, imt_intr, sc);
 
 	sc->evdev = evdev_alloc();
 	evdev_set_name(sc->evdev, device_get_desc(dev));
@@ -408,9 +408,10 @@ imt_attach(device_t dev)
 	if (!error)
 		return (0);
 
+	iichid_intr_unsetup(iichid);
 detach:
 	mtx_destroy(&sc->lock);
-	free(sc, M_DEVBUF);
+
 	return (ENXIO);
 }
 
@@ -418,11 +419,13 @@ static int
 imt_detach(device_t dev)
 {
 	struct imt_softc *sc = device_get_softc(dev);
+	device_t iichid = device_get_parent(dev);
 
 	evdev_free(sc->evdev);
 
+	iichid_intr_unsetup(iichid);
+
 	mtx_destroy(&sc->lock);
-	free(sc, M_DEVBUF);
 
 	return (0);
 }
