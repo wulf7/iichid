@@ -396,16 +396,16 @@ iichid_cmd_get_report(struct iichid_softc* sc, void *buf, int len,
 	 * This Third Byte contains the entire/actual report ID."
 	 */
 	uint16_t addr = iicbus_get_addr(sc->dev);
-	uint16_t dtareg = htole16(sc->desc.wDataRegister);
-	uint16_t cmdreg = htole16(sc->desc.wCommandRegister);
+	uint8_t *dtareg = (uint8_t *)&sc->desc.wDataRegister;
+	uint8_t *cmdreg = (uint8_t *)&sc->desc.wCommandRegister;
 	uint8_t cmd[] =	{   /*________|______id>=15_____|______id<15______*/
-						  cmdreg & 0xff		   ,
-						   cmdreg >> 8		   ,
+						    cmdreg[0]		   ,
+						    cmdreg[1]		   ,
 			    (id >= 15 ? 15 | (type << 4): id | (type << 4)),
 					      I2C_HID_CMD_GET_REPORT	   ,
-			    (id >= 15 ?		id	:   dtareg & 0xff ),
-			    (id >= 15 ?   dtareg & 0xff	:   dtareg >> 8   ),
-			    (id >= 15 ?   dtareg >> 8	:	0	  ),
+			    (id >= 15 ?		id	:    dtareg[0]	  ),
+			    (id >= 15 ?	   dtareg[0]	:    dtareg[1]	  ),
+			    (id >= 15 ?    dtareg[1]	:	0	  ),
 			};
 	int cmdlen    =	    (id >= 15 ?		7	:	6	  );
 	int hdrlen = id != 0 ? 3 : 2;
