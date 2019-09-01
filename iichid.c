@@ -491,18 +491,6 @@ iichid_cmd_set_report(struct iichid_softc* sc, void *buf, int len,
 }
 
 static void
-iichid_intr(void *context)
-{
-	struct iichid_softc *sc = context;
-
-	taskqueue_enqueue(sc->taskqueue, &sc->event_task);
-
-	if (sc->callout_setup && sc->sampling_rate > 0 && sc->open)
-		callout_reset(&sc->periodic_callout, hz / sc->sampling_rate,
-		    iichid_intr, sc);
-}
-
-static void
 iichid_event_task(void *context, int pending)
 {
 	struct iichid_softc *sc = context;
@@ -510,6 +498,7 @@ iichid_event_task(void *context, int pending)
 	int error;
 	int report_id;
 	int header_len = sc->iid != 0 ? 3 : 2;
+	bool unlocked;
 
 	error = iichid_fetch_input_report(sc, sc->ibuf, sc->isize, &actual);
 	if (error != 0) {
@@ -525,11 +514,42 @@ iichid_event_task(void *context, int pending)
 	report_id = sc->iid > 0 ? ((uint8_t *)sc->ibuf)[2] : 0;
 
 	/* DPRINTF(sc, "%*D\n", actual, sc->ibuf, " "); */
-	mtx_lock(sc->intr_mtx);
+
+	/* mtx might already be taken by callout subsystem */
+	unlocked = mtx_owned(sc->intr_mtx) == 0;
+	if (unlocked)
+		mtx_lock(sc->intr_mtx);
 	if (sc->open)
 		sc->intr_handler(sc->intr_context, (uint8_t *)sc->ibuf +
 		    header_len, actual - header_len, report_id);
-	mtx_unlock(sc->intr_mtx);
+	if (unlocked)
+		mtx_unlock(sc->intr_mtx);
+}
+
+static void
+iichid_intr(void *context)
+{
+	struct iichid_softc *sc = context;
+#ifdef HAVE_IG4_POLLING
+	device_t parent = device_get_parent(sc->dev);
+
+	/*
+	 * IG4 specific hack.
+	 * Requesting an I2C bus with IIC_DONTWAIT parameter enables polling
+	 * mode in the driver, making possible iicbus_transfer execution from
+	 * interrupt handlers and callouts.
+	 */
+	if (taskqueue_poll_is_busy(sc->taskqueue, &sc->event_task) == 0 &&
+	    iicbus_request_bus(parent, sc->dev, IIC_DONTWAIT) == 0) {
+		iichid_event_task(sc, 1);
+		iicbus_release_bus(parent, sc->dev);
+	} else
+#endif
+		taskqueue_enqueue(sc->taskqueue, &sc->event_task);
+
+	if (sc->callout_setup && sc->sampling_rate > 0 && sc->open)
+		callout_reset(&sc->periodic_callout, hz / sc->sampling_rate,
+		    iichid_intr, sc);
 }
 
 static int
