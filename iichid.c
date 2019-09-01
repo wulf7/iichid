@@ -244,18 +244,6 @@ iichid_get_handle(device_t dev)
 #endif /* HAVE_ACPI_IICBUS */
 
 static int
-iichid_fetch_buffer(device_t dev, void* cmd, int cmdlen, void *buf, int buflen)
-{
-	uint16_t addr = iicbus_get_addr(dev);
-	struct iic_msg msgs[] = {
-	    { addr << 1, IIC_M_WR | IIC_M_NOSTOP, cmdlen, cmd },
-	    { addr << 1, IIC_M_RD, buflen, buf },
-	};
-
-	return (iicbus_transfer(dev, msgs, nitems(msgs)));
-}
-
-static int
 iichid_write_register(device_t dev, void* cmd, int cmdlen)
 {
 	uint16_t addr = iicbus_get_addr(dev);
@@ -267,21 +255,57 @@ iichid_write_register(device_t dev, void* cmd, int cmdlen)
 }
 
 static int
-iichid_fetch_input_report(struct iichid_softc* sc, uint8_t *data, int len,
+iichid_cmd_get_input_report(struct iichid_softc* sc, void *buf, int len,
     int *actual_len)
 {
-	uint16_t cmd = sc->desc.wInputRegister;
-	int cmdlen = sizeof(cmd);
-	uint8_t buf[len];
+	/*
+	 * 6.1.3 - Retrieval of Input Reports
+	 * DEVICE returns the length (2 Bytes) and the entire Input Report.
+	 */
+	uint8_t *cmd = (uint8_t *)&sc->desc.wInputRegister;
+	int cmdlen = sizeof(sc->desc.wInputRegister);
+	uint16_t addr = iicbus_get_addr(sc->dev);
+	uint8_t actbuf[2] = { 0, 0 };
+	/* Read input report length */
+	struct iic_msg msgs[] = {
+	    { addr << 1, IIC_M_WR | IIC_M_NOSTOP, cmdlen, cmd },
+	    { addr << 1, IIC_M_RD | IIC_M_NOSTOP, sizeof(actbuf), actbuf },
+	};
+	int error, actlen;
 
-	int error = iichid_fetch_buffer(sc->dev, &cmd, cmdlen, buf, len);
+	error = iicbus_transfer(sc->dev, msgs, nitems(msgs));
 	if (error != 0) {
-		device_printf(sc->dev, "could not retrieve input report (%d)\n", error);
+		device_printf(sc->dev, "could not retrieve input report: "
+		    "(%d)\n", error);
 		return (error);
 	}
 
-	memcpy(data, buf, len);
-	*actual_len = data[0] | data[1] << 8;
+	actlen = actbuf[0] | actbuf[1] << 8;
+	if (actlen <= 2 || actlen == 0xFFFF) {
+		/* Read and discard 1 byte to send I2C STOP condition */
+		msgs[0] = (struct iic_msg)
+		    { addr << 1, IIC_M_RD | IIC_M_NOSTART, 1, actbuf };
+		actlen = 0;
+	} else {
+		actlen -= 2;
+		if (actlen > len) {
+			DPRINTF(sc, "input report too big. requested=%d "
+			    "received=%d\n", len, actlen);
+			actlen = len;
+		}
+		/* Read input report itself */
+		msgs[0] = (struct iic_msg)
+		    { addr << 1, IIC_M_RD | IIC_M_NOSTART, actlen, buf };
+	}
+
+	error = iicbus_transfer(sc->dev, msgs, 1);
+	if (error != 0) {
+		device_printf(sc->dev, "could not retrieve input report: "
+		    "(%d)\n", error);
+		return (error);
+	}
+
+	*actual_len = actlen;
 
 	return (0);
 }
@@ -498,13 +522,13 @@ iichid_event_task(void *context, int pending)
 	int error;
 	bool unlocked;
 
-	error = iichid_fetch_input_report(sc, sc->ibuf, sc->isize, &actual);
+	error = iichid_cmd_get_input_report(sc, sc->ibuf, sc->isize, &actual);
 	if (error != 0) {
 		device_printf(sc->dev, "an error occured\n");
 		return;
 	}
 
-	if (actual <= (sc->iid != 0 ? 3 : 2)) {
+	if (actual <= (sc->iid != 0 ? 1 : 0)) {
 //		device_printf(sc->dev, "no data received\n");
 		return;
 	}
@@ -516,8 +540,7 @@ iichid_event_task(void *context, int pending)
 	if (unlocked)
 		mtx_lock(sc->intr_mtx);
 	if (sc->open)
-		sc->intr_handler(sc->intr_context, (uint8_t *)sc->ibuf + 2,
-		    actual - 2);
+		sc->intr_handler(sc->intr_context, sc->ibuf, actual);
 	if (unlocked)
 		mtx_unlock(sc->intr_mtx);
 }
@@ -859,7 +882,7 @@ iichid_attach(device_t dev)
 	 * a wrong length. Traverse report descriptor and find the longest.
 	 */
 	sc->isize = hid_report_size(sc->rep_desc,
-	     le16toh(sc->desc.wReportDescLength), hid_input, &sc->iid) + 2;
+	     le16toh(sc->desc.wReportDescLength), hid_input, &sc->iid);
 	if (sc->isize != le16toh(sc->desc.wMaxInputLength))
 		DPRINTF(sc, "determined (len=%d) and described (len=%d)"
 		    " input report lengths mismatch\n",
