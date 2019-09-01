@@ -408,8 +408,8 @@ iichid_cmd_get_report(struct iichid_softc* sc, void *buf, int len,
 			    (id >= 15 ?   dtareg >> 8	:	0	  ),
 			};
 	int cmdlen    =	    (id >= 15 ?		7	:	6	  );
-	int hdrlen    =	    (id >= 15 ?		4	:	3	  );
-	uint8_t hdr[4] = { 0, 0, 0, 0 };
+	int hdrlen = id != 0 ? 3 : 2;
+	uint8_t hdr[3] = { 0, 0, 0 };
 	int d, error;
 	struct iic_msg msgs[] = {
 	    { addr << 1, IIC_M_WR | IIC_M_NOSTOP, cmdlen, cmd },
@@ -422,9 +422,7 @@ iichid_cmd_get_report(struct iichid_softc* sc, void *buf, int len,
 
 	/*
 	 * 7.2.2.2 - Response will be a 2-byte length value, the report
-	 * id with length determined above, and then the report.
-	 * Allocate len + 2 + 2 bytes, read into that temporary
-	 * buffer, and then copy only the report back out to buf.
+	 * id (1 byte, if defined in Report Descriptor), and then the report.
 	 */
 	error = iicbus_transfer(sc->dev, msgs, nitems(msgs));
 	if (error != 0)
@@ -435,7 +433,7 @@ iichid_cmd_get_report(struct iichid_softc* sc, void *buf, int len,
 		DPRINTF(sc, "response size %d != expected length %d\n",
 		    d, hdrlen + len);
 
-	d = hdrlen == 4 ? hdr[2] | hdr[3] << 8 : hdr[2];
+	d = id != 0 ? hdr[2] : 0;
 	if (d != id) {
 		DPRINTF(sc, "response report id %d != %d\n", d, id);
 		return (EBADMSG);
