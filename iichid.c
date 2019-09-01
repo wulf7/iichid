@@ -408,14 +408,16 @@ iichid_cmd_get_report(struct iichid_softc* sc, void *buf, int len,
 			    (id >= 15 ?    dtareg[1]	:	0	  ),
 			};
 	int cmdlen    =	    (id >= 15 ?		7	:	6	  );
-	int hdrlen = id != 0 ? 3 : 2;
-	uint8_t hdr[3] = { 0, 0, 0 };
+	uint8_t actlen[2] = { 0, 0 };
 	int d, error;
 	struct iic_msg msgs[] = {
 	    { addr << 1, IIC_M_WR | IIC_M_NOSTOP, cmdlen, cmd },
-	    { addr << 1, IIC_M_RD | IIC_M_NOSTOP, hdrlen, hdr },
+	    { addr << 1, IIC_M_RD | IIC_M_NOSTOP, 2, actlen },
 	    { addr << 1, IIC_M_RD | IIC_M_NOSTART, len, buf },
 	};
+
+	if (len < 1)
+		return (EINVAL);
 
 	DPRINTF(sc, "HID command I2C_HID_CMD_GET_REPORT %d "
 	    "(type %d, len %d)\n", id, type, len);
@@ -428,18 +430,18 @@ iichid_cmd_get_report(struct iichid_softc* sc, void *buf, int len,
 	if (error != 0)
 		return (EIO);
 
-	d = hdr[0] | hdr[1] << 8;
-	if (d != hdrlen + len)
+	d = actlen[0] | actlen[1] << 8;
+	if (d != len + 2)
 		DPRINTF(sc, "response size %d != expected length %d\n",
-		    d, hdrlen + len);
+		    d, len + 2);
 
-	d = id != 0 ? hdr[2] : 0;
+	d = id != 0 ? *(uint8_t *)buf : 0;
 	if (d != id) {
 		DPRINTF(sc, "response report id %d != %d\n", d, id);
 		return (EBADMSG);
 	}
 
-	DPRINTF(sc, "response: %*D %*D\n", hdrlen, hdr, " ", len, buf, " ");
+	DPRINTF(sc, "response: %*D %*D\n", 2, actlen, " ", len, buf, " ");
 
 	return (0);
 }
@@ -458,7 +460,7 @@ iichid_cmd_set_report(struct iichid_softc* sc, void *buf, int len,
 	uint16_t dtareg = htole16(type == I2C_HID_REPORT_TYPE_FEATURE ?
 	    sc->desc.wDataRegister : sc->desc.wOutputRegister);
 	uint16_t cmdreg = htole16(sc->desc.wCommandRegister);
-	uint16_t replen = 2 + (id != 0 ? 1 : 0) + len;
+	uint16_t replen = 2 + len;
 	uint8_t cmd[] =	{   /*________|______id>=15_____|______id<15______*/
 						  cmdreg & 0xff		   ,
 						   cmdreg >> 8		   ,
@@ -468,10 +470,9 @@ iichid_cmd_set_report(struct iichid_softc* sc, void *buf, int len,
 			    (id >= 15 ?   dtareg & 0xff	:   dtareg >> 8   ),
 			    (id >= 15 ?   dtareg >> 8	:   replen & 0xff ),
 			    (id >= 15 ?   replen & 0xff	:   replen >> 8   ),
-			    (id >= 15 ?   replen >> 8	:	id	  ),
-			    (id >= 15 ?		id	:	0	  ),
+			    (id >= 15 ?   replen >> 8	:	0	  ),
 			};
-	int cmdlen    =	    (id >= 15 ?		10	:	9	  );
+	int cmdlen    =	    (id >= 15 ?		9	:	8	  );
 	int error;
 	struct iic_msg msgs[] = {
 	    { addr << 1, IIC_M_WR | IIC_M_NOSTOP, cmdlen, cmd },
@@ -495,8 +496,6 @@ iichid_event_task(void *context, int pending)
 	struct iichid_softc *sc = context;
 	int actual = 0;
 	int error;
-	int report_id;
-	int header_len = sc->iid != 0 ? 3 : 2;
 	bool unlocked;
 
 	error = iichid_fetch_input_report(sc, sc->ibuf, sc->isize, &actual);
@@ -505,12 +504,10 @@ iichid_event_task(void *context, int pending)
 		return;
 	}
 
-	if (actual <= header_len) {
+	if (actual <= (sc->iid != 0 ? 3 : 2)) {
 //		device_printf(sc->dev, "no data received\n");
 		return;
 	}
-
-	report_id = sc->iid > 0 ? ((uint8_t *)sc->ibuf)[2] : 0;
 
 	/* DPRINTF(sc, "%*D\n", actual, sc->ibuf, " "); */
 
@@ -519,8 +516,8 @@ iichid_event_task(void *context, int pending)
 	if (unlocked)
 		mtx_lock(sc->intr_mtx);
 	if (sc->open)
-		sc->intr_handler(sc->intr_context, (uint8_t *)sc->ibuf +
-		    header_len, actual - header_len, report_id);
+		sc->intr_handler(sc->intr_context, (uint8_t *)sc->ibuf + 2,
+		    actual - 2);
 	if (unlocked)
 		mtx_unlock(sc->intr_mtx);
 }

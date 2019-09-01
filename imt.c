@@ -421,7 +421,7 @@ imt_detach(device_t dev)
 }
 
 static void
-imt_intr(void *context, void *buf, int len, uint8_t id)
+imt_intr(void *context, void *buf, int len)
 {
 	struct imt_softc *sc = context;
 	size_t usage;
@@ -431,6 +431,7 @@ imt_intr(void *context, void *buf, int len, uint8_t id)
 	uint32_t width;
 	uint32_t height;
 	int32_t slot;
+	uint8_t id = sc->report_id != 0 ? *(uint8_t *)buf : 0;
 
 	mtx_assert(&sc->lock, MA_OWNED);
 
@@ -443,6 +444,12 @@ imt_intr(void *context, void *buf, int len, uint8_t id)
 	/* Make sure we don't process old data */
 	if (len < sc->isize)
 		bzero((uint8_t *)buf + len, sc->isize - len);
+
+	/* Strip leading "report ID" byte */
+	if (sc->report_id) {
+		len--;
+		buf = (uint8_t *)buf + 1;
+	}
 
 	/*
 	 * "In Parallel mode, devices report all contact information in a
@@ -544,11 +551,7 @@ imt_intr(void *context, void *buf, int len, uint8_t id)
 		evdev_sync(sc->evdev);
 }
 
-/*
- * Port of userland hid_report_size() from usbhid(3) to kernel.
- * Unlike it USB-oriented predecessor it does not reserve a 1 byte for
- * report ID as other (I2C) buses encodes report ID in different ways.
- */
+/* Port of userland hid_report_size() from usbhid(3) to kernel */
 static int
 wmt_hid_report_size(const void *buf, uint16_t len, enum hid_kind k, uint8_t id)
 {
@@ -557,6 +560,7 @@ wmt_hid_report_size(const void *buf, uint16_t len, enum hid_kind k, uint8_t id)
 	uint32_t temp;
 	uint32_t hpos;
 	uint32_t lpos;
+	int report_id = 0;
 
 	hpos = 0;
 	lpos = 0xFFFFFFFF;
@@ -571,6 +575,8 @@ wmt_hid_report_size(const void *buf, uint16_t len, enum hid_kind k, uint8_t id)
 			/* compute maximum */
 			if (hpos < temp)
 				hpos = temp;
+			if (h.report_ID != 0)
+				report_id = 1;
 		}
 	}
 	hid_end_parse(d);
@@ -582,7 +588,7 @@ wmt_hid_report_size(const void *buf, uint16_t len, enum hid_kind k, uint8_t id)
 		temp = hpos - lpos;
 
 	/* return length in bytes rounded up */
-	return ((temp + 7) / 8);
+	return ((temp + 7) / 8 + report_id);
 }
 
 static int
@@ -839,8 +845,8 @@ wmt_cont_max_parse(struct imt_softc *sc, const void *r_ptr, uint16_t r_len)
 {
 	uint32_t cont_count_max;
 
-	cont_count_max = hid_get_data_unsigned((const uint8_t *)r_ptr,
-	    r_len, &sc->cont_max_loc);
+	cont_count_max = hid_get_data_unsigned((const uint8_t *)r_ptr + 1,
+	    r_len - 1, &sc->cont_max_loc);
 	if (cont_count_max > MAX_MT_SLOTS) {
 		DPRINTF("Hardware reported %d contacts while only %d is "
 		    "supported\n", (int)cont_count_max, MAX_MT_SLOTS);
@@ -868,9 +874,10 @@ imt_set_input_mode(struct imt_softc *sc, enum imt_input_mode mode)
 	error = iichid_get_report(iichid, sc->buf, sc->input_mode_rlen,
 	    I2C_HID_REPORT_TYPE_FEATURE, sc->input_mode_rid);
 	if (error)
-		bzero(sc->buf, sc->input_mode_rlen);
+		bzero(sc->buf + 1, sc->input_mode_rlen);
 
-	hid_put_data_unsigned(sc->buf, sc->input_mode_rlen,
+	sc->buf[0] = sc->input_mode_rid;
+	hid_put_data_unsigned(sc->buf + 1, sc->input_mode_rlen - 1,
 	    &sc->input_mode_loc, mode);
 
 	error = iichid_set_report(iichid, sc->buf, sc->input_mode_rlen,

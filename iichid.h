@@ -30,7 +30,7 @@
 #define	I2C_HID_REPORT_TYPE_OUTPUT	0x2
 #define	I2C_HID_REPORT_TYPE_FEATURE	0x3
 
-typedef void iichid_intr_t(void *context, void *buf, int len, uint8_t id);
+typedef void iichid_intr_t(void *context, void *buf, int len);
 
 struct iichid_hw {
 	char		hid[16];
