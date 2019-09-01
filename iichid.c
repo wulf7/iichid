@@ -360,7 +360,7 @@ iichid_reset(device_t dev)
 }
 
 static int
-iichid_cmd_get_report_desc( struct iichid_softc* sc, void *buf, int len)
+iichid_cmd_get_report_desc(struct iichid_softc* sc, void *buf, int len)
 {
 	uint16_t cmd = sc->desc.wReportDescRegister;
 	uint16_t addr = iicbus_get_addr(sc->dev);
