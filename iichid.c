@@ -57,6 +57,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/usb/usbhid.h>
 
 #include "iichid.h"
+#include "iichidvar.h"
 
 #define IICHID_DEBUG
 
