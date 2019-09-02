@@ -256,7 +256,7 @@ iichid_write_register(device_t dev, void* cmd, int cmdlen)
 
 static int
 iichid_cmd_get_input_report(struct iichid_softc* sc, void *buf, int len,
-    int *actual_len)
+    int *actual_len, bool do_poll)
 {
 	/*
 	 * 6.1.3 - Retrieval of Input Reports
@@ -271,11 +271,22 @@ iichid_cmd_get_input_report(struct iichid_softc* sc, void *buf, int len,
 	    { addr << 1, IIC_M_WR | IIC_M_NOSTOP, cmdlen, cmd },
 	    { addr << 1, IIC_M_RD | IIC_M_NOSTOP, sizeof(actbuf), actbuf },
 	};
+	device_t parent = device_get_parent(sc->dev);
+	/*
+	 * Designware(IG4) driver-specific hack.
+	 * Requesting of an I2C bus with IIC_DONTWAIT parameter enables polling
+	 * mode in the driver, making possible iicbus_transfer execution from
+	 * interrupt handlers and callouts.
+	 */
+	int how = do_poll ? IIC_DONTWAIT : IIC_WAIT;
 	int error, actlen;
+
+	if (iicbus_request_bus(parent, sc->dev, how) != 0)
+		return (IIC_EBUSBSY);
 
 	error = iicbus_transfer(sc->dev, msgs, nitems(msgs));
 	if (error != 0)
-		return (error);
+		goto out;
 
 	actlen = actbuf[0] | actbuf[1] << 8;
 	if (actlen <= 2 || actlen == 0xFFFF) {
@@ -299,6 +310,9 @@ iichid_cmd_get_input_report(struct iichid_softc* sc, void *buf, int len,
 	if (error == 0)
 		*actual_len = actlen;
 
+	/* DPRINTF(sc, "%*D - %*D\n", 2, actbuf, " ", actlen, buf, " "); */
+out:
+	iicbus_release_bus(parent, sc->dev);
 	return (error);
 }
 
@@ -495,9 +509,9 @@ iichid_event_task(void *context, int pending)
 	struct iichid_softc *sc = context;
 	int actual = 0;
 	int error;
-	bool unlocked;
 
-	error = iichid_cmd_get_input_report(sc, sc->ibuf, sc->isize, &actual);
+	error = iichid_cmd_get_input_report(
+	    sc, sc->ibuf, sc->isize, &actual, false);
 	if (error != 0) {
 		device_printf(sc->dev, "an error occured\n");
 		return;
@@ -508,16 +522,10 @@ iichid_event_task(void *context, int pending)
 		return;
 	}
 
-	/* DPRINTF(sc, "%*D\n", actual, sc->ibuf, " "); */
-
-	/* mtx might already be taken by callout subsystem */
-	unlocked = mtx_owned(sc->intr_mtx) == 0;
-	if (unlocked)
-		mtx_lock(sc->intr_mtx);
+	mtx_lock(sc->intr_mtx);
 	if (sc->open)
 		sc->intr_handler(sc->intr_context, sc->ibuf, actual);
-	if (unlocked)
-		mtx_unlock(sc->intr_mtx);
+	mtx_unlock(sc->intr_mtx);
 }
 
 static void
@@ -525,22 +533,29 @@ iichid_intr(void *context)
 {
 	struct iichid_softc *sc = context;
 #ifdef HAVE_IG4_POLLING
-	device_t parent = device_get_parent(sc->dev);
+	int actual = 0;
+	int error;
 
-	/*
-	 * IG4 specific hack.
-	 * Requesting an I2C bus with IIC_DONTWAIT parameter enables polling
-	 * mode in the driver, making possible iicbus_transfer execution from
-	 * interrupt handlers and callouts.
-	 */
 	if (taskqueue_poll_is_busy(sc->taskqueue, &sc->event_task) == 0 &&
-	    iicbus_request_bus(parent, sc->dev, IIC_DONTWAIT) == 0) {
-		iichid_event_task(sc, 1);
-		iicbus_release_bus(parent, sc->dev);
+	    (error = iichid_cmd_get_input_report(
+	      sc, sc->ibuf, sc->isize, &actual, true)) != IIC_EBUSBSY) {
+		if (error != 0) {
+			device_printf(sc->dev, "an error occured\n");
+			goto out;
+		}
+		if (actual <= (sc->iid != 0 ? 1 : 0))
+			goto out;
+
+		if (!sc->callout_setup)
+			mtx_lock(sc->intr_mtx);
+		if (sc->open)
+			sc->intr_handler(sc->intr_context, sc->ibuf, actual);
+		if (!sc->callout_setup)
+			mtx_unlock(sc->intr_mtx);
 	} else
 #endif
 		taskqueue_enqueue(sc->taskqueue, &sc->event_task);
-
+out:
 	if (sc->callout_setup && sc->sampling_rate > 0 && sc->open)
 		callout_reset(&sc->periodic_callout, hz / sc->sampling_rate,
 		    iichid_intr, sc);
