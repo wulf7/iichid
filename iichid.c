@@ -883,10 +883,10 @@ iichid_attach(device_t dev)
 	 */
 	sc->isize = hid_report_size(sc->rep_desc,
 	     le16toh(sc->desc.wReportDescLength), hid_input, &sc->iid);
-	if (sc->isize != le16toh(sc->desc.wMaxInputLength))
+	if (sc->isize != le16toh(sc->desc.wMaxInputLength) - 2)
 		DPRINTF(sc, "determined (len=%d) and described (len=%d)"
 		    " input report lengths mismatch\n",
-		    sc->isize, le16toh(sc->desc.wMaxInputLength));
+		    sc->isize, le16toh(sc->desc.wMaxInputLength) - 2);
 	sc->ibuf = malloc(sc->isize, M_DEVBUF, M_WAITOK | M_ZERO);
 
 	sx_init(&sc->lock, device_get_nameunit(dev));
