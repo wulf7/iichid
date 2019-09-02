@@ -266,7 +266,7 @@ iichid_cmd_get_input_report(struct iichid_softc* sc, void *buf, int len,
 	int cmdlen = sizeof(sc->desc.wInputRegister);
 	uint16_t addr = iicbus_get_addr(sc->dev);
 	uint8_t actbuf[2] = { 0, 0 };
-	/* Read input report length */
+	/* Read actual input report length */
 	struct iic_msg msgs[] = {
 	    { addr << 1, IIC_M_WR | IIC_M_NOSTOP, cmdlen, cmd },
 	    { addr << 1, IIC_M_RD | IIC_M_NOSTOP, sizeof(actbuf), actbuf },
@@ -274,11 +274,8 @@ iichid_cmd_get_input_report(struct iichid_softc* sc, void *buf, int len,
 	int error, actlen;
 
 	error = iicbus_transfer(sc->dev, msgs, nitems(msgs));
-	if (error != 0) {
-		device_printf(sc->dev, "could not retrieve input report: "
-		    "(%d)\n", error);
+	if (error != 0)
 		return (error);
-	}
 
 	actlen = actbuf[0] | actbuf[1] << 8;
 	if (actlen <= 2 || actlen == 0xFFFF) {
@@ -299,15 +296,10 @@ iichid_cmd_get_input_report(struct iichid_softc* sc, void *buf, int len,
 	}
 
 	error = iicbus_transfer(sc->dev, msgs, 1);
-	if (error != 0) {
-		device_printf(sc->dev, "could not retrieve input report: "
-		    "(%d)\n", error);
-		return (error);
-	}
+	if (error == 0)
+		*actual_len = actlen;
 
-	*actual_len = actlen;
-
-	return (0);
+	return (error);
 }
 
 static int
@@ -329,11 +321,8 @@ iichid_cmd_get_hid_desc(struct iichid_softc *sc, uint16_t config_reg,
 	DPRINTF(sc, "HID command I2C_HID_CMD_DESCR at 0x%x\n", config_reg);
 
 	error = iicbus_transfer(sc->dev, msgs, nitems(msgs));
-	if (error) {
-		device_printf(sc->dev, "could not retrieve HID descriptor: "
-		    "(%d)\n", error);
-		return (EIO);
-	}
+	if (error != 0)
+		return (error);
 
 	DPRINTF(sc, "HID descriptor: %*D\n",
 	    (int)sizeof(struct i2c_hid_desc), hid_desc, " ");
@@ -354,13 +343,10 @@ iichid_set_power(device_t dev, bool enable)
 		power_state,
 		I2C_HID_CMD_SET_POWER,
 	};
-	int error;
 
 	DPRINTF(sc, "HID command I2C_HID_CMD_SET_POWER(%d)\n", power_state);
 
-	error = iichid_write_register(dev, cmd, sizeof(cmd));
-
-	return (error);
+	return (iichid_write_register(dev, cmd, sizeof(cmd)));
 }
 
 static int
@@ -374,13 +360,10 @@ iichid_reset(device_t dev)
 		0,
 		I2C_HID_CMD_RESET,
 	};
-	int error;
 
 	DPRINTF(sc, "HID command I2C_HID_CMD_RESET\n");
 
-	error = iichid_write_register(dev, cmd, sizeof(cmd));
-
-	return (error);
+	return (iichid_write_register(dev, cmd, sizeof(cmd)));
 }
 
 static int
@@ -398,11 +381,8 @@ iichid_cmd_get_report_desc(struct iichid_softc* sc, void *buf, int len)
 	    le16toh(cmd), len);
 
 	error = iicbus_transfer(sc->dev, msgs, nitems(msgs));
-	if (error) {
-		device_printf(sc->dev, "could not retrieve report descriptor "
-		    "(%d)\n", error);
+	if (error != 0)
 		return (error);
-	}
 
 	DPRINTF(sc, "HID report descriptor: %*D\n", len, buf, " ");
 
@@ -452,7 +432,7 @@ iichid_cmd_get_report(struct iichid_softc* sc, void *buf, int len,
 	 */
 	error = iicbus_transfer(sc->dev, msgs, nitems(msgs));
 	if (error != 0)
-		return (EIO);
+		return (error);
 
 	d = actlen[0] | actlen[1] << 8;
 	if (d != len + 2)
@@ -497,7 +477,6 @@ iichid_cmd_set_report(struct iichid_softc* sc, void *buf, int len,
 			    (id >= 15 ?   replen >> 8	:	0	  ),
 			};
 	int cmdlen    =	    (id >= 15 ?		9	:	8	  );
-	int error;
 	struct iic_msg msgs[] = {
 	    { addr << 1, IIC_M_WR | IIC_M_NOSTOP, cmdlen, cmd },
 	    { addr << 1, IIC_M_WR | IIC_M_NOSTART, len, buf },
@@ -507,11 +486,7 @@ iichid_cmd_set_report(struct iichid_softc* sc, void *buf, int len,
 	    "%*D\n", id, type, len, len, buf, " ");
 
 	/* type 3 id 4: 22 00 34 03 23 00 04 00 04 03 */
-	error = iicbus_transfer(sc->dev, msgs, nitems(msgs));
-	if (error != 0)
-		return (EIO);
-
-	return (error);
+	return (iicbus_transfer(sc->dev, msgs, nitems(msgs)));
 }
 
 static void
@@ -795,7 +770,7 @@ iichid_get_report(device_t dev, void *buf, int len, uint8_t type, uint8_t id)
 {
 	struct iichid_softc* sc = device_get_softc(dev);
 
-	return (iichid_cmd_get_report(sc, buf, len, type, id));
+	return (iic2errno(iichid_cmd_get_report(sc, buf, len, type, id)));
 }
 
 int
@@ -803,7 +778,7 @@ iichid_set_report(device_t dev, void *buf, int len, uint8_t type, uint8_t id)
 {
 	struct iichid_softc* sc = device_get_softc(dev);
 
-	return (iichid_cmd_set_report(sc, buf, len, type, id));
+	return (iic2errno(iichid_cmd_set_report(sc, buf, len, type, id)));
 }
 
 static int
