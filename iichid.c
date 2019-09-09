@@ -803,6 +803,16 @@ iichid_get_report_desc(device_t dev, void **buf, int *len)
 }
 
 int
+iichid_get_input_report(device_t dev, void *buf, int len)
+{
+	struct iichid_softc* sc = device_get_softc(dev);
+	int actlen;
+
+	return (iic2errno(iichid_cmd_get_input_report(sc,
+	    buf, len, &actlen, false)));
+}
+
+int
 iichid_set_output_report(device_t dev, void *buf, int len)
 {
 	struct iichid_softc* sc = device_get_softc(dev);

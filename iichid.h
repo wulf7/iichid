@@ -47,6 +47,7 @@ int	iichid_intr_stop(device_t);
 
 /* HID interface */
 int	iichid_get_report_desc(device_t, void **, int *);
+int	iichid_get_input_report(device_t, void *, int);
 int	iichid_set_output_report(device_t, void *, int);
 int	iichid_get_report(device_t, void *, int, uint8_t, uint8_t);
 int	iichid_set_report(device_t, void *, int, uint8_t, uint8_t);
