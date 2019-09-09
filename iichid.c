@@ -169,41 +169,6 @@ iichid_get_config_reg(ACPI_HANDLE handle, uint16_t *config_reg)
 	return (status);
 }
 
-/*
- * Set the device to a particular power state.
- */
-static ACPI_STATUS
-iichid_set_acpi_power(ACPI_HANDLE handle, int state)
-{
-	ACPI_HANDLE	method_handle;
-	char		*method_name;
-
-	/* It's never ok to switch a non-existent consumer. */
-	KASSERT(handle != NULL, ("%s: ACPI handle", __func__));
-
-	/* Find transition mechanism */
-	switch (state) {
-	case ACPI_STATE_D0:
-		method_name = "_PS0";
-		break;
-	case ACPI_STATE_D3:
-		method_name = "_PS3";
-		break;
-	default:
-		return (AE_BAD_PARAMETER);
-	}
-
-	/* Invoke power state switch method (if present) */
-	if (ACPI_FAILURE(AcpiGetHandle(handle, method_name, &method_handle)) ||
-	    method_handle == NULL)
-		return (AE_NOT_FOUND);
-
-	ACPI_DEBUG_PRINT((ACPI_DB_OBJECTS,
-	    "invoking ACPI power state transition method %s\n",
-	    acpi_name(method_handle)));
-	return (AcpiEvaluateObject(method_handle, NULL, NULL, NULL));
-}
-
 #ifndef HAVE_ACPI_IICBUS
 static ACPI_STATUS
 iichid_get_handle_cb(ACPI_HANDLE handle, UINT32 level, void *context,
@@ -976,7 +941,6 @@ iichid_probe(device_t dev)
 {
 	struct iichid_softc *sc = device_get_softc(dev);
 	ACPI_HANDLE handle;
-	ACPI_STATUS status;
 	uint16_t addr = iicbus_get_addr(dev);
 	int error;
 
@@ -1007,14 +971,6 @@ iichid_probe(device_t dev)
 
 	if (ACPI_FAILURE(iichid_get_config_reg(handle, &sc->config_reg)))
 		return (ENXIO);
-
-	/* Sometimes an I2C HID has power state methods, turn it on in case */
-	status = iichid_set_acpi_power(handle, ACPI_STATE_D0);
-	if (status == AE_NOT_FOUND)
-		DPRINTF(sc, "ACPI power state switch method not found\n");
-	else if (ACPI_FAILURE(status))
-		DPRINTF(sc, "failed to set power state - %s\n",
-		    AcpiFormatException(status));
 
 	error = iichid_cmd_get_hid_desc(sc, sc->config_reg, &sc->desc);
 	if (error) {
