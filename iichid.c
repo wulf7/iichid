@@ -317,6 +317,30 @@ out:
 }
 
 static int
+iichid_cmd_set_output_report(struct iichid_softc *sc, void *buf, int len)
+{
+	/* 6.2.3 - Sending Output Reports */
+	uint8_t *cmdreg = (uint8_t *)&sc->desc.wOutputRegister;
+	uint16_t addr = iicbus_get_addr(sc->dev);
+	uint16_t replen = 2 + len;
+	uint8_t cmd[4] = { cmdreg[0], cmdreg[1], replen & 0xFF, replen >> 8 };
+	struct iic_msg msgs[] = {
+	    { addr << 1, IIC_M_WR | IIC_M_NOSTOP, sizeof(cmd), cmd },
+	    { addr << 1, IIC_M_WR, len, buf },
+	};
+
+	if (le16toh(sc->desc.wMaxOutputLength) == 0)
+		return (IIC_ENOTSUPP);
+	if (len < (sc->iid != 0 ? 3 : 2))
+		return (IIC_ENOTSUPP);
+
+	DPRINTF(sc, "HID command I2C_HID_CMD_SET_OUTPUT_REPORT %d (len %d): "
+	    "%*D\n", sc->iid != 0 ? *(uint8_t *)buf : 0, len, len, buf, " ");
+
+	return (iicbus_transfer(sc->dev, msgs, nitems(msgs)));
+}
+
+static int
 iichid_cmd_get_hid_desc(struct iichid_softc *sc, uint16_t config_reg,
     struct i2c_hid_desc *hid_desc)
 {
@@ -475,31 +499,29 @@ iichid_cmd_set_report(struct iichid_softc* sc, void *buf, int len,
 	 * This Third Byte contains the entire/actual report ID."
 	 */
 	uint16_t addr = iicbus_get_addr(sc->dev);
-	uint16_t dtareg = htole16(type == I2C_HID_REPORT_TYPE_FEATURE ?
-	    sc->desc.wDataRegister : sc->desc.wOutputRegister);
-	uint16_t cmdreg = htole16(sc->desc.wCommandRegister);
+	uint8_t *dtareg = (uint8_t *)&sc->desc.wDataRegister;
+	uint8_t *cmdreg = (uint8_t *)&sc->desc.wCommandRegister;
 	uint16_t replen = 2 + len;
 	uint8_t cmd[] =	{   /*________|______id>=15_____|______id<15______*/
-						  cmdreg & 0xff		   ,
-						   cmdreg >> 8		   ,
+						    cmdreg[0]		   ,
+						    cmdreg[1]		   ,
 			    (id >= 15 ? 15 | (type << 4): id | (type << 4)),
 					      I2C_HID_CMD_SET_REPORT	   ,
-			    (id >= 15 ?		id	:   dtareg & 0xff ),
-			    (id >= 15 ?   dtareg & 0xff	:   dtareg >> 8   ),
-			    (id >= 15 ?   dtareg >> 8	:   replen & 0xff ),
+			    (id >= 15 ?		id	:    dtareg[0]    ),
+			    (id >= 15 ?    dtareg[0]	:    dtareg[1]    ),
+			    (id >= 15 ?    dtareg[1]	:   replen & 0xff ),
 			    (id >= 15 ?   replen & 0xff	:   replen >> 8   ),
 			    (id >= 15 ?   replen >> 8	:	0	  ),
 			};
 	int cmdlen    =	    (id >= 15 ?		9	:	8	  );
 	struct iic_msg msgs[] = {
 	    { addr << 1, IIC_M_WR | IIC_M_NOSTOP, cmdlen, cmd },
-	    { addr << 1, IIC_M_WR | IIC_M_NOSTART, len, buf },
+	    { addr << 1, IIC_M_WR, len, buf },
 	};
 
 	DPRINTF(sc, "HID command I2C_HID_CMD_SET_REPORT %d (type %d, len %d): "
 	    "%*D\n", id, type, len, len, buf, " ");
 
-	/* type 3 id 4: 22 00 34 03 23 00 04 00 04 03 */
 	return (iicbus_transfer(sc->dev, msgs, nitems(msgs)));
 }
 
@@ -778,6 +800,14 @@ iichid_get_report_desc(device_t dev, void **buf, int *len)
 	*len = le16toh(sc->desc.wReportDescLength);
 
 	return (0);
+}
+
+int
+iichid_set_output_report(device_t dev, void *buf, int len)
+{
+	struct iichid_softc* sc = device_get_softc(dev);
+
+	return (iic2errno(iichid_cmd_set_output_report(sc, buf, len)));
 }
 
 int
