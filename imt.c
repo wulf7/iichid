@@ -80,6 +80,7 @@ SYSCTL_INT(_hw_imt, OID_AUTO, debug, CTLFLAG_RWTUN,
 #endif
 
 #define	WMT_BSIZE	1024	/* bytes, buffer size */
+#define	IMT_BTN_MAX	8	/* Number of buttons supported */
 
 enum {
 	WMT_INTR_DT,
@@ -216,6 +217,7 @@ struct imt_softc {
 	struct wmt_absinfo      ai[WMT_N_USAGES];
 	struct hid_location     locs[MAX_MT_SLOTS][WMT_N_USAGES];
 	struct hid_location     cont_count_loc;
+	struct hid_location	btn_loc[IMT_BTN_MAX];
 
 	struct evdev_dev        *evdev;
 
@@ -225,6 +227,7 @@ struct imt_softc {
 	uint32_t                nconts_per_report;
 	uint32_t		nconts_todo;
 	uint8_t                 report_id;
+	uint32_t		nbuttons;
 	bool			is_clickpad;
 
 	struct hid_location     cont_max_loc;
@@ -394,11 +397,15 @@ imt_attach(device_t dev)
 	}
 	evdev_support_event(sc->evdev, EV_SYN);
 	evdev_support_event(sc->evdev, EV_ABS);
+	if (sc->nbuttons > 0)
+		evdev_support_event(sc->evdev, EV_KEY);
 	WMT_FOREACH_USAGE(sc->caps, i) {
 		if (wmt_hid_map[i].code != WMT_NO_CODE)
 			evdev_support_abs(sc->evdev, wmt_hid_map[i].code, 0,
 			    sc->ai[i].min, sc->ai[i].max, 0, 0, sc->ai[i].res);
 	}
+	for (i = 0; i < sc->nbuttons; i++)
+		evdev_support_key(sc->evdev, BTN_MOUSE + i);
 
 	error = evdev_register_mtx(sc->evdev, &sc->lock);
 	if (!error)
@@ -432,7 +439,7 @@ imt_intr(void *context, void *buf, int len)
 	struct imt_softc *sc = context;
 	size_t usage;
 	uint32_t *slot_data = sc->slot_data;
-	uint32_t cont;
+	uint32_t cont, btn;
 	uint32_t cont_count;
 	uint32_t width;
 	uint32_t height;
@@ -553,8 +560,12 @@ imt_intr(void *context, void *buf, int len)
 	}
 
 	sc->nconts_todo -= cont_count;
-	if (sc->nconts_todo == 0)
+	if (sc->nconts_todo == 0) {
+		for (btn = 0; btn < sc->nbuttons; btn++)
+			evdev_push_key(sc->evdev, BTN_MOUSE + btn,
+			    hid_get_data(buf, len, &sc->btn_loc[btn]) != 0);
 		evdev_sync(sc->evdev);
+	}
 }
 
 /* Port of userland hid_report_size() from usbhid(3) to kernel */
@@ -605,6 +616,7 @@ wmt_hid_parse(struct imt_softc *sc, const void *d_ptr, uint16_t d_len)
 	size_t i;
 	size_t cont = 0;
 	int type = 0;
+	uint32_t btn, nbuttons = 0;
 	uint32_t caps = 0;
 	int32_t cont_count_max = 0;
 	uint8_t report_id = 0;
@@ -722,6 +734,15 @@ wmt_hid_parse(struct imt_softc *sc, const void *d_ptr, uint16_t d_len)
 			else
 				break;
 
+			if (hi.collevel == 1 &&
+			    hi.usage > HID_USAGE2(HUP_BUTTON, 0) &&
+			    hi.usage <= HID_USAGE2(HUP_BUTTON, IMT_BTN_MAX)) {
+				btn = (hi.usage & 0xFFFF) - 1;
+				nbuttons = MAX(btn, nbuttons);
+				if (sc != NULL)
+					sc->btn_loc[btn] = hi.loc;
+				break;
+			}
 			if (hi.collevel == 1 && hi.usage ==
 			    HID_USAGE2(HUP_DIGITIZERS, HUD_CONTACTCOUNT)) {
 				cont_count_found = true;
@@ -839,6 +860,7 @@ wmt_hid_parse(struct imt_softc *sc, const void *d_ptr, uint16_t d_len)
 	sc->report_id = report_id;
 	sc->caps = caps;
 	sc->nconts_per_report = cont;
+	sc->nbuttons = nbuttons;
 	sc->cont_max_rid = cont_max_rid;
 	sc->btn_type_rid = btn_type_rid;
 	sc->thqa_cert_rid = thqa_cert_rid;
