@@ -227,13 +227,10 @@ iichid_cmd_get_input_report(struct iichid_softc* sc, void *buf, int len,
 	 * 6.1.3 - Retrieval of Input Reports
 	 * DEVICE returns the length (2 Bytes) and the entire Input Report.
 	 */
-	uint8_t *cmd = (uint8_t *)&sc->desc.wInputRegister;
-	int cmdlen = sizeof(sc->desc.wInputRegister);
 	uint16_t addr = iicbus_get_addr(sc->dev);
 	uint8_t actbuf[2] = { 0, 0 };
 	/* Read actual input report length */
 	struct iic_msg msgs[] = {
-	    { addr << 1, IIC_M_WR | IIC_M_NOSTOP, cmdlen, cmd },
 	    { addr << 1, IIC_M_RD | IIC_M_NOSTOP, sizeof(actbuf), actbuf },
 	};
 	device_t parent = device_get_parent(sc->dev);
