@@ -225,10 +225,14 @@ struct imt_softc {
 	uint32_t                nconts_per_report;
 	uint32_t		nconts_todo;
 	uint8_t                 report_id;
+	bool			is_clickpad;
 
 	struct hid_location     cont_max_loc;
 	uint32_t                cont_max_rlen;
 	uint8_t                 cont_max_rid;
+	struct hid_location	btn_type_loc;
+	uint32_t		btn_type_rlen;
+	uint8_t			btn_type_rid;
 	uint32_t                thqa_cert_rlen;
 	uint8_t                 thqa_cert_rid;
 	struct hid_location	input_mode_loc;
@@ -239,7 +243,7 @@ struct imt_softc {
 };
 
 static int wmt_hid_parse(struct imt_softc *, const void *, uint16_t);
-static void wmt_cont_max_parse(struct imt_softc *, const void *, uint16_t);
+static void wmt_devcaps_parse(struct imt_softc *, const void *, uint16_t);
 static int imt_set_input_mode(struct imt_softc *, enum imt_input_mode);
 
 static iichid_intr_t		imt_intr;
@@ -348,7 +352,7 @@ imt_attach(device_t dev)
 		error = iichid_get_report(iichid, sc->buf, sc->cont_max_rlen,
 		    I2C_HID_REPORT_TYPE_FEATURE, sc->cont_max_rid);
 		if (error == 0)
-			wmt_cont_max_parse(sc, sc->buf, sc->cont_max_rlen);
+			wmt_devcaps_parse(sc, sc->buf, sc->cont_max_rlen);
 		else
 			DPRINTF("usbd_req_get_report error=%d\n", error);
 	} else
@@ -385,6 +389,8 @@ imt_attach(device_t dev)
 		break;
 	case HUD_TOUCHPAD:
 		evdev_support_prop(sc->evdev, INPUT_PROP_POINTER);
+		if (sc->is_clickpad)
+			evdev_support_prop(sc->evdev, INPUT_PROP_BUTTONPAD);
 	}
 	evdev_support_event(sc->evdev, EV_SYN);
 	evdev_support_event(sc->evdev, EV_ABS);
@@ -603,6 +609,7 @@ wmt_hid_parse(struct imt_softc *sc, const void *d_ptr, uint16_t d_len)
 	int32_t cont_count_max = 0;
 	uint8_t report_id = 0;
 	uint8_t cont_max_rid = 0;
+	uint8_t btn_type_rid = 0;
 	uint8_t thqa_cert_rid = 0;
 	uint8_t input_mode_rid = 0;
 	bool touch_coll = false;
@@ -650,6 +657,13 @@ wmt_hid_parse(struct imt_softc *sc, const void *d_ptr, uint16_t d_len)
 				cont_max_rid = hi.report_ID;
 				if (sc != NULL)
 					sc->cont_max_loc = hi.loc;
+			}
+			if (hi.collevel == 1 && touch_coll &&
+			    WMT_HI_ABSOLUTE(hi) && hi.usage ==
+			      HID_USAGE2(HUP_DIGITIZERS, HUD_BUTTON_TYPE)) {
+				btn_type_rid = hi.report_ID;
+				if (sc != NULL)
+					sc->btn_type_loc = hi.loc;
 			}
 			if (conf_coll && WMT_HI_ABSOLUTE(hi) && hi.usage ==
 			      HID_USAGE2(HUP_DIGITIZERS, HUD_INPUT_MODE)) {
@@ -812,6 +826,9 @@ wmt_hid_parse(struct imt_softc *sc, const void *d_ptr, uint16_t d_len)
 	sc->isize = wmt_hid_report_size(d_ptr, d_len, hid_input, report_id);
 	sc->cont_max_rlen = wmt_hid_report_size(d_ptr, d_len, hid_feature,
 	    cont_max_rid);
+	if (btn_type_rid > 0)
+		sc->btn_type_rlen = wmt_hid_report_size(d_ptr, d_len,
+		    hid_feature, btn_type_rid);
 	if (thqa_cert_rid > 0)
 		sc->thqa_cert_rlen = wmt_hid_report_size(d_ptr, d_len,
 		    hid_feature, thqa_cert_rid);
@@ -823,6 +840,7 @@ wmt_hid_parse(struct imt_softc *sc, const void *d_ptr, uint16_t d_len)
 	sc->caps = caps;
 	sc->nconts_per_report = cont;
 	sc->cont_max_rid = cont_max_rid;
+	sc->btn_type_rid = btn_type_rid;
 	sc->thqa_cert_rid = thqa_cert_rid;
 	sc->input_mode_rid = input_mode_rid;
 
@@ -840,13 +858,15 @@ wmt_hid_parse(struct imt_softc *sc, const void *d_ptr, uint16_t d_len)
 	return (type);
 }
 
+/* Device capabilities feature report */
 static void
-wmt_cont_max_parse(struct imt_softc *sc, const void *r_ptr, uint16_t r_len)
+wmt_devcaps_parse(struct imt_softc *sc, const void *r_ptr, uint16_t r_len)
 {
 	uint32_t cont_count_max;
+	const uint8_t *rep = (const uint8_t *)r_ptr + 1;
+	uint16_t len = r_len - 1;
 
-	cont_count_max = hid_get_data_unsigned((const uint8_t *)r_ptr + 1,
-	    r_len - 1, &sc->cont_max_loc);
+	cont_count_max = hid_get_data_unsigned(rep, len, &sc->cont_max_loc);
 	if (cont_count_max > MAX_MT_SLOTS) {
 		DPRINTF("Hardware reported %d contacts while only %d is "
 		    "supported\n", (int)cont_count_max, MAX_MT_SLOTS);
@@ -859,6 +879,10 @@ wmt_cont_max_parse(struct imt_softc *sc, const void *r_ptr, uint16_t r_len)
 		device_printf(sc->dev, "%d feature report contacts\n",
 		    cont_count_max);
 	}
+	/* Assume that contact countact count shares the same report */
+	if (sc->btn_type_rid == sc->cont_max_rid)
+		sc->is_clickpad =
+		    hid_get_data_unsigned(rep, len, &sc->btn_type_loc) == 0;
 }
 
 static int
