@@ -291,7 +291,7 @@ iichid_cmd_set_output_report(struct iichid_softc *sc, void *buf, int len)
 	uint8_t cmd[4] = { cmdreg[0], cmdreg[1], replen & 0xFF, replen >> 8 };
 	struct iic_msg msgs[] = {
 	    { addr << 1, IIC_M_WR | IIC_M_NOSTOP, sizeof(cmd), cmd },
-	    { addr << 1, IIC_M_WR, len, buf },
+	    { addr << 1, IIC_M_WR | IIC_M_NOSTART, len, buf },
 	};
 
 	if (le16toh(sc->desc.wMaxOutputLength) == 0)
