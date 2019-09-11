@@ -476,9 +476,12 @@ iichid_cmd_set_report(struct iichid_softc* sc, void *buf, int len,
 			    (id >= 15 ?   replen >> 8	:	0	  ),
 			};
 	int cmdlen    =	    (id >= 15 ?		9	:	8	  );
+	/* e.g. Google's "rose" touchpad firmware does not understand two separate writes */
+	static char bigbuf[69];
+	memcpy(bigbuf, cmd, cmdlen);
+	memcpy(bigbuf + cmdlen, buf, len);
 	struct iic_msg msgs[] = {
-	    { addr << 1, IIC_M_WR | IIC_M_NOSTOP, cmdlen, cmd },
-	    { addr << 1, IIC_M_WR, len, buf },
+	    { addr << 1, IIC_M_WR, cmdlen + len, bigbuf },
 	};
 
 	DPRINTF(sc, "HID command I2C_HID_CMD_SET_REPORT %d (type %d, len %d): "
