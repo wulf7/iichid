@@ -539,7 +539,9 @@ iichid_intr(void *context)
 	} else
 #endif
 		taskqueue_enqueue(sc->taskqueue, &sc->event_task);
+#ifdef HAVE_IG4_POLLING
 out:
+#endif
 	if (sc->callout_setup && sc->sampling_rate > 0 && sc->open)
 		callout_reset(&sc->periodic_callout, hz / sc->sampling_rate,
 		    iichid_intr, sc);
