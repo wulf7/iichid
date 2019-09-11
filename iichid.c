@@ -227,13 +227,10 @@ iichid_cmd_get_input_report(struct iichid_softc* sc, void *buf, int len,
 	 * 6.1.3 - Retrieval of Input Reports
 	 * DEVICE returns the length (2 Bytes) and the entire Input Report.
 	 */
-	uint8_t *cmd = (uint8_t *)&sc->desc.wInputRegister;
-	int cmdlen = sizeof(sc->desc.wInputRegister);
 	uint16_t addr = iicbus_get_addr(sc->dev);
 	uint8_t actbuf[2] = { 0, 0 };
 	/* Read actual input report length */
 	struct iic_msg msgs[] = {
-	    { addr << 1, IIC_M_WR | IIC_M_NOSTOP, cmdlen, cmd },
 	    { addr << 1, IIC_M_RD | IIC_M_NOSTOP, sizeof(actbuf), actbuf },
 	};
 	device_t parent = device_get_parent(sc->dev);
@@ -479,9 +476,12 @@ iichid_cmd_set_report(struct iichid_softc* sc, void *buf, int len,
 			    (id >= 15 ?   replen >> 8	:	0	  ),
 			};
 	int cmdlen    =	    (id >= 15 ?		9	:	8	  );
+	/* e.g. Google's "rose" touchpad firmware does not understand two separate writes */
+	static char bigbuf[69];
+	memcpy(bigbuf, cmd, cmdlen);
+	memcpy(bigbuf + cmdlen, buf, len);
 	struct iic_msg msgs[] = {
-	    { addr << 1, IIC_M_WR | IIC_M_NOSTOP, cmdlen, cmd },
-	    { addr << 1, IIC_M_WR, len, buf },
+	    { addr << 1, IIC_M_WR, cmdlen + len, bigbuf },
 	};
 
 	DPRINTF(sc, "HID command I2C_HID_CMD_SET_REPORT %d (type %d, len %d): "
@@ -542,7 +542,9 @@ iichid_intr(void *context)
 	} else
 #endif
 		taskqueue_enqueue(sc->taskqueue, &sc->event_task);
+#ifdef HAVE_IG4_POLLING
 out:
+#endif
 	if (sc->callout_setup && sc->sampling_rate > 0 && sc->open)
 		callout_reset(&sc->periodic_callout, hz / sc->sampling_rate,
 		    iichid_intr, sc);
