@@ -478,7 +478,7 @@ iichid_cmd_set_report(struct iichid_softc* sc, void *buf, int len,
 	int cmdlen    =	    (id >= 15 ?		9	:	8	  );
 	struct iic_msg msgs[] = {
 	    { addr << 1, IIC_M_WR | IIC_M_NOSTOP, cmdlen, cmd },
-	    { addr << 1, IIC_M_WR, len, buf },
+	    { addr << 1, IIC_M_WR | IIC_M_NOSTART, len, buf },
 	};
 
 	DPRINTF(sc, "HID command I2C_HID_CMD_SET_REPORT %d (type %d, len %d): "
