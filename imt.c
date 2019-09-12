@@ -738,7 +738,7 @@ wmt_hid_parse(struct imt_softc *sc, const void *d_ptr, uint16_t d_len)
 			    hi.usage > HID_USAGE2(HUP_BUTTON, 0) &&
 			    hi.usage <= HID_USAGE2(HUP_BUTTON, IMT_BTN_MAX)) {
 				btn = (hi.usage & 0xFFFF) - 1;
-				nbuttons = MAX(btn, nbuttons);
+				nbuttons = MAX(btn + 1, nbuttons);
 				if (sc != NULL)
 					sc->btn_loc[btn] = hi.loc;
 				break;
