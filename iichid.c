@@ -503,12 +503,15 @@ iichid_event_task(void *context, int pending)
 
 	if (actual <= (sc->iid != 0 ? 1 : 0)) {
 //		device_printf(sc->dev, "no data received\n");
+		++sc->missing_samples;
 		return;
 	}
 
 	mtx_lock(sc->intr_mtx);
-	if (sc->open)
+	if (sc->open) {
+		sc->missing_samples = 0;
 		sc->intr_handler(sc->intr_context, sc->ibuf, actual);
+	}
 	mtx_unlock(sc->intr_mtx);
 }
 
@@ -527,13 +530,17 @@ iichid_intr(void *context)
 			device_printf(sc->dev, "an error occured\n");
 			goto out;
 		}
-		if (actual <= (sc->iid != 0 ? 1 : 0))
+		if (actual <= (sc->iid != 0 ? 1 : 0)) {
+			++sc->missing_samples;
 			goto out;
+		}
 
 		if (!sc->callout_setup)
 			mtx_lock(sc->intr_mtx);
-		if (sc->open)
+		if (sc->open) {
+			sc->missing_samples = 0;
 			sc->intr_handler(sc->intr_context, sc->ibuf, actual);
+		}
 		if (!sc->callout_setup)
 			mtx_unlock(sc->intr_mtx);
 	} else
@@ -542,8 +549,11 @@ iichid_intr(void *context)
 #ifdef HAVE_IG4_POLLING
 out:
 #endif
-	if (sc->callout_setup && sc->sampling_rate > 0 && sc->open)
-		callout_reset(&sc->periodic_callout, hz / sc->sampling_rate,
+	if (sc->callout_setup && sc->sampling_rate_fast > 0 && sc->open)
+		callout_reset(&sc->periodic_callout,
+		    sc->missing_samples >= sc->sampling_hysteresis ?
+		    hz / MAX(sc->sampling_rate_slow, 1) :
+		    hz / sc->sampling_rate_fast,
 		    iichid_intr, sc);
 }
 
@@ -559,7 +569,7 @@ iichid_set_power_state(struct iichid_softc *sc)
 	if (power_on != sc->power_on) {
 		error = iichid_set_power(sc->dev, power_on);
 		mtx_lock(sc->intr_mtx);
-		if (sc->sampling_rate >= 0 && sc->intr_handler != NULL) {
+		if (sc->sampling_rate_fast >= 0 && sc->intr_handler != NULL) {
 			if (power_on) {
 				iichid_setup_callout(sc);
 				iichid_reset_callout(sc);
@@ -587,7 +597,7 @@ static int
 iichid_setup_callout(struct iichid_softc *sc)
 {
 
-	if (sc->sampling_rate < 0) {
+	if (sc->sampling_rate_fast < 0) {
 		DPRINTF(sc, "sampling_rate is below 0, can't setup callout\n");
 		return (EINVAL);
 	}
@@ -601,15 +611,18 @@ static int
 iichid_reset_callout(struct iichid_softc *sc)
 {
 
-	if (sc->sampling_rate <= 0) {
+	if (sc->sampling_rate_fast <= 0) {
 		DPRINTF(sc, "sampling_rate is below or equal to 0, "
 		    "can't reset callout\n");
 		return (EINVAL);
 	}
 
-	if (sc->callout_setup)
-		callout_reset(&sc->periodic_callout, hz / sc->sampling_rate, iichid_intr, sc);
-	else
+	if (sc->callout_setup) {
+		/* Start with slow sampling */
+		sc->missing_samples = sc->sampling_hysteresis;
+		callout_reset(&sc->periodic_callout,
+		    hz / MIN(sc->sampling_rate_slow, 1), iichid_intr, sc);
+	} else
 		return (EINVAL);
 	return (0);
 }
@@ -650,20 +663,21 @@ iichid_teardown_interrupt(struct iichid_softc *sc)
 static int
 iichid_sysctl_sampling_rate_handler(SYSCTL_HANDLER_ARGS)
 {
-	int err, value, oldval;
+	int error, value, oldval;
 	struct iichid_softc *sc;
 
 	sc = arg1;      
 
 	mtx_lock(sc->intr_mtx);
 
-	value = sc->sampling_rate;
-	oldval = sc->sampling_rate;
-	err = sysctl_handle_int(oidp, &value, 0, req);
+	value = sc->sampling_rate_fast;
+	oldval = sc->sampling_rate_fast;
+	error = sysctl_handle_int(oidp, &value, 0, req);
 
-	if (err != 0 || req->newptr == NULL || value == sc->sampling_rate) {
+	if (error != 0 || req->newptr == NULL ||
+	    value == sc->sampling_rate_fast) {
 		mtx_unlock(sc->intr_mtx);
-		return (err);
+		return (error);
 	}
 
 	/* Can't switch to interrupt mode if it is not supported */
@@ -672,7 +686,7 @@ iichid_sysctl_sampling_rate_handler(SYSCTL_HANDLER_ARGS)
 		return (EINVAL);
 	}
 
-	sc->sampling_rate = value;
+	sc->sampling_rate_fast = value;
 
 	if (oldval < 0 && value >= 0) {
 		iichid_teardown_interrupt(sc);
@@ -893,7 +907,9 @@ iichid_attach(device_t dev)
 	    taskqueue_thread_enqueue, &sc->taskqueue);
 
 	sc->irq_rid = 0;
-	sc->sampling_rate = -1;
+	sc->sampling_rate_fast = -1;
+	sc->sampling_rate_slow = IICHID_SAMPLING_RATE_SLOW;
+	sc->sampling_hysteresis = IICHID_SAMPLING_HYSTERESIS;
 	sc->irq_res = bus_alloc_resource_any(sc->dev, SYS_RES_IRQ, &sc->irq_rid, RF_ACTIVE);
 
 	if (sc->irq_res != NULL) {
@@ -901,22 +917,33 @@ iichid_attach(device_t dev)
 		    (uint64_t)sc->irq_res, sc->irq_rid);
 	} else {
 		DPRINTF(sc, "IRQ allocation failed. Fallback to sampling.\n");
-		sc->sampling_rate = IICHID_DEFAULT_SAMPLING_RATE;
+		sc->sampling_rate_fast = IICHID_SAMPLING_RATE_FAST;
 	}
 
-	if (sc->sampling_rate < 0) {
+	if (sc->sampling_rate_fast < 0) {
 		error = iichid_setup_interrupt(sc);
 		if (error != 0) {
 			device_printf(sc->dev,
 			    "Interrupt setup failed. Fallback to sampling.\n");
-			sc->sampling_rate = IICHID_DEFAULT_SAMPLING_RATE;
+			sc->sampling_rate_fast = IICHID_SAMPLING_RATE_FAST;
 		}
 	}
 	SYSCTL_ADD_PROC(device_get_sysctl_ctx(sc->dev),
 		SYSCTL_CHILDREN(device_get_sysctl_tree(sc->dev)),
-		OID_AUTO, "sampling_rate", CTLTYPE_INT | CTLFLAG_RWTUN,
+		OID_AUTO, "sampling_rate_fast", CTLTYPE_INT | CTLFLAG_RWTUN,
 		sc, 0,
-		iichid_sysctl_sampling_rate_handler, "I", "sampling rate in num/second");
+		iichid_sysctl_sampling_rate_handler, "I",
+		"active sampling rate in num/second");
+	SYSCTL_ADD_INT(device_get_sysctl_ctx(sc->dev),
+		SYSCTL_CHILDREN(device_get_sysctl_tree(sc->dev)),
+		OID_AUTO, "sampling_rate_slow", CTLTYPE_INT | CTLFLAG_RWTUN,
+		&sc->sampling_rate_slow, 0,
+		"idle sampling rate in num/second");
+	SYSCTL_ADD_INT(device_get_sysctl_ctx(sc->dev),
+		SYSCTL_CHILDREN(device_get_sysctl_tree(sc->dev)),
+		OID_AUTO, "sampling_hysteresis", CTLTYPE_INT | CTLFLAG_RWTUN,
+		&sc->sampling_hysteresis, 0,
+		"number of missing samples before enabling of slow mode");
 
 	sc->child = device_add_child(dev, NULL, -1);
 	if (sc->child == NULL) {
