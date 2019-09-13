@@ -549,12 +549,15 @@ iichid_intr(void *context)
 #ifdef HAVE_IG4_POLLING
 out:
 #endif
-	if (sc->callout_setup && sc->sampling_rate_fast > 0 && sc->open)
+	if (sc->callout_setup && sc->sampling_rate_fast > 0 && sc->open) {
+		if (sc->missing_samples == sc->sampling_hysteresis)
+			sc->intr_handler(sc->intr_context, sc->ibuf, 0);
 		callout_reset(&sc->periodic_callout,
 		    sc->missing_samples >= sc->sampling_hysteresis ?
 		    hz / MAX(sc->sampling_rate_slow, 1) :
 		    hz / sc->sampling_rate_fast,
 		    iichid_intr, sc);
+	}
 }
 
 static int

@@ -50,12 +50,15 @@ enum {
 /*
  * Since interrupt resource acquisition is not always possible (in case of GPIO
  * interrupts) iichid now supports a sampling_mode.
- * Set dev.<name>.<unit>.sampling_rate to a value greater then 0 to activate
- * sampling. A value of 0 is possible but will not reset the callout and,
- * thereby, disable further report requests. Do not set the sampling_rate value
- * too high as it may result in periodical lags of cursor motion.
+ * Set dev.iichid.<unit>.sampling_rate_fast to a value greater then 0
+ * to activate sampling. A value of 0 is possible but will not reset the
+ * callout and, thereby, disable further report requests. Do not set the
+ * sampling_rate_fast value too high as it may result in periodical lags of
+ * cursor motion.
  */
-#define	IICHID_DEFAULT_SAMPLING_RATE	60
+#define	IICHID_SAMPLING_RATE_FAST	60
+#define	IICHID_SAMPLING_RATE_SLOW	5
+#define	IICHID_SAMPLING_HYSTERESIS	1
 
 /* 5.1.1 - HID Descriptor Format */
 struct i2c_hid_desc {
@@ -100,7 +103,10 @@ struct iichid_softc {
 	struct resource		*irq_res;
 	void			*irq_cookie;
 
-	int			sampling_rate;
+	int			sampling_rate_fast;
+	int			sampling_rate_slow;
+	int			sampling_hysteresis;
+	int			missing_samples;
 	struct callout		periodic_callout;
 	bool			callout_setup;
 
