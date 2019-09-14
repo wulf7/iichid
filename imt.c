@@ -933,7 +933,7 @@ wmt_devcaps_parse(struct imt_softc *sc, const void *r_ptr, uint16_t r_len)
 	if (cont_count_max > 0)
 		sc->ai[WMT_SLOT].max = cont_count_max - 1;
 
-	/* Assume that contact countact count shares the same report */
+	/* Assume that contact count shares the same report */
 	if (sc->btn_type_rid == sc->cont_max_rid)
 		sc->is_clickpad =
 		    hid_get_data_unsigned(rep, len, &sc->btn_type_loc) == 0;
