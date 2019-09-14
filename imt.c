@@ -80,7 +80,6 @@ SYSCTL_INT(_hw_imt, OID_AUTO, debug, CTLFLAG_RWTUN,
     &wmt_debug, 1, "Debug level");
 #endif
 
-#define	WMT_BSIZE	1024	/* bytes, buffer size */
 #define	IMT_BTN_MAX	8	/* Number of buttons supported */
 
 enum {
@@ -246,8 +245,6 @@ struct imt_softc {
 	struct hid_location	input_mode_loc;
 	uint32_t		input_mode_rlen;
 	uint8_t			input_mode_rid;
-
-	uint8_t			buf[WMT_BSIZE] __aligned(4);
 };
 
 static int wmt_hid_parse(struct imt_softc *, const void *, uint16_t);
@@ -336,13 +333,15 @@ imt_attach(device_t dev)
 	device_t iichid = device_get_parent(dev);
 	struct iichid_hw *hw = device_get_ivars(dev);
 	int error;
-	void *d_ptr;
-	int d_len;
+	void *d_ptr, *fbuf = NULL;
+	int d_len, fsize;
 	size_t i;
+	uint8_t fid;
 
 	error = iichid_get_report_desc(iichid, &d_ptr, &d_len);
 	if (error) {
-		device_printf(dev, "could not retrieve report descriptor from device: %d\n", error);
+		device_printf(dev, "could not retrieve report descriptor from "
+		    "device: %d\n", error);
 		return (ENXIO);
 	}
 
@@ -354,25 +353,30 @@ imt_attach(device_t dev)
 		return (ENXIO);
 	}
 
+	fsize = hid_report_size(d_ptr, d_len, hid_feature, &fid);
+	if (fsize != 0)
+		fbuf = malloc(fsize, M_TEMP, M_WAITOK | M_ZERO);
+
 	/* Fetch and parse "Contact count maximum" feature report */
-	if (sc->cont_max_rlen > 0 && sc->cont_max_rlen <= WMT_BSIZE) {
-		error = iichid_get_report(iichid, sc->buf, sc->cont_max_rlen,
+	if (sc->cont_max_rlen > 1) {
+		error = iichid_get_report(iichid, fbuf, sc->cont_max_rlen,
 		    I2C_HID_REPORT_TYPE_FEATURE, sc->cont_max_rid);
 		if (error == 0)
-			wmt_devcaps_parse(sc, sc->buf, sc->cont_max_rlen);
+			wmt_devcaps_parse(sc, fbuf, sc->cont_max_rlen);
 		else
 			DPRINTF("usbd_req_get_report error=%d\n", error);
 	} else
-		DPRINTF("Feature report %hhu size invalid or too large: %u\n",
+		DPRINTF("Feature report %hhu size invalid: %u\n",
 		    sc->cont_max_rid, sc->cont_max_rlen);
 
 	/* Fetch THQA certificate to enable some devices like WaveShare */
-	if (sc->thqa_cert_rlen > 0 && sc->thqa_cert_rlen <= WMT_BSIZE &&
-	    sc->thqa_cert_rid != sc->cont_max_rid)
-		(void)iichid_get_report(iichid, sc->buf, sc->thqa_cert_rlen,
+	if (sc->thqa_cert_rlen > 1 && sc->thqa_cert_rid != sc->cont_max_rid)
+		(void)iichid_get_report(iichid, fbuf, sc->thqa_cert_rlen,
 		    I2C_HID_REPORT_TYPE_FEATURE, sc->thqa_cert_rid);
 
-	if (sc->type == HUD_TOUCHPAD && sc->input_mode_rlen != 0) {
+	free(fbuf, M_TEMP);
+
+	if (sc->type == HUD_TOUCHPAD && sc->input_mode_rlen > 1) {
 		error = imt_set_input_mode(sc, IMT_INPUT_MODE_MT_TOUCHPAD);
 		if (error) {
 			DPRINTF("Failed to set input mode: %d\n", error);
@@ -943,23 +947,25 @@ static int
 imt_set_input_mode(struct imt_softc *sc, enum imt_input_mode mode)
 {
 	device_t iichid = device_get_parent(sc->dev);
+	uint8_t *fbuf;
 	int error;
 
-	if (sc->input_mode_rlen == 0 && sc->input_mode_rlen > WMT_BSIZE)
-		return (EINVAL);
+	fbuf = malloc(sc->input_mode_rlen, M_TEMP, M_WAITOK | M_ZERO);
 
 	/* Input Mode report is not strictly required to be readable */
-	error = iichid_get_report(iichid, sc->buf, sc->input_mode_rlen,
+	error = iichid_get_report(iichid, fbuf, sc->input_mode_rlen,
 	    I2C_HID_REPORT_TYPE_FEATURE, sc->input_mode_rid);
 	if (error)
-		bzero(sc->buf + 1, sc->input_mode_rlen);
+		bzero(fbuf + 1, sc->input_mode_rlen - 1);
 
-	sc->buf[0] = sc->input_mode_rid;
-	hid_put_data_unsigned(sc->buf + 1, sc->input_mode_rlen - 1,
+	fbuf[0] = sc->input_mode_rid;
+	hid_put_data_unsigned(fbuf + 1, sc->input_mode_rlen - 1,
 	    &sc->input_mode_loc, mode);
 
-	error = iichid_set_report(iichid, sc->buf, sc->input_mode_rlen,
+	error = iichid_set_report(iichid, fbuf, sc->input_mode_rlen,
 	    I2C_HID_REPORT_TYPE_FEATURE, sc->input_mode_rid);
+
+	free(fbuf, M_TEMP);
 
 	return (error);
 }
