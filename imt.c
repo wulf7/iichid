@@ -419,6 +419,18 @@ imt_attach(device_t dev)
 		return (ENXIO);
 	}
 
+	/* Announce information about the touch device */
+	device_printf(sc->dev,
+	    "%d contacts and [%s%s%s%s%s]. Report range [%d:%d] - [%d:%d]\n",
+	    (int)sc->ai[WMT_SLOT].max + 1,
+	    USAGE_SUPPORTED(sc->caps, WMT_IN_RANGE) ? "R" : "",
+	    USAGE_SUPPORTED(sc->caps, WMT_CONFIDENCE) ? "C" : "",
+	    USAGE_SUPPORTED(sc->caps, WMT_WIDTH) ? "W" : "",
+	    USAGE_SUPPORTED(sc->caps, WMT_HEIGHT) ? "H" : "",
+	    USAGE_SUPPORTED(sc->caps, WMT_PRESSURE) ? "P" : "",
+	    (int)sc->ai[WMT_X].min, (int)sc->ai[WMT_Y].min,
+	    (int)sc->ai[WMT_X].max, (int)sc->ai[WMT_Y].max);
+
 	return (0);
 }
 
@@ -900,17 +912,6 @@ wmt_hid_parse(struct imt_softc *sc, const void *d_ptr, uint16_t d_len)
 	sc->input_mode_rid = input_mode_rid;
 	sc->has_buttons = nbuttons != 0;
 
-	/* Announce information about the touch device */
-	device_printf(sc->dev,
-	    "%d contacts and [%s%s%s%s%s]. Report range [%d:%d] - [%d:%d]\n",
-	    (int)cont_count_max,
-	    USAGE_SUPPORTED(sc->caps, WMT_IN_RANGE) ? "R" : "",
-	    USAGE_SUPPORTED(sc->caps, WMT_CONFIDENCE) ? "C" : "",
-	    USAGE_SUPPORTED(sc->caps, WMT_WIDTH) ? "W" : "",
-	    USAGE_SUPPORTED(sc->caps, WMT_HEIGHT) ? "H" : "",
-	    USAGE_SUPPORTED(sc->caps, WMT_PRESSURE) ? "P" : "",
-	    (int)sc->ai[WMT_X].min, (int)sc->ai[WMT_Y].min,
-	    (int)sc->ai[WMT_X].max, (int)sc->ai[WMT_Y].max);
 	return (type);
 }
 
@@ -929,12 +930,9 @@ wmt_devcaps_parse(struct imt_softc *sc, const void *r_ptr, uint16_t r_len)
 		cont_count_max = MAX_MT_SLOTS;
 	}
 	/* Feature report is a primary source of 'Contact Count Maximum' */
-	if (cont_count_max > 0 &&
-	    cont_count_max != sc->ai[WMT_SLOT].max + 1) {
+	if (cont_count_max > 0)
 		sc->ai[WMT_SLOT].max = cont_count_max - 1;
-		device_printf(sc->dev, "%d feature report contacts\n",
-		    cont_count_max);
-	}
+
 	/* Assume that contact countact count shares the same report */
 	if (sc->btn_type_rid == sc->cont_max_rid)
 		sc->is_clickpad =
