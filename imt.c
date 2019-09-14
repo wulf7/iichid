@@ -346,13 +346,12 @@ imt_attach(device_t dev)
 		return (ENXIO);
 	}
 
-	mtx_init(&sc->lock, "imt lock", NULL, MTX_DEF);
 	sc->dev = dev;
 
 	sc->type = wmt_hid_parse(sc, d_ptr, d_len);
 	if (sc->type == 0) {
 		DPRINTF("multi-touch HID descriptor not found\n");
-		goto detach;
+		return (ENXIO);
 	}
 
 	/* Fetch and parse "Contact count maximum" feature report */
@@ -377,10 +376,11 @@ imt_attach(device_t dev)
 		error = imt_set_input_mode(sc, IMT_INPUT_MODE_MT_TOUCHPAD);
 		if (error) {
 			DPRINTF("Failed to set input mode: %d\n", error);
-			goto detach;
+			return (ENXIO);
 		}
 	}
 
+	mtx_init(&sc->lock, "imt lock", NULL, MTX_DEF);
 	iichid_intr_setup(iichid, &sc->lock, imt_intr, sc);
 
 	sc->evdev = evdev_alloc();
@@ -414,14 +414,12 @@ imt_attach(device_t dev)
 	}
 
 	error = evdev_register_mtx(sc->evdev, &sc->lock);
-	if (!error)
-		return (0);
+	if (error) {
+		imt_detach(dev);
+		return (ENXIO);
+	}
 
-	iichid_intr_unsetup(iichid);
-detach:
-	mtx_destroy(&sc->lock);
-
-	return (ENXIO);
+	return (0);
 }
 
 static int
