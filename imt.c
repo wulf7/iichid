@@ -332,11 +332,12 @@ imt_attach(device_t dev)
 	struct imt_softc *sc = device_get_softc(dev);
 	device_t iichid = device_get_parent(dev);
 	struct iichid_hw *hw = device_get_ivars(dev);
-	int error;
 	void *d_ptr, *fbuf = NULL;
 	int d_len, fsize;
+	int nbuttons;
 	size_t i;
 	uint8_t fid;
+	int error;
 
 	error = iichid_get_report_desc(iichid, &d_ptr, &d_len);
 	if (error) {
@@ -424,8 +425,13 @@ imt_attach(device_t dev)
 	}
 
 	/* Announce information about the touch device */
+	bit_count(sc->buttons, 0, IMT_BTN_MAX, &nbuttons);
+	device_printf(sc->dev, "Multitouch %s with %d button%s%s\n",
+	    sc->type == HUD_TOUCHSCREEN ? "touchscreen" : "touchpad",
+	    nbuttons, nbuttons != 1 ? "s" : "",
+	    sc->is_clickpad ? ", click-pad" : "");
 	device_printf(sc->dev,
-	    "%d contacts and [%s%s%s%s%s]. Report range [%d:%d] - [%d:%d]\n",
+	    "%d contacts with [%s%s%s%s%s] properties. Report range [%d:%d] - [%d:%d]\n",
 	    (int)sc->ai[WMT_SLOT].max + 1,
 	    USAGE_SUPPORTED(sc->caps, WMT_IN_RANGE) ? "R" : "",
 	    USAGE_SUPPORTED(sc->caps, WMT_CONFIDENCE) ? "C" : "",
