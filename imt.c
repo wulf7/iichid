@@ -34,6 +34,7 @@ __FBSDID("$FreeBSD$");
  */
 
 #include <sys/param.h>
+#include <sys/bitstring.h>
 #include <sys/bus.h>
 #include <sys/kernel.h>
 #include <sys/lock.h>
@@ -204,10 +205,13 @@ struct wmt_absinfo {
 	int32_t			res;
 };
 
-#define	USAGE_SUPPORTED(caps, usage)	((caps) & (1 << (usage)))
+#define	USAGE_SUPPORTED(caps, usage)	bit_test(caps, usage)
 #define	WMT_FOREACH_USAGE(caps, usage)			\
 	for ((usage) = 0; (usage) < WMT_N_USAGES; ++(usage))	\
 		if (USAGE_SUPPORTED((caps), (usage)))
+#define	WMT_FOREACH_BUTTON(buttons, button)			\
+	for ((button) = 0; (button) < IMT_BTN_MAX; ++(button))	\
+		if (bit_test(buttons, button))
 
 struct imt_softc {
 	device_t dev;
@@ -222,12 +226,13 @@ struct imt_softc {
 	struct evdev_dev        *evdev;
 
 	uint32_t                slot_data[WMT_N_USAGES];
-	uint32_t                caps;
+	bitstr_t		bit_decl(caps, WMT_N_USAGES);
+	bitstr_t		bit_decl(buttons, IMT_BTN_MAX);
 	uint32_t                isize;
 	uint32_t                nconts_per_report;
 	uint32_t		nconts_todo;
 	uint8_t                 report_id;
-	uint32_t		nbuttons;
+	bool			has_buttons;
 	bool			is_clickpad;
 
 	struct hid_location     cont_max_loc;
@@ -397,15 +402,16 @@ imt_attach(device_t dev)
 	}
 	evdev_support_event(sc->evdev, EV_SYN);
 	evdev_support_event(sc->evdev, EV_ABS);
-	if (sc->nbuttons > 0)
+	if (sc->has_buttons) {
 		evdev_support_event(sc->evdev, EV_KEY);
+		WMT_FOREACH_BUTTON(sc->buttons, i)
+			evdev_support_key(sc->evdev, BTN_MOUSE + i);
+	}
 	WMT_FOREACH_USAGE(sc->caps, i) {
 		if (wmt_hid_map[i].code != WMT_NO_CODE)
 			evdev_support_abs(sc->evdev, wmt_hid_map[i].code, 0,
 			    sc->ai[i].min, sc->ai[i].max, 0, 0, sc->ai[i].res);
 	}
-	for (i = 0; i < sc->nbuttons; i++)
-		evdev_support_key(sc->evdev, BTN_MOUSE + i);
 
 	error = evdev_register_mtx(sc->evdev, &sc->lock);
 	if (!error)
@@ -577,9 +583,13 @@ imt_intr(void *context, void *buf, int len)
 
 	sc->nconts_todo -= cont_count;
 	if (sc->nconts_todo == 0) {
-		for (btn = 0; btn < sc->nbuttons; btn++)
-			evdev_push_key(sc->evdev, BTN_MOUSE + btn,
-			    hid_get_data(buf, len, &sc->btn_loc[btn]) != 0);
+		if (sc->has_buttons) {
+			WMT_FOREACH_BUTTON(sc->buttons, btn)
+				evdev_push_key(sc->evdev, BTN_MOUSE + btn,
+				    hid_get_data(buf,
+						 len,
+						 &sc->btn_loc[btn]) != 0);
+		}
 		evdev_sync(sc->evdev);
 	}
 }
@@ -632,8 +642,10 @@ wmt_hid_parse(struct imt_softc *sc, const void *d_ptr, uint16_t d_len)
 	size_t i;
 	size_t cont = 0;
 	int type = 0;
-	uint32_t btn, nbuttons = 0;
-	uint32_t caps = 0;
+	int nbuttons = 0;
+	bitstr_t bit_decl(caps, WMT_N_USAGES);
+	bitstr_t bit_decl(buttons, IMT_BTN_MAX);
+	uint32_t btn;
 	int32_t cont_count_max = 0;
 	uint8_t report_id = 0;
 	uint8_t cont_max_rid = 0;
@@ -711,6 +723,8 @@ wmt_hid_parse(struct imt_softc *sc, const void *d_ptr, uint16_t d_len)
 		return (0);
 
 	touch_coll = false;
+	bzero(caps, bitstr_size(WMT_N_USAGES));
+	bzero(buttons, bitstr_size(IMT_BTN_MAX));
 
 	/* Parse input for other parameters */
 	hd = hid_start_parse(d_ptr, d_len, 1 << hid_input);
@@ -754,7 +768,7 @@ wmt_hid_parse(struct imt_softc *sc, const void *d_ptr, uint16_t d_len)
 			    hi.usage > HID_USAGE2(HUP_BUTTON, 0) &&
 			    hi.usage <= HID_USAGE2(HUP_BUTTON, IMT_BTN_MAX)) {
 				btn = (hi.usage & 0xFFFF) - 1;
-				nbuttons = MAX(btn + 1, nbuttons);
+				bit_set(buttons, btn);
 				if (sc != NULL)
 					sc->btn_loc[btn] = hi.loc;
 				break;
@@ -787,7 +801,7 @@ wmt_hid_parse(struct imt_softc *sc, const void *d_ptr, uint16_t d_len)
 					if (sc == NULL) {
 						if (USAGE_SUPPORTED(caps, i))
 							continue;
-						caps |= 1 << i;
+						bit_set(caps, i);
 						break;
 					}
 					/*
@@ -806,7 +820,7 @@ wmt_hid_parse(struct imt_softc *sc, const void *d_ptr, uint16_t d_len)
 					 */
 					if (cont > 0)
 						break;
-					caps |= 1 << i;
+					bit_set(caps, i);
 					sc->ai[i] = (struct wmt_absinfo) {
 					    .max = hi.logical_maximum,
 					    .min = hi.logical_minimum,
@@ -829,6 +843,11 @@ wmt_hid_parse(struct imt_softc *sc, const void *d_ptr, uint16_t d_len)
 		if (wmt_hid_map[i].required && !USAGE_SUPPORTED(caps, i))
 			return (0);
 	}
+
+	/* Touchpads must have at least one button */
+	bit_count(buttons, 0, IMT_BTN_MAX, &nbuttons);
+	if (type == HUD_TOUCHPAD && nbuttons == 0)
+		return (0);
 
 	/* Stop probing here */
 	if (sc == NULL)
@@ -856,7 +875,7 @@ wmt_hid_parse(struct imt_softc *sc, const void *d_ptr, uint16_t d_len)
 	/* Report touch orientation if both width and height are supported */
 	if (USAGE_SUPPORTED(caps, WMT_WIDTH) &&
 	    USAGE_SUPPORTED(caps, WMT_HEIGHT)) {
-		caps |= (1 << WMT_ORIENTATION);
+		bit_set(caps, WMT_ORIENTATION);
 		sc->ai[WMT_ORIENTATION].max = 1;
 	}
 
@@ -874,13 +893,14 @@ wmt_hid_parse(struct imt_softc *sc, const void *d_ptr, uint16_t d_len)
 		    hid_feature, input_mode_rid);
 
 	sc->report_id = report_id;
-	sc->caps = caps;
+	bcopy(caps, sc->caps, bitstr_size(WMT_N_USAGES));
+	bcopy(buttons, sc->buttons, bitstr_size(IMT_BTN_MAX));
 	sc->nconts_per_report = cont;
-	sc->nbuttons = nbuttons;
 	sc->cont_max_rid = cont_max_rid;
 	sc->btn_type_rid = btn_type_rid;
 	sc->thqa_cert_rid = thqa_cert_rid;
 	sc->input_mode_rid = input_mode_rid;
+	sc->has_buttons = nbuttons != 0;
 
 	/* Announce information about the touch device */
 	device_printf(sc->dev,
