@@ -385,6 +385,13 @@ imt_attach(device_t dev)
 		}
 	}
 
+	/* Cap contact count maximum to MAX_MT_SLOTS */
+	if (sc->ai[WMT_SLOT].max >= MAX_MT_SLOTS) {
+		DPRINTF("Hardware reported %d contacts while only %d is "
+		    "supported\n", (int)sc->ai[WMT_SLOT].max+1, MAX_MT_SLOTS);
+		sc->ai[WMT_SLOT].max = MAX_MT_SLOTS - 1;
+	}
+
 	mtx_init(&sc->lock, "imt lock", NULL, MTX_DEF);
 	iichid_intr_setup(iichid, &sc->lock, imt_intr, sc);
 
@@ -881,10 +888,6 @@ wmt_hid_parse(struct imt_softc *sc, const void *d_ptr, uint16_t d_len)
 	if (cont_count_max < 1)
 		cont_count_max = cont;
 
-	/* Cap contact count maximum to MAX_MT_SLOTS */
-	if (cont_count_max > MAX_MT_SLOTS)
-		cont_count_max = MAX_MT_SLOTS;
-
 	/* Set number of MT protocol type B slots */
 	sc->ai[WMT_SLOT] = (struct wmt_absinfo) {
 		.min = 0,
@@ -933,13 +936,8 @@ wmt_devcaps_parse(struct imt_softc *sc, const void *r_ptr, uint16_t r_len)
 	const uint8_t *rep = (const uint8_t *)r_ptr + 1;
 	uint16_t len = r_len - 1;
 
-	cont_count_max = hid_get_data_unsigned(rep, len, &sc->cont_max_loc);
-	if (cont_count_max > MAX_MT_SLOTS) {
-		DPRINTF("Hardware reported %d contacts while only %d is "
-		    "supported\n", (int)cont_count_max, MAX_MT_SLOTS);
-		cont_count_max = MAX_MT_SLOTS;
-	}
 	/* Feature report is a primary source of 'Contact Count Maximum' */
+	cont_count_max = hid_get_data_unsigned(rep, len, &sc->cont_max_loc);
 	if (cont_count_max > 0)
 		sc->ai[WMT_SLOT].max = cont_count_max - 1;
 
