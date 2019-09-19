@@ -39,12 +39,11 @@ struct hid_hw {
 	uint16_t	idVersion;
 };
 
-/* hidbus interrupts interface */
+/* hidbus child interrupt interface */
 struct mtx *	hid_get_lock(device_t);
-void	hid_intr_setup(device_t, struct mtx *mtx, hid_intr_t, void *);
-void	hid_intr_unsetup(device_t);
-int	hid_intr_start(device_t);
-int	hid_intr_stop(device_t);
+void		hid_set_intr(device_t, hid_intr_t);
+int		hid_start(device_t);
+int		hid_stop(device_t);
 
 /* hidbus HID interface */
 int	hid_get_report_descr(device_t, void **, uint16_t *);

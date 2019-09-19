@@ -287,7 +287,7 @@ hmt_ev_close(struct evdev_dev *evdev)
 {
 	device_t dev = evdev_get_softc(evdev);
 
-	return (hid_intr_stop(dev));
+	return (hid_stop(dev));
 }
 
 static int
@@ -295,7 +295,7 @@ hmt_ev_open(struct evdev_dev *evdev)
 {
 	device_t dev = evdev_get_softc(evdev);
 
-	return (hid_intr_start(dev));
+	return (hid_start(dev));
 }
 
 static int
@@ -390,7 +390,7 @@ hmt_attach(device_t dev)
 		sc->ai[HMT_SLOT].max = MAX_MT_SLOTS - 1;
 	}
 
-	hid_intr_setup(dev, hid_get_lock(dev), hmt_intr, sc);
+	hid_set_intr(dev, hmt_intr);
 
 	sc->evdev = evdev_alloc();
 	evdev_set_name(sc->evdev, device_get_desc(dev));
@@ -455,15 +455,14 @@ hmt_detach(device_t dev)
 
 	evdev_free(sc->evdev);
 
-	hid_intr_unsetup(dev);
-
 	return (0);
 }
 
 static void
 hmt_intr(void *context, void *buf, uint16_t len)
 {
-	struct hmt_softc *sc = context;
+	device_t dev = context;
+	struct hmt_softc *sc = device_get_softc(dev);
 	size_t usage;
 	uint32_t *slot_data = sc->slot_data;
 	uint32_t cont, btn;

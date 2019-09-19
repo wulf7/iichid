@@ -39,9 +39,14 @@ __FBSDID("$FreeBSD$");
 
 #include "hid_if.h"
 
+static hid_intr_t	hidbus_intr;
+
 struct hidbus_softc {
 	device_t	dev;
 	struct mtx	lock;
+
+	device_t	child;
+	hid_intr_t	*intr;
 };
 
 static int
@@ -71,6 +76,7 @@ hidbus_attach(device_t dev)
 	}
 
 	mtx_init(&sc->lock, "hidbus lock", NULL, MTX_DEF);
+	HID_INTR_SETUP(device_get_parent(dev), &sc->lock, hidbus_intr, sc);
 	device_set_ivars(child, ivars);
 	error = bus_generic_attach(dev);
 	if (error)
@@ -87,6 +93,7 @@ hidbus_detach(device_t dev)
 	bus_generic_detach(dev);
 	device_delete_children(dev);
 
+	HID_INTR_UNSETUP(device_get_parent(dev));
 	mtx_destroy(&sc->lock);
 
 	return (0);
@@ -101,30 +108,35 @@ hid_get_lock(device_t child)
 }
 
 void
-hid_intr_setup(device_t bus, struct mtx *mtx, hid_intr_t intr,
-    void *context)
+hid_set_intr(device_t child, hid_intr_t intr)
 {
+	device_t bus = device_get_parent(child);
+	struct hidbus_softc *sc = device_get_softc(bus);
 
-	HID_INTR_SETUP(device_get_parent(bus), mtx, intr, context);
+	sc->child = child;
+	sc->intr = intr;
 }
 
 void
-hid_intr_unsetup(device_t bus)
+hidbus_intr(void *context, void *buf, uint16_t len)
 {
+	struct hidbus_softc *sc = context;
 
-	HID_INTR_UNSETUP(device_get_parent(bus));
+	sc->intr(sc->child, buf, len);
 }
 
 int
-hid_intr_start(device_t bus)
+hid_start(device_t child)
 {
+	device_t bus = device_get_parent(child);
 
 	return (HID_INTR_START(device_get_parent(bus)));
 }
 
 int
-hid_intr_stop(device_t bus)
+hid_stop(device_t child)
 {
+	device_t bus = device_get_parent(child);
 
 	return (HID_INTR_STOP(device_get_parent(bus)));
 }
@@ -178,10 +190,6 @@ static device_method_t hidbus_methods[] = {
 	DEVMETHOD(device_resume,        bus_generic_resume),
 
 	/* hid interface */
-	DEVMETHOD(hid_intr_setup,	hid_intr_setup),
-	DEVMETHOD(hid_intr_unsetup,	hid_intr_unsetup),
-	DEVMETHOD(hid_intr_start,	hid_intr_start),
-	DEVMETHOD(hid_intr_stop,	hid_intr_stop),
 	DEVMETHOD(hid_get_report_descr,	hid_get_report_descr),
 	DEVMETHOD(hid_get_input_report,	hid_get_input_report),
 	DEVMETHOD(hid_set_output_report,hid_set_output_report),
