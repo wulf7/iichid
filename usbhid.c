@@ -661,7 +661,7 @@ uhid_ioctl(struct usb_fifo *fifo, u_long cmd, void *addr,
 	return (error);
 }
 
-static const STRUCT_USB_HOST_ID uhid_devs[] = {
+static const STRUCT_USB_HOST_ID usbhid_devs[] = {
 	/* generic HID class */
 	{USB_IFACE_CLASS(UICLASS_HID),},
 	/* the Xbox 360 gamepad doesn't use the HID class */
@@ -683,7 +683,7 @@ uhid_probe(device_t dev)
 	if (uaa->usb_mode != USB_MODE_HOST)
 		return (ENXIO);
 
-	error = usbd_lookup_id_by_uaa(uhid_devs, sizeof(uhid_devs), uaa);
+	error = usbd_lookup_id_by_uaa(usbhid_devs, sizeof(usbhid_devs), uaa);
 	if (error)
 		return (error);
 
@@ -882,9 +882,9 @@ uhid_detach(device_t dev)
 	return (0);
 }
 
-static devclass_t uhid_devclass;
+static devclass_t usbhid_devclass;
 
-static device_method_t uhid_methods[] = {
+static device_method_t usbhid_methods[] = {
 	DEVMETHOD(device_probe, uhid_probe),
 	DEVMETHOD(device_attach, uhid_attach),
 	DEVMETHOD(device_detach, uhid_detach),
@@ -892,13 +892,13 @@ static device_method_t uhid_methods[] = {
 	DEVMETHOD_END
 };
 
-static driver_t uhid_driver = {
-	.name = "uhid",
-	.methods = uhid_methods,
+static driver_t usbhid_driver = {
+	.name = "usbhid",
+	.methods = usbhid_methods,
 	.size = sizeof(struct uhid_softc),
 };
 
-DRIVER_MODULE(uhid, uhub, uhid_driver, uhid_devclass, NULL, 0);
-MODULE_DEPEND(uhid, usb, 1, 1, 1);
-MODULE_VERSION(uhid, 1);
-USB_PNP_HOST_INFO(uhid_devs);
+DRIVER_MODULE(usbhid, uhub, usbhid_driver, usbhid_devclass, NULL, 0);
+MODULE_DEPEND(usbhid, usb, 1, 1, 1);
+MODULE_VERSION(usbhid, 1);
+USB_PNP_HOST_INFO(usbhid_devs);
