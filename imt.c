@@ -51,7 +51,10 @@ __FBSDID("$FreeBSD$");
 #include <dev/usb/usbdi.h>
 #include <dev/usb/usbhid.h>
 
+#include "hidbus.h"
 #include "iichid.h"
+
+#include "hid_if.h"
 
 #define	IMT_DEBUG
 #define	IMT_DEBUG_VAR	wmt_debug
@@ -287,7 +290,7 @@ imt_ev_close(struct evdev_dev *evdev)
 {
 	device_t dev = evdev_get_softc(evdev);
 
-	return (iichid_intr_stop(device_get_parent(dev)));
+	return (hid_intr_stop(device_get_parent(dev)));
 }
 
 static int
@@ -295,7 +298,7 @@ imt_ev_open(struct evdev_dev *evdev)
 {
 	device_t dev = evdev_get_softc(evdev);
 
-	return (iichid_intr_start(device_get_parent(dev)));
+	return (hid_intr_start(device_get_parent(dev)));
 }
 
 static int
@@ -304,11 +307,11 @@ imt_probe(device_t dev)
 	device_t iichid = device_get_parent(dev);
 	struct iichid_hw *hw = device_get_ivars(dev);
 	void *d_ptr;
-	int d_len;
+	uint16_t d_len;
 	int error;
 	int hid_type;
 
-	error = iichid_get_report_desc(iichid, &d_ptr, &d_len);
+	error = hid_get_report_desc(iichid, &d_ptr, &d_len);
 	if (error) {
 		device_printf(dev, "could not retrieve report descriptor from device: %d\n", error);
 		error = ENXIO;
@@ -333,13 +336,13 @@ imt_attach(device_t dev)
 	device_t iichid = device_get_parent(dev);
 	struct iichid_hw *hw = device_get_ivars(dev);
 	void *d_ptr, *fbuf = NULL;
-	int d_len, fsize;
+	uint16_t d_len, fsize;
 	int nbuttons;
 	size_t i;
 	uint8_t fid;
 	int error;
 
-	error = iichid_get_report_desc(iichid, &d_ptr, &d_len);
+	error = hid_get_report_desc(iichid, &d_ptr, &d_len);
 	if (error) {
 		device_printf(dev, "could not retrieve report descriptor from "
 		    "device: %d\n", error);
@@ -360,7 +363,7 @@ imt_attach(device_t dev)
 
 	/* Fetch and parse "Contact count maximum" feature report */
 	if (sc->cont_max_rlen > 1) {
-		error = iichid_get_report(iichid, fbuf, sc->cont_max_rlen,
+		error = hid_get_report(iichid, fbuf, sc->cont_max_rlen,
 		    I2C_HID_REPORT_TYPE_FEATURE, sc->cont_max_rid);
 		if (error == 0)
 			wmt_devcaps_parse(sc, fbuf, sc->cont_max_rlen);
@@ -372,7 +375,7 @@ imt_attach(device_t dev)
 
 	/* Fetch THQA certificate to enable some devices like WaveShare */
 	if (sc->thqa_cert_rlen > 1 && sc->thqa_cert_rid != sc->cont_max_rid)
-		(void)iichid_get_report(iichid, fbuf, sc->thqa_cert_rlen,
+		(void)hid_get_report(iichid, fbuf, sc->thqa_cert_rlen,
 		    I2C_HID_REPORT_TYPE_FEATURE, sc->thqa_cert_rid);
 
 	free(fbuf, M_TEMP);
@@ -393,7 +396,7 @@ imt_attach(device_t dev)
 	}
 
 	mtx_init(&sc->lock, "imt lock", NULL, MTX_DEF);
-	iichid_intr_setup(iichid, &sc->lock, imt_intr, sc);
+	hid_intr_setup(iichid, &sc->lock, imt_intr, sc);
 
 	sc->evdev = evdev_alloc();
 	evdev_set_name(sc->evdev, device_get_desc(dev));
@@ -459,7 +462,7 @@ imt_detach(device_t dev)
 
 	evdev_free(sc->evdev);
 
-	iichid_intr_unsetup(iichid);
+	hid_intr_unsetup(iichid);
 
 	mtx_destroy(&sc->lock);
 
@@ -467,7 +470,7 @@ imt_detach(device_t dev)
 }
 
 static void
-imt_intr(void *context, void *buf, int len)
+imt_intr(void *context, void *buf, uint16_t len)
 {
 	struct imt_softc *sc = context;
 	size_t usage;
@@ -957,7 +960,7 @@ imt_set_input_mode(struct imt_softc *sc, enum imt_input_mode mode)
 	fbuf = malloc(sc->input_mode_rlen, M_TEMP, M_WAITOK | M_ZERO);
 
 	/* Input Mode report is not strictly required to be readable */
-	error = iichid_get_report(iichid, fbuf, sc->input_mode_rlen,
+	error = hid_get_report(iichid, fbuf, sc->input_mode_rlen,
 	    I2C_HID_REPORT_TYPE_FEATURE, sc->input_mode_rid);
 	if (error)
 		bzero(fbuf + 1, sc->input_mode_rlen - 1);
@@ -966,7 +969,7 @@ imt_set_input_mode(struct imt_softc *sc, enum imt_input_mode mode)
 	hid_put_data_unsigned(fbuf + 1, sc->input_mode_rlen - 1,
 	    &sc->input_mode_loc, mode);
 
-	error = iichid_set_report(iichid, fbuf, sc->input_mode_rlen,
+	error = hid_set_report(iichid, fbuf, sc->input_mode_rlen,
 	    I2C_HID_REPORT_TYPE_FEATURE, sc->input_mode_rid);
 
 	free(fbuf, M_TEMP);
@@ -974,8 +977,8 @@ imt_set_input_mode(struct imt_softc *sc, enum imt_input_mode mode)
 	return (error);
 }
 
-DRIVER_MODULE(imt, iichid, imt_driver, imt_devclass, NULL, 0);
-MODULE_DEPEND(imt, iichid, 1, 1, 1);
+DRIVER_MODULE(imt, hidbus, imt_driver, imt_devclass, NULL, 0);
+MODULE_DEPEND(imt, hidbus, 1, 1, 1);
 MODULE_DEPEND(imt, usb, 1, 1, 1);
 MODULE_DEPEND(imt, evdev, 1, 1, 1);
 MODULE_VERSION(imt, 1);

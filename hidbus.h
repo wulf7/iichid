@@ -23,20 +23,29 @@
  * SUCH DAMAGE.
  */
 
-#ifndef _IICHID_H_
-#define _IICHID_H_
+#ifndef _HIDBUS_H_
+#define _HIDBUS_H_
 
-#define	I2C_HID_REPORT_TYPE_INPUT	0x1
-#define	I2C_HID_REPORT_TYPE_OUTPUT	0x2
-#define	I2C_HID_REPORT_TYPE_FEATURE	0x3
+/* hidbus interrupts interface */
+#define hid_intr_setup(bus, mtx, intr, ctx) \
+	(HID_INTR_SETUP(device_get_parent(bus), mtx, intr, ctx))
+#define hid_intr_unsetup(bus) \
+	(HID_INTR_UNSETUP(device_get_parent(bus)))
+#define hid_intr_start(bus) \
+	(HID_INTR_START(device_get_parent(bus)))
+#define hid_intr_stop(bus) \
+	(HID_INTR_STOP(device_get_parent(bus)))
 
-typedef void iichid_intr_t(void *context, void *data, uint16_t len);
+/* hidbus HID interface */
+#define hid_get_report_desc(bus, buf, len) \
+	(HID_GET_REPORT_DESC(device_get_parent(bus), buf, len))
+#define hid_get_input_report(bus, buf, len) \
+	(HID_GET_INPUT_REPORT(device_get_parent(bus), buf, len))
+#define hid_set_output_report(bus, buf, len) \
+	(HID_SET_OUTPUT_REPORT(device_get_parent(bus), buf, len))
+#define hid_get_report(bus, buf, len, type, id) \
+	(HID_GET_REPORT(device_get_parent(bus), buf, len, type, id))
+#define hid_set_report(bus, buf, len, type, id) \
+	(HID_SET_REPORT(device_get_parent(bus), buf, len, type, id))
 
-struct iichid_hw {
-	char		hid[16];
-	uint16_t	idVendor;
-	uint16_t	idProduct;
-	uint16_t	idVersion;
-};
-
-#endif	/* _IICHID_H_ */
+#endif	/* _HIDBUS_H_ */

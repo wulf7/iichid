@@ -59,6 +59,8 @@ __FBSDID("$FreeBSD$");
 #include "iichid.h"
 #include "iichidvar.h"
 
+#include "hid_if.h"
+
 #define IICHID_DEBUG
 
 #ifdef IICHID_DEBUG
@@ -711,7 +713,7 @@ iichid_sysctl_sampling_rate_handler(SYSCTL_HANDLER_ARGS)
 	return (0);
 }
 
-void
+static void
 iichid_intr_setup(device_t dev, struct mtx *mtx, iichid_intr_t intr,
     void *context)
 {
@@ -725,7 +727,7 @@ iichid_intr_setup(device_t dev, struct mtx *mtx, iichid_intr_t intr,
 	    "%s taskq", device_get_nameunit(sc->dev));
 }
 
-void
+static void
 iichid_intr_unsetup(device_t dev)
 {
 	struct iichid_softc* sc = device_get_softc(dev);
@@ -733,7 +735,7 @@ iichid_intr_unsetup(device_t dev)
 	taskqueue_drain_all(sc->taskqueue);
 }
 
-int
+static int
 iichid_intr_start(device_t dev)
 {
 	struct iichid_softc* sc = device_get_softc(dev);
@@ -748,7 +750,7 @@ iichid_intr_start(device_t dev)
 	return (0);
 }
 
-int
+static int
 iichid_intr_stop(device_t dev)
 {
 	struct iichid_softc* sc = device_get_softc(dev);
@@ -772,8 +774,8 @@ iichid_intr_stop(device_t dev)
 /*
  * HID interface
  */
-int
-iichid_get_report_desc(device_t dev, void **buf, int *len)
+static int
+iichid_get_report_desc(device_t dev, void **buf, uint16_t *len)
 {
 	struct iichid_softc* sc = device_get_softc(dev);
 
@@ -783,8 +785,8 @@ iichid_get_report_desc(device_t dev, void **buf, int *len)
 	return (0);
 }
 
-int
-iichid_get_input_report(device_t dev, void *buf, int len)
+static int
+iichid_get_input_report(device_t dev, void *buf, uint16_t len)
 {
 	struct iichid_softc* sc = device_get_softc(dev);
 	int actlen;
@@ -793,24 +795,26 @@ iichid_get_input_report(device_t dev, void *buf, int len)
 	    buf, len, &actlen, false)));
 }
 
-int
-iichid_set_output_report(device_t dev, void *buf, int len)
+static int
+iichid_set_output_report(device_t dev, void *buf, uint16_t len)
 {
 	struct iichid_softc* sc = device_get_softc(dev);
 
 	return (iic2errno(iichid_cmd_set_output_report(sc, buf, len)));
 }
 
-int
-iichid_get_report(device_t dev, void *buf, int len, uint8_t type, uint8_t id)
+static int
+iichid_get_report(device_t dev, void *buf, uint16_t len, uint8_t type,
+    uint8_t id)
 {
 	struct iichid_softc* sc = device_get_softc(dev);
 
 	return (iic2errno(iichid_cmd_get_report(sc, buf, len, type, id)));
 }
 
-int
-iichid_set_report(device_t dev, void *buf, int len, uint8_t type, uint8_t id)
+static int
+iichid_set_report(device_t dev, void *buf, uint16_t len, uint8_t type,
+    uint8_t id)
 {
 	struct iichid_softc* sc = device_get_softc(dev);
 
@@ -948,7 +952,7 @@ iichid_attach(device_t dev)
 		&sc->sampling_hysteresis, 0,
 		"number of missing samples before enabling of slow mode");
 
-	sc->child = device_add_child(dev, NULL, -1);
+	sc->child = device_add_child(dev, "hidbus", -1);
 	if (sc->child == NULL) {
 		device_printf(sc->dev, "Could not add I2C device\n");
 		error = ENXIO;
@@ -1182,6 +1186,18 @@ static device_method_t iichid_methods[] = {
         DEVMETHOD(device_detach,        iichid_detach),
         DEVMETHOD(device_suspend,       iichid_suspend),
         DEVMETHOD(device_resume,        iichid_resume),
+
+	DEVMETHOD(hid_intr_setup,	iichid_intr_setup),
+	DEVMETHOD(hid_intr_unsetup,	iichid_intr_unsetup),
+	DEVMETHOD(hid_intr_start,	iichid_intr_start),
+	DEVMETHOD(hid_intr_stop,	iichid_intr_stop),
+
+	/* HID interface */
+	DEVMETHOD(hid_get_report_desc,	iichid_get_report_desc),
+	DEVMETHOD(hid_get_input_report,	iichid_get_input_report),
+	DEVMETHOD(hid_set_output_report,iichid_set_output_report),
+	DEVMETHOD(hid_get_report,	iichid_get_report),
+	DEVMETHOD(hid_set_report,	iichid_set_report),
 
         DEVMETHOD_END
 };
