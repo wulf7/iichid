@@ -40,6 +40,7 @@ struct hid_hw {
 };
 
 /* hidbus interrupts interface */
+struct mtx *	hid_get_lock(device_t);
 void	hid_intr_setup(device_t, struct mtx *mtx, hid_intr_t, void *);
 void	hid_intr_unsetup(device_t);
 int	hid_intr_start(device_t);

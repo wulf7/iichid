@@ -31,11 +31,18 @@ __FBSDID("$FreeBSD$");
 #include <sys/param.h>
 #include <sys/bus.h>
 #include <sys/kernel.h>
+#include <sys/lock.h>
 #include <sys/module.h>
+#include <sys/mutex.h>
 
 #include "hidbus.h"
 
 #include "hid_if.h"
+
+struct hidbus_softc {
+	device_t	dev;
+	struct mtx	lock;
+};
 
 static int
 hidbus_probe(device_t dev)
@@ -50,9 +57,12 @@ hidbus_probe(device_t dev)
 static int
 hidbus_attach(device_t dev)
 {
+	struct hidbus_softc *sc = device_get_softc(dev);
 	device_t child;
 	int error;
 	void *ivars = device_get_ivars(dev);
+
+	sc->dev = dev;
 
 	child = device_add_child(dev, NULL, -1);
 	if (child == NULL) {
@@ -60,6 +70,7 @@ hidbus_attach(device_t dev)
 		return (ENXIO);
 	}
 
+	mtx_init(&sc->lock, "hidbus lock", NULL, MTX_DEF);
 	device_set_ivars(child, ivars);
 	error = bus_generic_attach(dev);
 	if (error)
@@ -71,10 +82,22 @@ hidbus_attach(device_t dev)
 static int
 hidbus_detach(device_t dev)
 {
+	struct hidbus_softc *sc = device_get_softc(dev);
 
 	bus_generic_detach(dev);
 	device_delete_children(dev);
+
+	mtx_destroy(&sc->lock);
+
 	return (0);
+}
+
+struct mtx *
+hid_get_lock(device_t child)
+{
+	struct hidbus_softc *sc = device_get_softc(device_get_parent(child));
+
+	return (&sc->lock);
 }
 
 void
@@ -172,7 +195,7 @@ static device_method_t hidbus_methods[] = {
 driver_t hidbus_driver = {
 	"hidbus",
 	hidbus_methods,
-	0 /*sizeof(struct hidbus_softc)*/,
+	sizeof(struct hidbus_softc),
 };
 
 devclass_t hidbus_devclass;
