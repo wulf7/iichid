@@ -56,14 +56,14 @@ __FBSDID("$FreeBSD$");
 
 #include "hid_if.h"
 
-#define	IMT_DEBUG
-#define	IMT_DEBUG_VAR	wmt_debug
+#define	HMT_DEBUG
+#define	HMT_DEBUG_VAR	hmt_debug
 
 /* Check if debugging is enabled. */
-#ifdef IMT_DEBUG_VAR
-#ifdef IMT_DEBUG
+#ifdef HMT_DEBUG_VAR
+#ifdef HMT_DEBUG
 #define	DPRINTFN(n,fmt,...) do {					\
-	if ((IMT_DEBUG_VAR) >= (n)) {					\
+	if ((HMT_DEBUG_VAR) >= (n)) {					\
 		printf("%s: " fmt, __FUNCTION__ ,##__VA_ARGS__);	\
 	}								\
 } while (0)
@@ -74,126 +74,126 @@ __FBSDID("$FreeBSD$");
 #endif
 #endif
 
-#ifdef IMT_DEBUG
-static int wmt_debug = 0;
+#ifdef HMT_DEBUG
+static int hmt_debug = 0;
 
-static SYSCTL_NODE(_hw, OID_AUTO, imt, CTLFLAG_RW, 0,
-    "I2C MSWindows 7/8/10 compatible Multi-touch Device");
-SYSCTL_INT(_hw_imt, OID_AUTO, debug, CTLFLAG_RWTUN,
-    &wmt_debug, 1, "Debug level");
+static SYSCTL_NODE(_hw, OID_AUTO, hmt, CTLFLAG_RW, 0,
+    "MSWindows 7/8/10 compatible HID Multi-touch Device");
+SYSCTL_INT(_hw_hmt, OID_AUTO, debug, CTLFLAG_RWTUN,
+    &hmt_debug, 1, "Debug level");
 #endif
 
-#define	IMT_BTN_MAX	8	/* Number of buttons supported */
+#define	HMT_BTN_MAX	8	/* Number of buttons supported */
 
 enum {
-	WMT_INTR_DT,
-	WMT_N_TRANSFER,
+	HMT_INTR_DT,
+	HMT_N_TRANSFER,
 };
 
-enum imt_input_mode {
-	IMT_INPUT_MODE_MOUSE =		0x0,
-	IMT_INPUT_MODE_MT_TOUCHSCREEN =	0x2,
-	IMT_INPUT_MODE_MT_TOUCHPAD =	0x3,
+enum hmt_input_mode {
+	HMT_INPUT_MODE_MOUSE =		0x0,
+	HMT_INPUT_MODE_MT_TOUCHSCREEN =	0x2,
+	HMT_INPUT_MODE_MT_TOUCHPAD =	0x3,
 };
 
 enum {
-	WMT_TIP_SWITCH,
-#define	WMT_SLOT	WMT_TIP_SWITCH
-	WMT_WIDTH,
-#define	WMT_MAJOR	WMT_WIDTH
-	WMT_HEIGHT,
-#define WMT_MINOR	WMT_HEIGHT
-	WMT_ORIENTATION,
-	WMT_X,
-	WMT_Y,
-	WMT_CONTACTID,
-	WMT_PRESSURE,
-	WMT_IN_RANGE,
-	WMT_CONFIDENCE,
-	WMT_TOOL_X,
-	WMT_TOOL_Y,
-	WMT_N_USAGES,
+	HMT_TIP_SWITCH,
+#define	HMT_SLOT	HMT_TIP_SWITCH
+	HMT_WIDTH,
+#define	HMT_MAJOR	HMT_WIDTH
+	HMT_HEIGHT,
+#define HMT_MINOR	HMT_HEIGHT
+	HMT_ORIENTATION,
+	HMT_X,
+	HMT_Y,
+	HMT_CONTACTID,
+	HMT_PRESSURE,
+	HMT_IN_RANGE,
+	HMT_CONFIDENCE,
+	HMT_TOOL_X,
+	HMT_TOOL_Y,
+	HMT_N_USAGES,
 };
 
-#define	WMT_NO_CODE	(ABS_MAX + 10)
-#define	WMT_NO_USAGE	-1
+#define	HMT_NO_CODE	(ABS_MAX + 10)
+#define	HMT_NO_USAGE	-1
 
-struct wmt_hid_map_item {
+struct hmt_hid_map_item {
 	char		name[5];
 	int32_t 	usage;		/* HID usage */
 	uint32_t	code;		/* Evdev event code */
 	bool		required;	/* Required for MT Digitizers */
 };
 
-static const struct wmt_hid_map_item wmt_hid_map[WMT_N_USAGES] = {
+static const struct hmt_hid_map_item hmt_hid_map[HMT_N_USAGES] = {
 
-	[WMT_TIP_SWITCH] = {	/* WMT_SLOT */
+	[HMT_TIP_SWITCH] = {	/* HMT_SLOT */
 		.name = "TIP",
 		.usage = HID_USAGE2(HUP_DIGITIZERS, HUD_TIP_SWITCH),
 		.code = ABS_MT_SLOT,
 		.required = true,
 	},
-	[WMT_WIDTH] = {		/* WMT_MAJOR */
+	[HMT_WIDTH] = {		/* HMT_MAJOR */
 		.name = "WDTH",
 		.usage = HID_USAGE2(HUP_DIGITIZERS, HUD_WIDTH),
 		.code = ABS_MT_TOUCH_MAJOR,
 		.required = false,
 	},
-	[WMT_HEIGHT] = {	/* WMT_MINOR */
+	[HMT_HEIGHT] = {	/* HMT_MINOR */
 		.name = "HGHT",
 		.usage = HID_USAGE2(HUP_DIGITIZERS, HUD_HEIGHT),
 		.code = ABS_MT_TOUCH_MINOR,
 		.required = false,
 	},
-	[WMT_ORIENTATION] = {
+	[HMT_ORIENTATION] = {
 		.name = "ORIE",
-		.usage = WMT_NO_USAGE,
+		.usage = HMT_NO_USAGE,
 		.code = ABS_MT_ORIENTATION,
 		.required = false,
 	},
-	[WMT_X] = {
+	[HMT_X] = {
 		.name = "X",
 		.usage = HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_X),
 		.code = ABS_MT_POSITION_X,
 		.required = true,
 	},
-	[WMT_Y] = {
+	[HMT_Y] = {
 		.name = "Y",
 		.usage = HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_Y),
 		.code = ABS_MT_POSITION_Y,
 		.required = true,
 	},
-	[WMT_CONTACTID] = {
+	[HMT_CONTACTID] = {
 		.name = "C_ID",
 		.usage = HID_USAGE2(HUP_DIGITIZERS, HUD_CONTACTID),
 		.code = ABS_MT_TRACKING_ID,
 		.required = true,
 	},
-	[WMT_PRESSURE] = {
+	[HMT_PRESSURE] = {
 		.name = "PRES",
 		.usage = HID_USAGE2(HUP_DIGITIZERS, HUD_TIP_PRESSURE),
 		.code = ABS_MT_PRESSURE,
 		.required = false,
 	},
-	[WMT_IN_RANGE] = {
+	[HMT_IN_RANGE] = {
 		.name = "RANG",
 		.usage = HID_USAGE2(HUP_DIGITIZERS, HUD_IN_RANGE),
 		.code = ABS_MT_DISTANCE,
 		.required = false,
 	},
-	[WMT_CONFIDENCE] = {
+	[HMT_CONFIDENCE] = {
 		.name = "CONF",
 		.usage = HID_USAGE2(HUP_DIGITIZERS, HUD_CONFIDENCE),
-		.code = WMT_NO_CODE,
+		.code = HMT_NO_CODE,
 		.required = false,
 	},
-	[WMT_TOOL_X] = {	/* Shares HID usage with WMT_X */
+	[HMT_TOOL_X] = {	/* Shares HID usage with HMT_X */
 		.name = "TL_X",
 		.usage = HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_X),
 		.code = ABS_MT_TOOL_X,
 		.required = false,
 	},
-	[WMT_TOOL_Y] = {	/* Shares HID usage with WMT_Y */
+	[HMT_TOOL_Y] = {	/* Shares HID usage with HMT_Y */
 		.name = "TL_Y",
 		.usage = HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_Y),
 		.code = ABS_MT_TOOL_Y,
@@ -201,35 +201,35 @@ static const struct wmt_hid_map_item wmt_hid_map[WMT_N_USAGES] = {
 	},
 };
 
-struct wmt_absinfo {
+struct hmt_absinfo {
 	int32_t			min;
 	int32_t			max;
 	int32_t			res;
 };
 
 #define	USAGE_SUPPORTED(caps, usage)	bit_test(caps, usage)
-#define	WMT_FOREACH_USAGE(caps, usage)			\
-	for ((usage) = 0; (usage) < WMT_N_USAGES; ++(usage))	\
+#define	HMT_FOREACH_USAGE(caps, usage)			\
+	for ((usage) = 0; (usage) < HMT_N_USAGES; ++(usage))	\
 		if (USAGE_SUPPORTED((caps), (usage)))
-#define	WMT_FOREACH_BUTTON(buttons, button)			\
-	for ((button) = 0; (button) < IMT_BTN_MAX; ++(button))	\
+#define	HMT_FOREACH_BUTTON(buttons, button)			\
+	for ((button) = 0; (button) < HMT_BTN_MAX; ++(button))	\
 		if (bit_test(buttons, button))
 
-struct imt_softc {
+struct hmt_softc {
 	device_t dev;
 	struct mtx              lock;
 	int			type;
 
-	struct wmt_absinfo      ai[WMT_N_USAGES];
-	struct hid_location     locs[MAX_MT_SLOTS][WMT_N_USAGES];
+	struct hmt_absinfo      ai[HMT_N_USAGES];
+	struct hid_location     locs[MAX_MT_SLOTS][HMT_N_USAGES];
 	struct hid_location     cont_count_loc;
-	struct hid_location	btn_loc[IMT_BTN_MAX];
+	struct hid_location	btn_loc[HMT_BTN_MAX];
 
 	struct evdev_dev        *evdev;
 
-	uint32_t                slot_data[WMT_N_USAGES];
-	bitstr_t		bit_decl(caps, WMT_N_USAGES);
-	bitstr_t		bit_decl(buttons, IMT_BTN_MAX);
+	uint32_t                slot_data[HMT_N_USAGES];
+	bitstr_t		bit_decl(caps, HMT_N_USAGES);
+	bitstr_t		bit_decl(buttons, HMT_BTN_MAX);
 	uint32_t                isize;
 	uint32_t                nconts_per_report;
 	uint32_t		nconts_todo;
@@ -250,43 +250,43 @@ struct imt_softc {
 	uint8_t			input_mode_rid;
 };
 
-static int wmt_hid_parse(struct imt_softc *, const void *, uint16_t);
-static void wmt_devcaps_parse(struct imt_softc *, const void *, uint16_t);
-static int imt_set_input_mode(struct imt_softc *, enum imt_input_mode);
+static int hmt_hid_parse(struct hmt_softc *, const void *, uint16_t);
+static void hmt_devcaps_parse(struct hmt_softc *, const void *, uint16_t);
+static int hmt_set_input_mode(struct hmt_softc *, enum hmt_input_mode);
 
-static iichid_intr_t		imt_intr;
+static iichid_intr_t		hmt_intr;
 
-static device_probe_t		imt_probe;
-static device_attach_t		imt_attach;
-static device_detach_t		imt_detach;
+static device_probe_t		hmt_probe;
+static device_attach_t		hmt_attach;
+static device_detach_t		hmt_detach;
 
-static evdev_open_t	imt_ev_open;
-static evdev_close_t	imt_ev_close;
+static evdev_open_t	hmt_ev_open;
+static evdev_close_t	hmt_ev_close;
 
-static devclass_t imt_devclass;
+static devclass_t hmt_devclass;
 
-static device_method_t imt_methods[] = {
+static device_method_t hmt_methods[] = {
 
-	DEVMETHOD(device_probe,		imt_probe),
-	DEVMETHOD(device_attach,	imt_attach),
-	DEVMETHOD(device_detach,	imt_detach),
+	DEVMETHOD(device_probe,		hmt_probe),
+	DEVMETHOD(device_attach,	hmt_attach),
+	DEVMETHOD(device_detach,	hmt_detach),
 
 	DEVMETHOD_END
 };
 
-static driver_t imt_driver = {
-	.name = "imt",
-	.methods = imt_methods,
-	.size = sizeof(struct imt_softc),
+static driver_t hmt_driver = {
+	.name = "hmt",
+	.methods = hmt_methods,
+	.size = sizeof(struct hmt_softc),
 };
 
-static const struct evdev_methods imt_evdev_methods = {
-	.ev_open = &imt_ev_open,
-	.ev_close = &imt_ev_close,
+static const struct evdev_methods hmt_evdev_methods = {
+	.ev_open = &hmt_ev_open,
+	.ev_close = &hmt_ev_close,
 };
 
 static int
-imt_ev_close(struct evdev_dev *evdev)
+hmt_ev_close(struct evdev_dev *evdev)
 {
 	device_t dev = evdev_get_softc(evdev);
 
@@ -294,7 +294,7 @@ imt_ev_close(struct evdev_dev *evdev)
 }
 
 static int
-imt_ev_open(struct evdev_dev *evdev)
+hmt_ev_open(struct evdev_dev *evdev)
 {
 	device_t dev = evdev_get_softc(evdev);
 
@@ -302,7 +302,7 @@ imt_ev_open(struct evdev_dev *evdev)
 }
 
 static int
-imt_probe(device_t dev)
+hmt_probe(device_t dev)
 {
 	device_t iichid = device_get_parent(dev);
 	struct iichid_hw *hw = device_get_ivars(dev);
@@ -319,7 +319,7 @@ imt_probe(device_t dev)
 	}
 
 	/* Check if report descriptor belongs to a HID multitouch device */
-	hid_type = wmt_hid_parse(NULL, d_ptr, d_len);
+	hid_type = hmt_hid_parse(NULL, d_ptr, d_len);
 	error = hid_type != 0 ? BUS_PROBE_DEFAULT : ENXIO;
 
 out:
@@ -330,9 +330,9 @@ out:
 }
 
 static int
-imt_attach(device_t dev)
+hmt_attach(device_t dev)
 {
-	struct imt_softc *sc = device_get_softc(dev);
+	struct hmt_softc *sc = device_get_softc(dev);
 	device_t iichid = device_get_parent(dev);
 	struct iichid_hw *hw = device_get_ivars(dev);
 	void *d_ptr, *fbuf = NULL;
@@ -351,7 +351,7 @@ imt_attach(device_t dev)
 
 	sc->dev = dev;
 
-	sc->type = wmt_hid_parse(sc, d_ptr, d_len);
+	sc->type = hmt_hid_parse(sc, d_ptr, d_len);
 	if (sc->type == 0) {
 		DPRINTF("multi-touch HID descriptor not found\n");
 		return (ENXIO);
@@ -366,7 +366,7 @@ imt_attach(device_t dev)
 		error = hid_get_report(iichid, fbuf, sc->cont_max_rlen,
 		    I2C_HID_REPORT_TYPE_FEATURE, sc->cont_max_rid);
 		if (error == 0)
-			wmt_devcaps_parse(sc, fbuf, sc->cont_max_rlen);
+			hmt_devcaps_parse(sc, fbuf, sc->cont_max_rlen);
 		else
 			DPRINTF("usbd_req_get_report error=%d\n", error);
 	} else
@@ -381,7 +381,7 @@ imt_attach(device_t dev)
 	free(fbuf, M_TEMP);
 
 	if (sc->type == HUD_TOUCHPAD && sc->input_mode_rlen > 1) {
-		error = imt_set_input_mode(sc, IMT_INPUT_MODE_MT_TOUCHPAD);
+		error = hmt_set_input_mode(sc, HMT_INPUT_MODE_MT_TOUCHPAD);
 		if (error) {
 			DPRINTF("Failed to set input mode: %d\n", error);
 			return (ENXIO);
@@ -389,14 +389,14 @@ imt_attach(device_t dev)
 	}
 
 	/* Cap contact count maximum to MAX_MT_SLOTS */
-	if (sc->ai[WMT_SLOT].max >= MAX_MT_SLOTS) {
+	if (sc->ai[HMT_SLOT].max >= MAX_MT_SLOTS) {
 		DPRINTF("Hardware reported %d contacts while only %d is "
-		    "supported\n", (int)sc->ai[WMT_SLOT].max+1, MAX_MT_SLOTS);
-		sc->ai[WMT_SLOT].max = MAX_MT_SLOTS - 1;
+		    "supported\n", (int)sc->ai[HMT_SLOT].max+1, MAX_MT_SLOTS);
+		sc->ai[HMT_SLOT].max = MAX_MT_SLOTS - 1;
 	}
 
 	mtx_init(&sc->lock, "imt lock", NULL, MTX_DEF);
-	hid_intr_setup(iichid, &sc->lock, imt_intr, sc);
+	hid_intr_setup(iichid, &sc->lock, hmt_intr, sc);
 
 	sc->evdev = evdev_alloc();
 	evdev_set_name(sc->evdev, device_get_desc(dev));
@@ -404,7 +404,7 @@ imt_attach(device_t dev)
 	evdev_set_id(sc->evdev, BUS_I2C, hw->idVendor, hw->idProduct,
 	    hw->idVersion);
 //	evdev_set_serial(sc->evdev, usb_get_serial(uaa->device));
-	evdev_set_methods(sc->evdev, dev, &imt_evdev_methods);
+	evdev_set_methods(sc->evdev, dev, &hmt_evdev_methods);
 	evdev_set_flag(sc->evdev, EVDEV_FLAG_MT_STCOMPAT);
 	switch (sc->type) {
 	case HUD_TOUCHSCREEN:
@@ -419,45 +419,45 @@ imt_attach(device_t dev)
 	evdev_support_event(sc->evdev, EV_ABS);
 	if (sc->has_buttons) {
 		evdev_support_event(sc->evdev, EV_KEY);
-		WMT_FOREACH_BUTTON(sc->buttons, i)
+		HMT_FOREACH_BUTTON(sc->buttons, i)
 			evdev_support_key(sc->evdev, BTN_MOUSE + i);
 	}
-	WMT_FOREACH_USAGE(sc->caps, i) {
-		if (wmt_hid_map[i].code != WMT_NO_CODE)
-			evdev_support_abs(sc->evdev, wmt_hid_map[i].code, 0,
+	HMT_FOREACH_USAGE(sc->caps, i) {
+		if (hmt_hid_map[i].code != HMT_NO_CODE)
+			evdev_support_abs(sc->evdev, hmt_hid_map[i].code, 0,
 			    sc->ai[i].min, sc->ai[i].max, 0, 0, sc->ai[i].res);
 	}
 
 	error = evdev_register_mtx(sc->evdev, &sc->lock);
 	if (error) {
-		imt_detach(dev);
+		hmt_detach(dev);
 		return (ENXIO);
 	}
 
 	/* Announce information about the touch device */
-	bit_count(sc->buttons, 0, IMT_BTN_MAX, &nbuttons);
+	bit_count(sc->buttons, 0, HMT_BTN_MAX, &nbuttons);
 	device_printf(sc->dev, "Multitouch %s with %d button%s%s\n",
 	    sc->type == HUD_TOUCHSCREEN ? "touchscreen" : "touchpad",
 	    nbuttons, nbuttons != 1 ? "s" : "",
 	    sc->is_clickpad ? ", click-pad" : "");
 	device_printf(sc->dev,
 	    "%d contacts with [%s%s%s%s%s] properties. Report range [%d:%d] - [%d:%d]\n",
-	    (int)sc->ai[WMT_SLOT].max + 1,
-	    USAGE_SUPPORTED(sc->caps, WMT_IN_RANGE) ? "R" : "",
-	    USAGE_SUPPORTED(sc->caps, WMT_CONFIDENCE) ? "C" : "",
-	    USAGE_SUPPORTED(sc->caps, WMT_WIDTH) ? "W" : "",
-	    USAGE_SUPPORTED(sc->caps, WMT_HEIGHT) ? "H" : "",
-	    USAGE_SUPPORTED(sc->caps, WMT_PRESSURE) ? "P" : "",
-	    (int)sc->ai[WMT_X].min, (int)sc->ai[WMT_Y].min,
-	    (int)sc->ai[WMT_X].max, (int)sc->ai[WMT_Y].max);
+	    (int)sc->ai[HMT_SLOT].max + 1,
+	    USAGE_SUPPORTED(sc->caps, HMT_IN_RANGE) ? "R" : "",
+	    USAGE_SUPPORTED(sc->caps, HMT_CONFIDENCE) ? "C" : "",
+	    USAGE_SUPPORTED(sc->caps, HMT_WIDTH) ? "W" : "",
+	    USAGE_SUPPORTED(sc->caps, HMT_HEIGHT) ? "H" : "",
+	    USAGE_SUPPORTED(sc->caps, HMT_PRESSURE) ? "P" : "",
+	    (int)sc->ai[HMT_X].min, (int)sc->ai[HMT_Y].min,
+	    (int)sc->ai[HMT_X].max, (int)sc->ai[HMT_Y].max);
 
 	return (0);
 }
 
 static int
-imt_detach(device_t dev)
+hmt_detach(device_t dev)
 {
-	struct imt_softc *sc = device_get_softc(dev);
+	struct hmt_softc *sc = device_get_softc(dev);
 	device_t iichid = device_get_parent(dev);
 
 	evdev_free(sc->evdev);
@@ -470,9 +470,9 @@ imt_detach(device_t dev)
 }
 
 static void
-imt_intr(void *context, void *buf, uint16_t len)
+hmt_intr(void *context, void *buf, uint16_t len)
 {
-	struct imt_softc *sc = context;
+	struct hmt_softc *sc = context;
 	size_t usage;
 	uint32_t *slot_data = sc->slot_data;
 	uint32_t cont, btn;
@@ -491,7 +491,7 @@ imt_intr(void *context, void *buf, uint16_t len)
 	 * This snippet is to be removed after GPIO interrupt support is added.
 	 */
 	if (len == 0) {
-		for (slot = 0; slot <= sc->ai[WMT_SLOT].max; slot++) {
+		for (slot = 0; slot <= sc->ai[HMT_SLOT].max; slot++) {
 			evdev_push_abs(sc->evdev, ABS_MT_SLOT, slot);
 			evdev_push_abs(sc->evdev, ABS_MT_TRACKING_ID, -1);
 		}
@@ -543,12 +543,12 @@ imt_intr(void *context, void *buf, uint16_t len)
 	if (cont_count != 0)
 		sc->nconts_todo = cont_count;
 
-#ifdef IMT_DEBUG
+#ifdef HMT_DEBUG
 	DPRINTFN(6, "cont_count:%2u", (unsigned)cont_count);
-	if (wmt_debug >= 6) {
-		WMT_FOREACH_USAGE(sc->caps, usage) {
-			if (wmt_hid_map[usage].usage != WMT_NO_USAGE)
-				printf(" %-4s", wmt_hid_map[usage].name);
+	if (hmt_debug >= 6) {
+		HMT_FOREACH_USAGE(sc->caps, usage) {
+			if (hmt_hid_map[usage].usage != HMT_NO_USAGE)
+				printf(" %-4s", hmt_hid_map[usage].name);
 		}
 		printf("\n");
 	}
@@ -561,20 +561,20 @@ imt_intr(void *context, void *buf, uint16_t len)
 	for (cont = 0; cont < cont_count; cont++) {
 
 		bzero(slot_data, sizeof(sc->slot_data));
-		WMT_FOREACH_USAGE(sc->caps, usage) {
+		HMT_FOREACH_USAGE(sc->caps, usage) {
 			if (sc->locs[cont][usage].size > 0)
 				slot_data[usage] = hid_get_data_unsigned(
 				    buf, len, &sc->locs[cont][usage]);
 		}
 
 		slot = evdev_get_mt_slot_by_tracking_id(sc->evdev,
-		    slot_data[WMT_CONTACTID]);
+		    slot_data[HMT_CONTACTID]);
 
-#ifdef IMT_DEBUG
+#ifdef HMT_DEBUG
 		DPRINTFN(6, "cont%01x: data = ", cont);
-		if (wmt_debug >= 6) {
-			WMT_FOREACH_USAGE(sc->caps, usage) {
-				if (wmt_hid_map[usage].usage != WMT_NO_USAGE)
+		if (hmt_debug >= 6) {
+			HMT_FOREACH_USAGE(sc->caps, usage) {
+				if (hmt_hid_map[usage].usage != HMT_NO_USAGE)
 					printf("%04x ", slot_data[usage]);
 			}
 			printf("slot = %d\n", (int)slot);
@@ -583,27 +583,27 @@ imt_intr(void *context, void *buf, uint16_t len)
 
 		if (slot == -1) {
 			DPRINTF("Slot overflow for contact_id %u\n",
-			    (unsigned)slot_data[WMT_CONTACTID]);
+			    (unsigned)slot_data[HMT_CONTACTID]);
 			continue;
 		}
 
-		if (slot_data[WMT_TIP_SWITCH] != 0 &&
-		    !(USAGE_SUPPORTED(sc->caps, WMT_CONFIDENCE) &&
-		      slot_data[WMT_CONFIDENCE] == 0)) {
+		if (slot_data[HMT_TIP_SWITCH] != 0 &&
+		    !(USAGE_SUPPORTED(sc->caps, HMT_CONFIDENCE) &&
+		      slot_data[HMT_CONFIDENCE] == 0)) {
 			/* This finger is in proximity of the sensor */
-			slot_data[WMT_SLOT] = slot;
-			slot_data[WMT_IN_RANGE] = !slot_data[WMT_IN_RANGE];
+			slot_data[HMT_SLOT] = slot;
+			slot_data[HMT_IN_RANGE] = !slot_data[HMT_IN_RANGE];
 			/* Divided by two to match visual scale of touch */
-			width = slot_data[WMT_WIDTH] >> 1;
-			height = slot_data[WMT_HEIGHT] >> 1;
-			slot_data[WMT_ORIENTATION] = width > height;
-			slot_data[WMT_MAJOR] = MAX(width, height);
-			slot_data[WMT_MINOR] = MIN(width, height);
+			width = slot_data[HMT_WIDTH] >> 1;
+			height = slot_data[HMT_HEIGHT] >> 1;
+			slot_data[HMT_ORIENTATION] = width > height;
+			slot_data[HMT_MAJOR] = MAX(width, height);
+			slot_data[HMT_MINOR] = MIN(width, height);
 
-			WMT_FOREACH_USAGE(sc->caps, usage)
-				if (wmt_hid_map[usage].code != WMT_NO_CODE)
+			HMT_FOREACH_USAGE(sc->caps, usage)
+				if (hmt_hid_map[usage].code != HMT_NO_CODE)
 					evdev_push_abs(sc->evdev,
-					    wmt_hid_map[usage].code,
+					    hmt_hid_map[usage].code,
 					    slot_data[usage]);
 		} else {
 			evdev_push_abs(sc->evdev, ABS_MT_SLOT, slot);
@@ -614,7 +614,7 @@ imt_intr(void *context, void *buf, uint16_t len)
 	sc->nconts_todo -= cont_count;
 	if (sc->nconts_todo == 0) {
 		if (sc->has_buttons) {
-			WMT_FOREACH_BUTTON(sc->buttons, btn)
+			HMT_FOREACH_BUTTON(sc->buttons, btn)
 				evdev_push_key(sc->evdev, BTN_MOUSE + btn,
 				    hid_get_data(buf,
 						 len,
@@ -626,7 +626,7 @@ imt_intr(void *context, void *buf, uint16_t len)
 
 /* Port of userland hid_report_size() from usbhid(3) to kernel */
 static int
-wmt_hid_report_size(const void *buf, uint16_t len, enum hid_kind k, uint8_t id)
+hmt_hid_report_size(const void *buf, uint16_t len, enum hid_kind k, uint8_t id)
 {
 	struct hid_data *d;
 	struct hid_item h;
@@ -665,7 +665,7 @@ wmt_hid_report_size(const void *buf, uint16_t len, enum hid_kind k, uint8_t id)
 }
 
 static int
-wmt_hid_parse(struct imt_softc *sc, const void *d_ptr, uint16_t d_len)
+hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, uint16_t d_len)
 {
 	struct hid_item hi;
 	struct hid_data *hd;
@@ -673,8 +673,8 @@ wmt_hid_parse(struct imt_softc *sc, const void *d_ptr, uint16_t d_len)
 	size_t cont = 0;
 	int type = 0;
 	int nbuttons = 0;
-	bitstr_t bit_decl(caps, WMT_N_USAGES);
-	bitstr_t bit_decl(buttons, IMT_BTN_MAX);
+	bitstr_t bit_decl(caps, HMT_N_USAGES);
+	bitstr_t bit_decl(buttons, HMT_BTN_MAX);
 	uint32_t btn;
 	int32_t cont_count_max = 0;
 	uint8_t report_id = 0;
@@ -688,7 +688,7 @@ wmt_hid_parse(struct imt_softc *sc, const void *d_ptr, uint16_t d_len)
 	bool cont_count_found = false;
 	bool scan_time_found = false;
 
-#define WMT_HI_ABSOLUTE(hi)	\
+#define HMT_HI_ABSOLUTE(hi)	\
 	(((hi).flags & (HIO_CONST|HIO_VARIABLE|HIO_RELATIVE)) == HIO_VARIABLE)
 #define	HUMS_THQA_CERT	0xC5
 
@@ -721,7 +721,7 @@ wmt_hid_parse(struct imt_softc *sc, const void *d_ptr, uint16_t d_len)
 				break;
 			}
 			if (hi.collevel == 1 && touch_coll &&
-			    WMT_HI_ABSOLUTE(hi) && hi.usage ==
+			    HMT_HI_ABSOLUTE(hi) && hi.usage ==
 			      HID_USAGE2(HUP_DIGITIZERS, HUD_CONTACT_MAX)) {
 				cont_count_max = hi.logical_maximum;
 				cont_max_rid = hi.report_ID;
@@ -729,13 +729,13 @@ wmt_hid_parse(struct imt_softc *sc, const void *d_ptr, uint16_t d_len)
 					sc->cont_max_loc = hi.loc;
 			}
 			if (hi.collevel == 1 && touch_coll &&
-			    WMT_HI_ABSOLUTE(hi) && hi.usage ==
+			    HMT_HI_ABSOLUTE(hi) && hi.usage ==
 			      HID_USAGE2(HUP_DIGITIZERS, HUD_BUTTON_TYPE)) {
 				btn_type_rid = hi.report_ID;
 				if (sc != NULL)
 					sc->btn_type_loc = hi.loc;
 			}
-			if (conf_coll && WMT_HI_ABSOLUTE(hi) && hi.usage ==
+			if (conf_coll && HMT_HI_ABSOLUTE(hi) && hi.usage ==
 			      HID_USAGE2(HUP_DIGITIZERS, HUD_INPUT_MODE)) {
 				input_mode_rid = hi.report_ID;
 				if (sc != NULL)
@@ -753,8 +753,8 @@ wmt_hid_parse(struct imt_softc *sc, const void *d_ptr, uint16_t d_len)
 		return (0);
 
 	touch_coll = false;
-	bzero(caps, bitstr_size(WMT_N_USAGES));
-	bzero(buttons, bitstr_size(IMT_BTN_MAX));
+	bzero(caps, bitstr_size(HMT_N_USAGES));
+	bzero(buttons, bitstr_size(HMT_BTN_MAX));
 
 	/* Parse input for other parameters */
 	hd = hid_start_parse(d_ptr, d_len, 1 << hid_input);
@@ -788,7 +788,7 @@ wmt_hid_parse(struct imt_softc *sc, const void *d_ptr, uint16_t d_len)
 			 * Ensure that all usages are located within the same
 			 * report and proper collection.
 			 */
-			if (WMT_HI_ABSOLUTE(hi) && touch_coll &&
+			if (HMT_HI_ABSOLUTE(hi) && touch_coll &&
 			    (report_id == 0 || report_id == hi.report_ID))
 				report_id = hi.report_ID;
 			else
@@ -796,7 +796,7 @@ wmt_hid_parse(struct imt_softc *sc, const void *d_ptr, uint16_t d_len)
 
 			if (hi.collevel == 1 &&
 			    hi.usage > HID_USAGE2(HUP_BUTTON, 0) &&
-			    hi.usage <= HID_USAGE2(HUP_BUTTON, IMT_BTN_MAX)) {
+			    hi.usage <= HID_USAGE2(HUP_BUTTON, HMT_BTN_MAX)) {
 				btn = (hi.usage & 0xFFFF) - 1;
 				bit_set(buttons, btn);
 				if (sc != NULL)
@@ -826,8 +826,8 @@ wmt_hid_parse(struct imt_softc *sc, const void *d_ptr, uint16_t d_len)
 				break;
 			}
 
-			for (i = 0; i < WMT_N_USAGES; i++) {
-				if (hi.usage == wmt_hid_map[i].usage) {
+			for (i = 0; i < HMT_N_USAGES; i++) {
+				if (hi.usage == hmt_hid_map[i].usage) {
 					if (sc == NULL) {
 						if (USAGE_SUPPORTED(caps, i))
 							continue;
@@ -851,7 +851,7 @@ wmt_hid_parse(struct imt_softc *sc, const void *d_ptr, uint16_t d_len)
 					if (cont > 0)
 						break;
 					bit_set(caps, i);
-					sc->ai[i] = (struct wmt_absinfo) {
+					sc->ai[i] = (struct hmt_absinfo) {
 					    .max = hi.logical_maximum,
 					    .min = hi.logical_minimum,
 					    .res = hid_item_resolution(&hi),
@@ -869,13 +869,13 @@ wmt_hid_parse(struct imt_softc *sc, const void *d_ptr, uint16_t d_len)
 	/* Check for required HID Usages */
 	if (!cont_count_found || !scan_time_found || cont == 0)
 		return (0);
-	for (i = 0; i < WMT_N_USAGES; i++) {
-		if (wmt_hid_map[i].required && !USAGE_SUPPORTED(caps, i))
+	for (i = 0; i < HMT_N_USAGES; i++) {
+		if (hmt_hid_map[i].required && !USAGE_SUPPORTED(caps, i))
 			return (0);
 	}
 
 	/* Touchpads must have at least one button */
-	bit_count(buttons, 0, IMT_BTN_MAX, &nbuttons);
+	bit_count(buttons, 0, HMT_BTN_MAX, &nbuttons);
 	if (type == HUD_TOUCHPAD && nbuttons == 0)
 		return (0);
 
@@ -892,35 +892,35 @@ wmt_hid_parse(struct imt_softc *sc, const void *d_ptr, uint16_t d_len)
 		cont_count_max = cont;
 
 	/* Set number of MT protocol type B slots */
-	sc->ai[WMT_SLOT] = (struct wmt_absinfo) {
+	sc->ai[HMT_SLOT] = (struct hmt_absinfo) {
 		.min = 0,
 		.max = cont_count_max - 1,
 		.res = 0,
 	};
 
 	/* Report touch orientation if both width and height are supported */
-	if (USAGE_SUPPORTED(caps, WMT_WIDTH) &&
-	    USAGE_SUPPORTED(caps, WMT_HEIGHT)) {
-		bit_set(caps, WMT_ORIENTATION);
-		sc->ai[WMT_ORIENTATION].max = 1;
+	if (USAGE_SUPPORTED(caps, HMT_WIDTH) &&
+	    USAGE_SUPPORTED(caps, HMT_HEIGHT)) {
+		bit_set(caps, HMT_ORIENTATION);
+		sc->ai[HMT_ORIENTATION].max = 1;
 	}
 
-	sc->isize = wmt_hid_report_size(d_ptr, d_len, hid_input, report_id);
-	sc->cont_max_rlen = wmt_hid_report_size(d_ptr, d_len, hid_feature,
+	sc->isize = hmt_hid_report_size(d_ptr, d_len, hid_input, report_id);
+	sc->cont_max_rlen = hmt_hid_report_size(d_ptr, d_len, hid_feature,
 	    cont_max_rid);
 	if (btn_type_rid > 0)
-		sc->btn_type_rlen = wmt_hid_report_size(d_ptr, d_len,
+		sc->btn_type_rlen = hmt_hid_report_size(d_ptr, d_len,
 		    hid_feature, btn_type_rid);
 	if (thqa_cert_rid > 0)
-		sc->thqa_cert_rlen = wmt_hid_report_size(d_ptr, d_len,
+		sc->thqa_cert_rlen = hmt_hid_report_size(d_ptr, d_len,
 		    hid_feature, thqa_cert_rid);
 	if (input_mode_rid > 0)
-		sc->input_mode_rlen = wmt_hid_report_size(d_ptr, d_len,
+		sc->input_mode_rlen = hmt_hid_report_size(d_ptr, d_len,
 		    hid_feature, input_mode_rid);
 
 	sc->report_id = report_id;
-	bcopy(caps, sc->caps, bitstr_size(WMT_N_USAGES));
-	bcopy(buttons, sc->buttons, bitstr_size(IMT_BTN_MAX));
+	bcopy(caps, sc->caps, bitstr_size(HMT_N_USAGES));
+	bcopy(buttons, sc->buttons, bitstr_size(HMT_BTN_MAX));
 	sc->nconts_per_report = cont;
 	sc->cont_max_rid = cont_max_rid;
 	sc->btn_type_rid = btn_type_rid;
@@ -933,7 +933,7 @@ wmt_hid_parse(struct imt_softc *sc, const void *d_ptr, uint16_t d_len)
 
 /* Device capabilities feature report */
 static void
-wmt_devcaps_parse(struct imt_softc *sc, const void *r_ptr, uint16_t r_len)
+hmt_devcaps_parse(struct hmt_softc *sc, const void *r_ptr, uint16_t r_len)
 {
 	uint32_t cont_count_max;
 	const uint8_t *rep = (const uint8_t *)r_ptr + 1;
@@ -942,7 +942,7 @@ wmt_devcaps_parse(struct imt_softc *sc, const void *r_ptr, uint16_t r_len)
 	/* Feature report is a primary source of 'Contact Count Maximum' */
 	cont_count_max = hid_get_data_unsigned(rep, len, &sc->cont_max_loc);
 	if (cont_count_max > 0)
-		sc->ai[WMT_SLOT].max = cont_count_max - 1;
+		sc->ai[HMT_SLOT].max = cont_count_max - 1;
 
 	/* Assume that contact count shares the same report */
 	if (sc->btn_type_rid == sc->cont_max_rid)
@@ -951,7 +951,7 @@ wmt_devcaps_parse(struct imt_softc *sc, const void *r_ptr, uint16_t r_len)
 }
 
 static int
-imt_set_input_mode(struct imt_softc *sc, enum imt_input_mode mode)
+hmt_set_input_mode(struct hmt_softc *sc, enum hmt_input_mode mode)
 {
 	device_t iichid = device_get_parent(sc->dev);
 	uint8_t *fbuf;
@@ -977,8 +977,8 @@ imt_set_input_mode(struct imt_softc *sc, enum imt_input_mode mode)
 	return (error);
 }
 
-DRIVER_MODULE(imt, hidbus, imt_driver, imt_devclass, NULL, 0);
-MODULE_DEPEND(imt, hidbus, 1, 1, 1);
-MODULE_DEPEND(imt, usb, 1, 1, 1);
-MODULE_DEPEND(imt, evdev, 1, 1, 1);
-MODULE_VERSION(imt, 1);
+DRIVER_MODULE(hmt, hidbus, hmt_driver, hmt_devclass, NULL, 0);
+MODULE_DEPEND(hmt, hidbus, 1, 1, 1);
+MODULE_DEPEND(hmt, usb, 1, 1, 1);
+MODULE_DEPEND(hmt, evdev, 1, 1, 1);
+MODULE_VERSION(hmt, 1);
