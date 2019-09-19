@@ -1193,7 +1193,7 @@ static device_method_t iichid_methods[] = {
 	DEVMETHOD(hid_intr_stop,	iichid_intr_stop),
 
 	/* HID interface */
-	DEVMETHOD(hid_get_report_desc,	iichid_get_report_desc),
+	DEVMETHOD(hid_get_report_descr,	iichid_get_report_desc),
 	DEVMETHOD(hid_get_input_report,	iichid_get_input_report),
 	DEVMETHOD(hid_set_output_report,iichid_set_output_report),
 	DEVMETHOD(hid_get_report,	iichid_get_report),

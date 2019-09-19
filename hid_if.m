@@ -80,7 +80,7 @@ METHOD int intr_stop {
 #
 # Read out an report descriptor from the HID device.
 #
-METHOD int get_report_desc {
+METHOD int get_report_descr {
 	device_t dev;
 	void **data;
 	uint16_t *len;

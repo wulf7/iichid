@@ -33,8 +33,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/kernel.h>
 #include <sys/module.h>
 
-#include "hidbus.h"
 #include "iichid.h"
+#include "hidbus.h"
 
 #include "hid_if.h"
 
@@ -78,6 +78,75 @@ hidbus_detach(device_t dev)
 	return (0);
 }
 
+void
+hid_intr_setup(device_t bus, struct mtx *mtx, iichid_intr_t intr,
+    void *context)
+{
+
+	HID_INTR_SETUP(device_get_parent(bus), mtx, intr, context);
+}
+
+void
+hid_intr_unsetup(device_t bus)
+{
+
+	HID_INTR_UNSETUP(device_get_parent(bus));
+}
+
+int
+hid_intr_start(device_t bus)
+{
+
+	return (HID_INTR_START(device_get_parent(bus)));
+}
+
+int
+hid_intr_stop(device_t bus)
+{
+
+	return (HID_INTR_STOP(device_get_parent(bus)));
+}
+
+/*
+ * HID interface
+ */
+int
+hid_get_report_descr(device_t bus, void **data, uint16_t *len)
+{
+
+	return (HID_GET_REPORT_DESCR(device_get_parent(bus), data, len));
+}
+
+int
+hid_get_input_report(device_t bus, void *data, uint16_t len)
+{
+
+	return (HID_GET_INPUT_REPORT(device_get_parent(bus), data, len));
+}
+
+int
+hid_set_output_report(device_t bus, void *data, uint16_t len)
+{
+
+	return (HID_SET_OUTPUT_REPORT(device_get_parent(bus), data, len));
+}
+
+int
+hid_get_report(device_t bus, void *data, uint16_t len, uint8_t type,
+    uint8_t id)
+{
+
+	return (HID_GET_REPORT(device_get_parent(bus), data, len, type, id));
+}
+
+int
+hid_set_report(device_t bus, void *data, uint16_t len, uint8_t type,
+    uint8_t id)
+{
+
+	return (HID_SET_REPORT(device_get_parent(bus), data, len, type, id));
+}
+
 static device_method_t hidbus_methods[] = {
 	/* device interface */
 	DEVMETHOD(device_probe,         hidbus_probe),
@@ -86,7 +155,16 @@ static device_method_t hidbus_methods[] = {
 	DEVMETHOD(device_suspend,       bus_generic_suspend),
 	DEVMETHOD(device_resume,        bus_generic_resume),
 
-	/* hidbus interface */
+	/* hid interface */
+	DEVMETHOD(hid_intr_setup,	hid_intr_setup),
+	DEVMETHOD(hid_intr_unsetup,	hid_intr_unsetup),
+	DEVMETHOD(hid_intr_start,	hid_intr_start),
+	DEVMETHOD(hid_intr_stop,	hid_intr_stop),
+	DEVMETHOD(hid_get_report_descr,	hid_get_report_descr),
+	DEVMETHOD(hid_get_input_report,	hid_get_input_report),
+	DEVMETHOD(hid_set_output_report,hid_set_output_report),
+	DEVMETHOD(hid_get_report,       hid_get_report),
+	DEVMETHOD(hid_set_report,       hid_set_report),
 
         DEVMETHOD_END
 };

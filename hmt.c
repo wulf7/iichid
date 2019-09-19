@@ -51,10 +51,8 @@ __FBSDID("$FreeBSD$");
 #include <dev/usb/usbdi.h>
 #include <dev/usb/usbhid.h>
 
-#include "hidbus.h"
 #include "iichid.h"
-
-#include "hid_if.h"
+#include "hidbus.h"
 
 #define	HMT_DEBUG
 #define	HMT_DEBUG_VAR	hmt_debug
@@ -290,7 +288,7 @@ hmt_ev_close(struct evdev_dev *evdev)
 {
 	device_t dev = evdev_get_softc(evdev);
 
-	return (hid_intr_stop(device_get_parent(dev)));
+	return (hid_intr_stop(dev));
 }
 
 static int
@@ -298,20 +296,19 @@ hmt_ev_open(struct evdev_dev *evdev)
 {
 	device_t dev = evdev_get_softc(evdev);
 
-	return (hid_intr_start(device_get_parent(dev)));
+	return (hid_intr_start(dev));
 }
 
 static int
 hmt_probe(device_t dev)
 {
-	device_t iichid = device_get_parent(dev);
 	struct iichid_hw *hw = device_get_ivars(dev);
 	void *d_ptr;
 	uint16_t d_len;
 	int error;
 	int hid_type;
 
-	error = hid_get_report_desc(iichid, &d_ptr, &d_len);
+	error = hid_get_report_descr(dev, &d_ptr, &d_len);
 	if (error) {
 		device_printf(dev, "could not retrieve report descriptor from device: %d\n", error);
 		error = ENXIO;
@@ -333,7 +330,6 @@ static int
 hmt_attach(device_t dev)
 {
 	struct hmt_softc *sc = device_get_softc(dev);
-	device_t iichid = device_get_parent(dev);
 	struct iichid_hw *hw = device_get_ivars(dev);
 	void *d_ptr, *fbuf = NULL;
 	uint16_t d_len, fsize;
@@ -342,7 +338,7 @@ hmt_attach(device_t dev)
 	uint8_t fid;
 	int error;
 
-	error = hid_get_report_desc(iichid, &d_ptr, &d_len);
+	error = hid_get_report_descr(dev, &d_ptr, &d_len);
 	if (error) {
 		device_printf(dev, "could not retrieve report descriptor from "
 		    "device: %d\n", error);
@@ -363,7 +359,7 @@ hmt_attach(device_t dev)
 
 	/* Fetch and parse "Contact count maximum" feature report */
 	if (sc->cont_max_rlen > 1) {
-		error = hid_get_report(iichid, fbuf, sc->cont_max_rlen,
+		error = hid_get_report(dev, fbuf, sc->cont_max_rlen,
 		    I2C_HID_REPORT_TYPE_FEATURE, sc->cont_max_rid);
 		if (error == 0)
 			hmt_devcaps_parse(sc, fbuf, sc->cont_max_rlen);
@@ -375,7 +371,7 @@ hmt_attach(device_t dev)
 
 	/* Fetch THQA certificate to enable some devices like WaveShare */
 	if (sc->thqa_cert_rlen > 1 && sc->thqa_cert_rid != sc->cont_max_rid)
-		(void)hid_get_report(iichid, fbuf, sc->thqa_cert_rlen,
+		(void)hid_get_report(dev, fbuf, sc->thqa_cert_rlen,
 		    I2C_HID_REPORT_TYPE_FEATURE, sc->thqa_cert_rid);
 
 	free(fbuf, M_TEMP);
@@ -396,7 +392,7 @@ hmt_attach(device_t dev)
 	}
 
 	mtx_init(&sc->lock, "imt lock", NULL, MTX_DEF);
-	hid_intr_setup(iichid, &sc->lock, hmt_intr, sc);
+	hid_intr_setup(dev, &sc->lock, hmt_intr, sc);
 
 	sc->evdev = evdev_alloc();
 	evdev_set_name(sc->evdev, device_get_desc(dev));
@@ -458,11 +454,10 @@ static int
 hmt_detach(device_t dev)
 {
 	struct hmt_softc *sc = device_get_softc(dev);
-	device_t iichid = device_get_parent(dev);
 
 	evdev_free(sc->evdev);
 
-	hid_intr_unsetup(iichid);
+	hid_intr_unsetup(dev);
 
 	mtx_destroy(&sc->lock);
 
@@ -953,14 +948,13 @@ hmt_devcaps_parse(struct hmt_softc *sc, const void *r_ptr, uint16_t r_len)
 static int
 hmt_set_input_mode(struct hmt_softc *sc, enum hmt_input_mode mode)
 {
-	device_t iichid = device_get_parent(sc->dev);
 	uint8_t *fbuf;
 	int error;
 
 	fbuf = malloc(sc->input_mode_rlen, M_TEMP, M_WAITOK | M_ZERO);
 
 	/* Input Mode report is not strictly required to be readable */
-	error = hid_get_report(iichid, fbuf, sc->input_mode_rlen,
+	error = hid_get_report(sc->dev, fbuf, sc->input_mode_rlen,
 	    I2C_HID_REPORT_TYPE_FEATURE, sc->input_mode_rid);
 	if (error)
 		bzero(fbuf + 1, sc->input_mode_rlen - 1);
@@ -969,7 +963,7 @@ hmt_set_input_mode(struct hmt_softc *sc, enum hmt_input_mode mode)
 	hid_put_data_unsigned(fbuf + 1, sc->input_mode_rlen - 1,
 	    &sc->input_mode_loc, mode);
 
-	error = hid_set_report(iichid, fbuf, sc->input_mode_rlen,
+	error = hid_set_report(sc->dev, fbuf, sc->input_mode_rlen,
 	    I2C_HID_REPORT_TYPE_FEATURE, sc->input_mode_rid);
 
 	free(fbuf, M_TEMP);

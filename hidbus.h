@@ -27,25 +27,16 @@
 #define _HIDBUS_H_
 
 /* hidbus interrupts interface */
-#define hid_intr_setup(bus, mtx, intr, ctx) \
-	(HID_INTR_SETUP(device_get_parent(bus), mtx, intr, ctx))
-#define hid_intr_unsetup(bus) \
-	(HID_INTR_UNSETUP(device_get_parent(bus)))
-#define hid_intr_start(bus) \
-	(HID_INTR_START(device_get_parent(bus)))
-#define hid_intr_stop(bus) \
-	(HID_INTR_STOP(device_get_parent(bus)))
+void	hid_intr_setup(device_t, struct mtx *mtx, iichid_intr_t, void *);
+void	hid_intr_unsetup(device_t);
+int	hid_intr_start(device_t);
+int	hid_intr_stop(device_t);
 
 /* hidbus HID interface */
-#define hid_get_report_desc(bus, buf, len) \
-	(HID_GET_REPORT_DESC(device_get_parent(bus), buf, len))
-#define hid_get_input_report(bus, buf, len) \
-	(HID_GET_INPUT_REPORT(device_get_parent(bus), buf, len))
-#define hid_set_output_report(bus, buf, len) \
-	(HID_SET_OUTPUT_REPORT(device_get_parent(bus), buf, len))
-#define hid_get_report(bus, buf, len, type, id) \
-	(HID_GET_REPORT(device_get_parent(bus), buf, len, type, id))
-#define hid_set_report(bus, buf, len, type, id) \
-	(HID_SET_REPORT(device_get_parent(bus), buf, len, type, id))
+int	hid_get_report_descr(device_t, void **, uint16_t *);
+int	hid_get_input_report(device_t, void *, uint16_t);
+int	hid_set_output_report(device_t, void *, uint16_t);
+int	hid_get_report(device_t, void *, uint16_t, uint8_t, uint8_t);
+int	hid_set_report(device_t, void *, uint16_t, uint8_t, uint8_t);
 
 #endif	/* _HIDBUS_H_ */
