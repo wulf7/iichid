@@ -28,7 +28,7 @@
 #include <sys/types.h>
 #include <sys/lock.h>
 #include <sys/mutex.h>
-#include "iichid.h"
+#include "hidbus.h"
 
 INTERFACE hid;
 
@@ -46,7 +46,7 @@ INTERFACE hid;
 METHOD void intr_setup {
 	device_t dev;
 	struct mtx *lock;
-	iichid_intr_t intr;
+	hid_intr_t intr;
 	void *context;
 };
 

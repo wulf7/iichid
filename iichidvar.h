@@ -26,11 +26,13 @@
 
 #ifndef _IICHIDVAR_H_
 #define _IICHIDVAR_H_
-/*
+
+#include "hidbus.h"
+
 #define	I2C_HID_REPORT_TYPE_INPUT	0x1
 #define	I2C_HID_REPORT_TYPE_OUTPUT	0x2
 #define	I2C_HID_REPORT_TYPE_FEATURE	0x3
-*/
+
 /* 7.2 */
 enum {
         I2C_HID_CMD_DESCR       = 0x0,
@@ -86,11 +88,11 @@ struct iichid_softc {
 	bool			probe_done;
 	int			probe_result;
 
-	struct iichid_hw	hw;
+	struct hid_hw		hw;
 	uint16_t		config_reg;
 	struct i2c_hid_desc	desc;
 
-	iichid_intr_t		*intr_handler;
+	hid_intr_t		*intr_handler;
 	void			*intr_context;
 	struct mtx		*intr_mtx;
 

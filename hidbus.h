@@ -26,8 +26,21 @@
 #ifndef _HIDBUS_H_
 #define _HIDBUS_H_
 
+#define	HID_INPUT_REPORT	0x1
+#define	HID_OUTPUT_REPORT	0x2
+#define	HID_FEATURE_REPORT	0x3
+
+typedef void hid_intr_t(void *context, void *data, uint16_t len);
+
+struct hid_hw {
+	char		hid[16];
+	uint16_t	idVendor;
+	uint16_t	idProduct;
+	uint16_t	idVersion;
+};
+
 /* hidbus interrupts interface */
-void	hid_intr_setup(device_t, struct mtx *mtx, iichid_intr_t, void *);
+void	hid_intr_setup(device_t, struct mtx *mtx, hid_intr_t, void *);
 void	hid_intr_unsetup(device_t);
 int	hid_intr_start(device_t);
 int	hid_intr_stop(device_t);

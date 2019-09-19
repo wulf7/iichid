@@ -51,7 +51,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/usb/usbdi.h>
 #include <dev/usb/usbhid.h>
 
-#include "iichid.h"
 #include "hidbus.h"
 
 #define	HMT_DEBUG
@@ -252,7 +251,7 @@ static int hmt_hid_parse(struct hmt_softc *, const void *, uint16_t);
 static void hmt_devcaps_parse(struct hmt_softc *, const void *, uint16_t);
 static int hmt_set_input_mode(struct hmt_softc *, enum hmt_input_mode);
 
-static iichid_intr_t		hmt_intr;
+static hid_intr_t		hmt_intr;
 
 static device_probe_t		hmt_probe;
 static device_attach_t		hmt_attach;
@@ -302,7 +301,7 @@ hmt_ev_open(struct evdev_dev *evdev)
 static int
 hmt_probe(device_t dev)
 {
-	struct iichid_hw *hw = device_get_ivars(dev);
+	struct hid_hw *hw = device_get_ivars(dev);
 	void *d_ptr;
 	uint16_t d_len;
 	int error;
@@ -330,7 +329,7 @@ static int
 hmt_attach(device_t dev)
 {
 	struct hmt_softc *sc = device_get_softc(dev);
-	struct iichid_hw *hw = device_get_ivars(dev);
+	struct hid_hw *hw = device_get_ivars(dev);
 	void *d_ptr, *fbuf = NULL;
 	uint16_t d_len, fsize;
 	int nbuttons;
@@ -360,7 +359,7 @@ hmt_attach(device_t dev)
 	/* Fetch and parse "Contact count maximum" feature report */
 	if (sc->cont_max_rlen > 1) {
 		error = hid_get_report(dev, fbuf, sc->cont_max_rlen,
-		    I2C_HID_REPORT_TYPE_FEATURE, sc->cont_max_rid);
+		    HID_FEATURE_REPORT, sc->cont_max_rid);
 		if (error == 0)
 			hmt_devcaps_parse(sc, fbuf, sc->cont_max_rlen);
 		else
@@ -372,7 +371,7 @@ hmt_attach(device_t dev)
 	/* Fetch THQA certificate to enable some devices like WaveShare */
 	if (sc->thqa_cert_rlen > 1 && sc->thqa_cert_rid != sc->cont_max_rid)
 		(void)hid_get_report(dev, fbuf, sc->thqa_cert_rlen,
-		    I2C_HID_REPORT_TYPE_FEATURE, sc->thqa_cert_rid);
+		    HID_FEATURE_REPORT, sc->thqa_cert_rid);
 
 	free(fbuf, M_TEMP);
 
@@ -955,7 +954,7 @@ hmt_set_input_mode(struct hmt_softc *sc, enum hmt_input_mode mode)
 
 	/* Input Mode report is not strictly required to be readable */
 	error = hid_get_report(sc->dev, fbuf, sc->input_mode_rlen,
-	    I2C_HID_REPORT_TYPE_FEATURE, sc->input_mode_rid);
+	    HID_FEATURE_REPORT, sc->input_mode_rid);
 	if (error)
 		bzero(fbuf + 1, sc->input_mode_rlen - 1);
 
@@ -964,7 +963,7 @@ hmt_set_input_mode(struct hmt_softc *sc, enum hmt_input_mode mode)
 	    &sc->input_mode_loc, mode);
 
 	error = hid_set_report(sc->dev, fbuf, sc->input_mode_rlen,
-	    I2C_HID_REPORT_TYPE_FEATURE, sc->input_mode_rid);
+	    HID_FEATURE_REPORT, sc->input_mode_rid);
 
 	free(fbuf, M_TEMP);
 

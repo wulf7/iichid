@@ -56,7 +56,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/usb/usbdi.h>
 #include <dev/usb/usbhid.h>
 
-#include "iichid.h"
 #include "iichidvar.h"
 
 #include "hid_if.h"
@@ -714,7 +713,7 @@ iichid_sysctl_sampling_rate_handler(SYSCTL_HANDLER_ARGS)
 }
 
 static void
-iichid_intr_setup(device_t dev, struct mtx *mtx, iichid_intr_t intr,
+iichid_intr_setup(device_t dev, struct mtx *mtx, hid_intr_t intr,
     void *context)
 {
 	struct iichid_softc* sc = device_get_softc(dev);

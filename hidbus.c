@@ -33,7 +33,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/kernel.h>
 #include <sys/module.h>
 
-#include "iichid.h"
 #include "hidbus.h"
 
 #include "hid_if.h"
@@ -79,7 +78,7 @@ hidbus_detach(device_t dev)
 }
 
 void
-hid_intr_setup(device_t bus, struct mtx *mtx, iichid_intr_t intr,
+hid_intr_setup(device_t bus, struct mtx *mtx, hid_intr_t intr,
     void *context)
 {
 
