@@ -77,6 +77,9 @@ __FBSDID("$FreeBSD$");
 #include <dev/usb/input/usb_rdesc.h>
 #include <dev/usb/quirk/usb_quirk.h>
 
+#include "hidbus.h"
+#include "hid_if.h"
+
 #ifdef USB_DEBUG
 static int uhid_debug = 0;
 
@@ -101,11 +104,14 @@ enum {
 };
 
 struct uhid_softc {
-	struct mtx sc_mtx;
+	hid_intr_t *sc_intr_handler;
+	void *sc_intr_context;
+	struct mtx *sc_intr_mtx;
 
 	struct usb_xfer *sc_xfer[UHID_N_TRANSFER];
 	struct usb_device *sc_udev;
 	void   *sc_repdesc_ptr;
+	void   *sc_ibuf;
 
 	uint32_t sc_isize;
 	uint32_t sc_osize;
@@ -198,8 +204,9 @@ uhid_intr_read_callback(struct usb_xfer *xfer, usb_error_t error)
 			/* limit report length to the maximum */
 			if (actlen > (int)sc->sc_isize)
 				actlen = sc->sc_isize;
-//			usb_fifo_put_data(sc->sc_fifo.fp[USB_FIFO_RX], pc,
-//			    0, actlen, 1);
+			usbd_copy_out(pc, 0, sc->sc_ibuf, actlen);
+			sc->sc_intr_handler(sc->sc_intr_context, sc->sc_ibuf,
+			    actlen);
 		} else {
 			/* ignore it */
 			DPRINTF("ignored transfer, %d bytes\n", actlen);
@@ -389,111 +396,111 @@ static const struct usb_config uhid_config[UHID_N_TRANSFER] = {
 };
 
 static void
-uhid_start_read(struct usb_fifo *fifo)
+usbhid_intr_setup(device_t dev, struct mtx *mtx, hid_intr_t intr,
+    void *context)
 {
-	struct uhid_softc *sc = usb_fifo_softc(fifo);
+	struct uhid_softc* sc = device_get_softc(dev);
+	int error;
 
-	usbd_transfer_start(sc->sc_xfer[UHID_INTR_DT_RD]);
+	sc->sc_intr_handler = intr;
+	sc->sc_intr_context = context;
+	sc->sc_intr_mtx = mtx;
+
+	error = usbd_transfer_setup(sc->sc_udev,
+	    &sc->sc_iface_index, sc->sc_xfer, uhid_config,
+	    UHID_N_TRANSFER, sc, sc->sc_intr_mtx);
+
+	if (error)
+		DPRINTF("error=%s\n", usbd_errstr(error));
 }
 
 static void
-uhid_stop_read(struct usb_fifo *fifo)
+usbhid_intr_unsetup(device_t dev)
 {
-	struct uhid_softc *sc = usb_fifo_softc(fifo);
+	struct uhid_softc* sc = device_get_softc(dev);
 
-	usbd_transfer_stop(sc->sc_xfer[UHID_INTR_DT_RD]);
+	usbd_transfer_unsetup(sc->sc_xfer, UHID_N_TRANSFER);
 }
-
-#ifdef NOT_YET
-static void
-uhid_start_write(struct usb_fifo *fifo)
-{
-	struct uhid_softc *sc = usb_fifo_softc(fifo);
-
-	if ((sc->sc_flags & UHID_FLAG_IMMED) ||
-	    sc->sc_xfer[UHID_INTR_DT_WR] == NULL) {
-		usbd_transfer_start(sc->sc_xfer[UHID_CTRL_DT_WR]);
-	} else {
-		usbd_transfer_start(sc->sc_xfer[UHID_INTR_DT_WR]);
-	}
-}
-
-static void
-uhid_stop_write(struct usb_fifo *fifo)
-{
-	struct uhid_softc *sc = usb_fifo_softc(fifo);
-
-	usbd_transfer_stop(sc->sc_xfer[UHID_CTRL_DT_WR]);
-	usbd_transfer_stop(sc->sc_xfer[UHID_INTR_DT_WR]);
-}
-#endif
 
 static int
-uhid_get_report(struct uhid_softc *sc, uint8_t type,
-    uint8_t id, void *kern_data, void *user_data,
-    uint16_t len)
+usbhid_intr_start(device_t dev)
 {
-	int err;
-	uint8_t free_data = 0;
+	struct uhid_softc* sc = device_get_softc(dev);
 
-	if (kern_data == NULL) {
-		kern_data = malloc(len, M_USBDEV, M_WAITOK);
-		if (kern_data == NULL) {
-			err = ENOMEM;
-			goto done;
-		}
-		free_data = 1;
-	}
-	err = usbd_req_get_report(sc->sc_udev, NULL, kern_data,
+	mtx_assert(sc->sc_intr_mtx, MA_OWNED);
+
+	usbd_transfer_start(sc->sc_xfer[UHID_INTR_DT_RD]);
+
+	return (0);
+}
+
+static int
+usbhid_intr_stop(device_t dev)
+{
+	struct uhid_softc* sc = device_get_softc(dev);
+
+	mtx_assert(sc->sc_intr_mtx, MA_OWNED);
+
+	usbd_transfer_stop(sc->sc_xfer[UHID_INTR_DT_RD]);
+
+	return (0);
+}
+
+/*
+ * HID interface
+ */
+static int
+usbhid_get_report_desc(device_t dev, void **buf, uint16_t *len)
+{
+	struct uhid_softc* sc = device_get_softc(dev);
+
+	*buf = sc->sc_repdesc_ptr;
+	*len = sc->sc_repdesc_size;
+
+	return (0);
+}
+
+static int
+usbhid_get_input_report(device_t dev, void *buf, uint16_t len)
+{
+
+	return (ENOTSUP);
+}
+
+static int
+usbhid_set_output_report(device_t dev, void *buf, uint16_t len)
+{
+
+	return (ENOTSUP);
+}
+
+static int
+usbhid_get_report(device_t dev, void *buf, uint16_t len, uint8_t type,
+    uint8_t id)
+{
+	struct uhid_softc* sc = device_get_softc(dev);
+	int err;
+
+	err = usbd_req_get_report(sc->sc_udev, NULL, buf,
 	    len, sc->sc_iface_index, type, id);
-	if (err) {
-		err = ENXIO;
-		goto done;
-	}
-	if (user_data) {
-		/* dummy buffer */
-		err = copyout(kern_data, user_data, len);
-		if (err) {
-			goto done;
-		}
-	}
-done:
-	if (free_data) {
-		free(kern_data, M_USBDEV);
-	}
+	if (err)
+                err = ENXIO;
+
 	return (err);
 }
 
 static int
-uhid_set_report(struct uhid_softc *sc, uint8_t type,
-    uint8_t id, void *kern_data, void *user_data,
-    uint16_t len)
+usbhid_set_report(device_t dev, void *buf, uint16_t len, uint8_t type,
+    uint8_t id)
 {
+	struct uhid_softc* sc = device_get_softc(dev);
 	int err;
-	uint8_t free_data = 0;
 
-	if (kern_data == NULL) {
-		kern_data = malloc(len, M_USBDEV, M_WAITOK);
-		if (kern_data == NULL) {
-			err = ENOMEM;
-			goto done;
-		}
-		free_data = 1;
-		err = copyin(user_data, kern_data, len);
-		if (err) {
-			goto done;
-		}
-	}
-	err = usbd_req_set_report(sc->sc_udev, NULL, kern_data,
+	err = usbd_req_set_report(sc->sc_udev, NULL, buf,
 	    len, sc->sc_iface_index, type, id);
-	if (err) {
-		err = ENXIO;
-		goto done;
-	}
-done:
-	if (free_data) {
-		free(kern_data, M_USBDEV);
-	}
+	if (err)
+                err = ENXIO;
+
 	return (err);
 }
 
@@ -549,21 +556,11 @@ uhid_attach(device_t dev)
 
 	device_set_usb_desc(dev);
 
-	mtx_init(&sc->sc_mtx, "uhid lock", NULL, MTX_DEF | MTX_RECURSE);
-
 	sc->sc_udev = uaa->device;
 
 	sc->sc_iface_no = uaa->info.bIfaceNum;
 	sc->sc_iface_index = uaa->info.bIfaceIndex;
 
-	error = usbd_transfer_setup(uaa->device,
-	    &uaa->info.bIfaceIndex, sc->sc_xfer, uhid_config,
-	    UHID_N_TRANSFER, sc, &sc->sc_mtx);
-
-	if (error) {
-		DPRINTF("error=%s\n", usbd_errstr(error));
-		goto detach;
-	}
 	if (uaa->info.idVendor == USB_VENDOR_WACOM) {
 
 		/* the report descriptor for the Wacom Graphire is broken */
@@ -660,6 +657,7 @@ uhid_attach(device_t dev)
 		    sc->sc_fsize);
 		sc->sc_fsize = UHID_BSIZE;
 	}
+	sc->sc_ibuf = malloc(sc->sc_isize, M_USBDEV, M_ZERO | M_WAITOK);
 
 	return (0);			/* success */
 
@@ -673,14 +671,12 @@ uhid_detach(device_t dev)
 {
 	struct uhid_softc *sc = device_get_softc(dev);
 
-	usbd_transfer_unsetup(sc->sc_xfer, UHID_N_TRANSFER);
-
 	if (sc->sc_repdesc_ptr) {
 		if (!(sc->sc_flags & UHID_FLAG_STATIC_DESC)) {
 			free(sc->sc_repdesc_ptr, M_USBDEV);
 		}
 	}
-	mtx_destroy(&sc->sc_mtx);
+	free(sc->sc_ibuf, M_USBDEV);
 
 	return (0);
 }
@@ -691,6 +687,18 @@ static device_method_t usbhid_methods[] = {
 	DEVMETHOD(device_probe, uhid_probe),
 	DEVMETHOD(device_attach, uhid_attach),
 	DEVMETHOD(device_detach, uhid_detach),
+
+	DEVMETHOD(hid_intr_setup,	usbhid_intr_setup),
+	DEVMETHOD(hid_intr_unsetup,	usbhid_intr_unsetup),
+	DEVMETHOD(hid_intr_start,	usbhid_intr_start),
+	DEVMETHOD(hid_intr_stop,	usbhid_intr_stop),
+
+	/* HID interface */
+	DEVMETHOD(hid_get_report_descr,	usbhid_get_report_desc),
+	DEVMETHOD(hid_get_input_report,	usbhid_get_input_report),
+	DEVMETHOD(hid_set_output_report,usbhid_set_output_report),
+	DEVMETHOD(hid_get_report,	usbhid_get_report),
+	DEVMETHOD(hid_set_report,	usbhid_set_report),
 
 	DEVMETHOD_END
 };
