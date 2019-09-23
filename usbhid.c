@@ -104,9 +104,13 @@ enum {
 };
 
 struct uhid_softc {
+	device_t sc_child;
+
 	hid_intr_t *sc_intr_handler;
 	void *sc_intr_context;
 	struct mtx *sc_intr_mtx;
+
+	struct hid_hw sc_hw;
 
 	struct usb_xfer *sc_xfer[UHID_N_TRANSFER];
 	struct usb_device *sc_udev;
@@ -659,6 +663,23 @@ uhid_attach(device_t dev)
 	}
 	sc->sc_ibuf = malloc(sc->sc_isize, M_USBDEV, M_ZERO | M_WAITOK);
 
+	strlcpy(sc->sc_hw.hid, device_get_desc(dev), sizeof(sc->sc_hw.hid));
+	sc->sc_hw.idVendor = uaa->info.idVendor;
+	sc->sc_hw.idProduct = uaa->info.idProduct;
+	sc->sc_hw.idVersion = 0;
+
+	sc->sc_child = device_add_child(dev, "hidbus", -1);
+	if (sc->sc_child == NULL) {
+		device_printf(dev, "Could not add hidbus device\n");
+		error = ENXIO;
+		goto detach;
+	}
+
+	device_set_ivars(sc->sc_child, &sc->sc_hw);
+	error = bus_generic_attach(dev);
+	if (error)
+		device_printf(dev, "failed to attach child: %d\n", error);
+
 	return (0);			/* success */
 
 detach:
@@ -670,6 +691,11 @@ static int
 uhid_detach(device_t dev)
 {
 	struct uhid_softc *sc = device_get_softc(dev);
+
+	if (device_is_attached(dev))
+		bus_generic_detach(dev);
+	if (sc->sc_child)
+		device_delete_child(dev, sc->sc_child);
 
 	if (sc->sc_repdesc_ptr) {
 		if (!(sc->sc_flags & UHID_FLAG_STATIC_DESC)) {
@@ -711,5 +737,6 @@ static driver_t usbhid_driver = {
 
 DRIVER_MODULE(usbhid, uhub, usbhid_driver, usbhid_devclass, NULL, 0);
 MODULE_DEPEND(usbhid, usb, 1, 1, 1);
+MODULE_DEPEND(usbhid, hidbus, 1, 1, 1);
 MODULE_VERSION(usbhid, 1);
 USB_PNP_HOST_INFO(usbhid_devs);

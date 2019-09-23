@@ -34,6 +34,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/lock.h>
 #include <sys/module.h>
 #include <sys/mutex.h>
+#include <sys/systm.h>
 
 #include "hidbus.h"
 
@@ -209,4 +210,5 @@ driver_t hidbus_driver = {
 devclass_t hidbus_devclass;
 
 MODULE_VERSION(hidbus, 1);
+DRIVER_MODULE(hidbus, usbhid, hidbus_driver, hidbus_devclass, 0, 0);
 DRIVER_MODULE(hidbus, iichid, hidbus_driver, hidbus_devclass, 0, 0);

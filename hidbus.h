@@ -33,7 +33,7 @@
 typedef void hid_intr_t(void *context, void *data, uint16_t len);
 
 struct hid_hw {
-	char		hid[16];
+	char		hid[80];
 	uint16_t	idVendor;
 	uint16_t	idProduct;
 	uint16_t	idVersion;
