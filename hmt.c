@@ -214,7 +214,6 @@ struct hmt_absinfo {
 
 struct hmt_softc {
 	device_t dev;
-	struct mtx              lock;
 	int			type;
 
 	struct hmt_absinfo      ai[HMT_N_USAGES];
@@ -422,7 +421,7 @@ hmt_attach(device_t dev)
 			    sc->ai[i].min, sc->ai[i].max, 0, 0, sc->ai[i].res);
 	}
 
-	error = evdev_register_mtx(sc->evdev, &sc->lock);
+	error = evdev_register_mtx(sc->evdev, hid_get_lock(sc->dev));
 	if (error) {
 		hmt_detach(dev);
 		return (ENXIO);
