@@ -66,6 +66,8 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/mouse.h>
 
+#include "hidbus.h"
+
 #ifdef USB_DEBUG
 static int ums_debug = 0;
 
@@ -80,11 +82,6 @@ SYSCTL_INT(_hw_usb_ums, OID_AUTO, debug, CTLFLAG_RWTUN,
 #define	UMS_BUTTON_MAX   31		/* exclusive, must be less than 32 */
 #define	UMS_BUT(i) ((i) < 3 ? (((i) + 2) % 3) : (i))
 #define	UMS_INFO_MAX	  2		/* maximum number of HID sets */
-
-enum {
-	UMS_INTR_DT,
-	UMS_N_TRANSFER,
-};
 
 struct ums_info {
 	struct hid_location sc_loc_w;
@@ -112,19 +109,15 @@ struct ums_info {
 };
 
 struct ums_softc {
-	struct mtx sc_mtx;
 	struct ums_info sc_info[UMS_INFO_MAX];
-
-	struct usb_xfer *sc_xfer[UMS_N_TRANSFER];
 
 	uint8_t	sc_buttons;
 	uint8_t	sc_iid;
-	uint8_t	sc_temp[64];
 
 	struct evdev_dev *sc_evdev;
 };
 
-static usb_callback_t ums_intr_callback;
+static hid_intr_t ums_intr;
 
 static device_probe_t ums_probe;
 static device_attach_t ums_attach;
@@ -135,8 +128,6 @@ static evdev_close_t ums_ev_close;
 static void ums_evdev_push(struct ums_softc *, int32_t, int32_t,
     int32_t, int32_t, int32_t);
 
-static void	ums_start_rx(struct ums_softc *);
-static void	ums_stop_rx(struct ums_softc *);
 static int	ums_sysctl_handler_parseinfo(SYSCTL_HANDLER_ARGS);
 
 static const struct evdev_methods ums_evdev_methods = {
@@ -145,12 +136,12 @@ static const struct evdev_methods ums_evdev_methods = {
 };
 
 static void
-ums_intr_callback(struct usb_xfer *xfer, usb_error_t error)
+ums_intr(void *context, void *data, uint16_t len)
 {
-	struct ums_softc *sc = usbd_xfer_softc(xfer);
+	device_t dev = context;
+	struct ums_softc *sc = device_get_softc(dev);
 	struct ums_info *info = &sc->sc_info[0];
-	struct usb_page_cache *pc;
-	uint8_t *buf = sc->sc_temp;
+	uint8_t *buf = data;
 	int32_t buttons = 0;
 	int32_t dw = 0;
 	int32_t dx = 0;
@@ -159,24 +150,6 @@ ums_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 	int32_t dt = 0;
 	uint8_t i;
 	uint8_t id;
-	int len;
-
-	usbd_xfer_status(xfer, &len, NULL, NULL, NULL);
-
-	switch (USB_GET_STATE(xfer)) {
-	case USB_ST_TRANSFERRED:
-		DPRINTFN(6, "sc=%p actlen=%d\n", sc, len);
-
-		if (len > (int)sizeof(sc->sc_temp)) {
-			DPRINTFN(6, "truncating large packet to %zu bytes\n",
-			    sizeof(sc->sc_temp));
-			len = sizeof(sc->sc_temp);
-		}
-		if (len == 0)
-			goto tr_setup;
-
-		pc = usbd_xfer_get_frame(xfer, 0);
-		usbd_copy_out(pc, 0, buf, len);
 
 		DPRINTFN(6, "data = %02x %02x %02x %02x "
 		    "%02x %02x %02x %02x\n",
@@ -234,34 +207,7 @@ ums_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 			goto repeat;
 
 		ums_evdev_push(sc, dx, dy, dz, dt, buttons);
-
-	case USB_ST_SETUP:
-tr_setup:
-		usbd_xfer_set_frame_len(xfer, 0, usbd_xfer_max_len(xfer));
-		usbd_transfer_submit(xfer);
-		break;
-
-	default:			/* Error */
-		if (error != USB_ERR_CANCELLED) {
-			/* try clear stall first */
-			usbd_xfer_set_stall(xfer);
-			goto tr_setup;
-		}
-		break;
-	}
 }
-
-static const struct usb_config ums_config[UMS_N_TRANSFER] = {
-
-	[UMS_INTR_DT] = {
-		.type = UE_INTERRUPT,
-		.endpoint = UE_ADDR_ANY,
-		.direction = UE_DIR_IN,
-		.flags = {.pipe_bof = 1,.short_xfer_ok = 1,},
-		.bufsize = 0,	/* use wMaxPacketSize */
-		.callback = &ums_intr_callback,
-	},
-};
 
 /* A match on these entries will load ums */
 static const STRUCT_USB_HOST_ID __used ums_devs[] = {
@@ -273,29 +219,13 @@ static const STRUCT_USB_HOST_ID __used ums_devs[] = {
 static int
 ums_probe(device_t dev)
 {
-	struct usb_attach_arg *uaa = device_get_ivars(dev);
 	void *d_ptr;
 	int error;
 	uint16_t d_len;
 
 	DPRINTFN(11, "\n");
 
-	if (uaa->usb_mode != USB_MODE_HOST)
-		return (ENXIO);
-
-	if (uaa->info.bInterfaceClass != UICLASS_HID)
-		return (ENXIO);
-
-	if (usb_test_quirk(uaa, UQ_UMS_IGNORE))
-		return (ENXIO);
-
-	if ((uaa->info.bInterfaceSubClass == UISUBCLASS_BOOT) &&
-	    (uaa->info.bInterfaceProtocol == UIPROTO_MOUSE))
-		return (BUS_PROBE_DEFAULT);
-
-	error = usbd_req_get_hid_desc(uaa->device, NULL,
-	    &d_ptr, &d_len, M_TEMP, uaa->info.bIfaceIndex);
-
+	error = hid_get_report_descr(dev, &d_ptr, &d_len);
 	if (error)
 		return (ENXIO);
 
@@ -304,7 +234,6 @@ ums_probe(device_t dev)
 	else
 		error = ENXIO;
 
-	free(d_ptr, M_TEMP);
 	return (error);
 }
 
@@ -407,8 +336,8 @@ ums_hid_parse(struct ums_softc *sc, device_t dev, const uint8_t *buf,
 static int
 ums_attach(device_t dev)
 {
-	struct usb_attach_arg *uaa = device_get_ivars(dev);
 	struct ums_softc *sc = device_get_softc(dev);
+	struct hid_hw *hw = device_get_ivars(dev);
 	struct ums_info *info;
 	void *d_ptr = NULL;
 	int isize;
@@ -421,10 +350,9 @@ ums_attach(device_t dev)
 
 	DPRINTFN(11, "sc=%p\n", sc);
 
-	device_set_usb_desc(dev);
+	device_set_desc(dev, hw->hid);
 
-	mtx_init(&sc->sc_mtx, "ums lock", NULL, MTX_DEF | MTX_RECURSE);
-
+#ifdef NOT_YET
 	/*
          * Force the report (non-boot) protocol.
          *
@@ -433,20 +361,10 @@ ums_attach(device_t dev)
          */
 	err = usbd_req_set_protocol(uaa->device, NULL,
 	    uaa->info.bIfaceIndex, 1);
-
-	err = usbd_transfer_setup(uaa->device,
-	    &uaa->info.bIfaceIndex, sc->sc_xfer, ums_config,
-	    UMS_N_TRANSFER, sc, &sc->sc_mtx);
-
-	if (err) {
-		DPRINTF("error=%s\n", usbd_errstr(err));
-		goto detach;
-	}
+#endif
 
 	/* Get HID descriptor */
-	err = usbd_req_get_hid_desc(uaa->device, NULL, &d_ptr,
-	    &d_len, M_TEMP, uaa->info.bIfaceIndex);
-
+	err = hid_get_report_descr(dev, &d_ptr, &d_len);
 	if (err) {
 		device_printf(dev, "error reading report description\n");
 		goto detach;
@@ -459,18 +377,13 @@ ums_attach(device_t dev)
 		ums_hid_parse(sc, dev, d_ptr, d_len, i);
 	}
 
+#ifdef NOT_YET
 	if (usb_test_quirk(uaa, UQ_MS_REVZ)) {
 		info = &sc->sc_info[0];
 		/* Some wheels need the Z axis reversed. */
 		info->sc_flags |= UMS_FLAG_REVZ;
 	}
-	if (isize > (int)usbd_xfer_max_framelen(sc->sc_xfer[UMS_INTR_DT])) {
-		DPRINTF("WARNING: report size, %d bytes, is larger "
-		    "than interrupt size, %d bytes!\n", isize,
-		    usbd_xfer_max_framelen(sc->sc_xfer[UMS_INTR_DT]));
-	}
-	free(d_ptr, M_TEMP);
-	d_ptr = NULL;
+#endif
 
 #ifdef USB_DEBUG
 	for (j = 0; j < UMS_INFO_MAX; j++) {
@@ -497,13 +410,15 @@ ums_attach(device_t dev)
 	DPRINTF("size=%d, id=%d\n", isize, sc->sc_iid);
 #endif
 
+	hid_set_intr(dev, ums_intr);
+
 	sc->sc_evdev = evdev_alloc();
 	evdev_set_name(sc->sc_evdev, device_get_desc(dev));
 	evdev_set_phys(sc->sc_evdev, device_get_nameunit(dev));
-	evdev_set_id(sc->sc_evdev, BUS_USB, uaa->info.idVendor,
-	    uaa->info.idProduct, 0);
-	evdev_set_serial(sc->sc_evdev, usb_get_serial(uaa->device));
-	evdev_set_methods(sc->sc_evdev, sc, &ums_evdev_methods);
+	evdev_set_id(sc->sc_evdev, BUS_USB, hw->idVendor, hw->idProduct,
+	    hw->idVersion);
+//	evdev_set_serial(sc->sc_evdev, usb_get_serial(uaa->device));
+	evdev_set_methods(sc->sc_evdev, dev, &ums_evdev_methods);
 	evdev_support_prop(sc->sc_evdev, INPUT_PROP_POINTER);
 	evdev_support_event(sc->sc_evdev, EV_SYN);
 	evdev_support_event(sc->sc_evdev, EV_REL);
@@ -526,7 +441,7 @@ ums_attach(device_t dev)
 	for (i = 0; i < info->sc_buttons; i++)
 		evdev_support_key(sc->sc_evdev, BTN_MOUSE + i);
 
-	err = evdev_register_mtx(sc->sc_evdev, &sc->sc_mtx);
+	err = evdev_register_mtx(sc->sc_evdev, hid_get_lock(dev));
 	if (err)
 		goto detach;
 
@@ -539,9 +454,6 @@ ums_attach(device_t dev)
 	return (0);
 
 detach:
-	if (d_ptr) {
-		free(d_ptr, M_TEMP);
-	}
 	ums_detach(dev);
 	return (ENOMEM);
 }
@@ -555,25 +467,7 @@ ums_detach(device_t self)
 
 	evdev_free(sc->sc_evdev);
 
-	usbd_transfer_unsetup(sc->sc_xfer, UMS_N_TRANSFER);
-
-	mtx_destroy(&sc->sc_mtx);
-
 	return (0);
-}
-
-static void
-ums_start_rx(struct ums_softc *sc)
-{
-
-	usbd_transfer_start(sc->sc_xfer[UMS_INTR_DT]);
-}
-
-static void
-ums_stop_rx(struct ums_softc *sc)
-{
-
-	usbd_transfer_stop(sc->sc_xfer[UMS_INTR_DT]);
 }
 
 static void
@@ -596,25 +490,17 @@ ums_evdev_push(struct ums_softc *sc, int32_t dx, int32_t dy,
 static int
 ums_ev_open(struct evdev_dev *evdev)
 {
-	struct ums_softc *sc = evdev_get_softc(evdev);
+	device_t dev = evdev_get_softc(evdev);
 
-	mtx_assert(&sc->sc_mtx, MA_OWNED);
-
-	ums_start_rx(sc);
-
-	return (0);
+	return (hid_start(dev));
 }
 
 static int
 ums_ev_close(struct evdev_dev *evdev)
 {
-	struct ums_softc *sc = evdev_get_softc(evdev);
+	device_t dev = evdev_get_softc(evdev);
 
-	mtx_assert(&sc->sc_mtx, MA_OWNED);
-
-	ums_stop_rx(sc);
-
-	return (0);
+	return (hid_stop(dev));
 }
 
 static int
@@ -696,7 +582,7 @@ static driver_t ums_driver = {
 	.size = sizeof(struct ums_softc),
 };
 
-DRIVER_MODULE(ums, uhub, ums_driver, ums_devclass, NULL, 0);
+DRIVER_MODULE(ums, hidbus, ums_driver, ums_devclass, NULL, 0);
 MODULE_DEPEND(ums, usb, 1, 1, 1);
 MODULE_DEPEND(ums, evdev, 1, 1, 1);
 MODULE_VERSION(ums, 1);
