@@ -136,7 +136,7 @@ hms_intr(void *context, void *data, uint16_t len)
 {
 	device_t dev = context;
 	struct hms_softc *sc = device_get_softc(dev);
-	struct hms_info *info = &sc->sc_info[0];
+	struct hms_info *info;
 	uint8_t *buf = data;
 	int32_t buttons = 0;
 	int32_t dw = 0;
@@ -161,7 +161,11 @@ hms_intr(void *context, void *data, uint16_t len)
 			buf++;
 		}
 
-	repeat:
+	for (info = sc->sc_info; info != &sc->sc_info[HMS_INFO_MAX]; info++) {
+
+		if (info->sc_flags == 0)
+			continue;
+
 		if ((info->sc_flags & HMS_FLAG_W_AXIS) &&
 		    (id == info->sc_iid_w))
 			dw += hid_get_data(buf, len, &info->sc_loc_w);
@@ -198,9 +202,7 @@ hms_intr(void *context, void *data, uint16_t len)
 			if (hid_get_data(buf, len, &info->sc_loc_btn[i]))
 				buttons |= mask;
 		}
-
-		if (++info != &sc->sc_info[HMS_INFO_MAX])
-			goto repeat;
+	}
 
 	/* Push evdev event */
 	evdev_push_rel(sc->sc_evdev, REL_X, dx);
