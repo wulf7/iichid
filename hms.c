@@ -104,6 +104,8 @@ struct hms_info {
 	uint8_t	sc_iid_t;
 	uint8_t	sc_iid_btn[HMS_BUTTON_MAX];
 	uint8_t	sc_buttons;
+
+	struct evdev_dev *sc_evdev;
 };
 
 struct hms_softc {
@@ -111,8 +113,6 @@ struct hms_softc {
 
 	uint8_t	sc_buttons;
 	uint8_t	sc_iid;
-
-	struct evdev_dev *sc_evdev;
 };
 
 static hid_intr_t hms_intr;
@@ -138,12 +138,7 @@ hms_intr(void *context, void *data, uint16_t len)
 	struct hms_softc *sc = device_get_softc(dev);
 	struct hms_info *info;
 	uint8_t *buf = data;
-	int32_t buttons = 0;
 	int32_t dw = 0;
-	int32_t dx = 0;
-	int32_t dy = 0;
-	int32_t dz = 0;
-	int32_t dt = 0;
 	uint8_t i;
 	uint8_t id;
 
@@ -172,11 +167,13 @@ hms_intr(void *context, void *data, uint16_t len)
 
 		if ((info->sc_flags & HMS_FLAG_X_AXIS) && 
 		    (id == info->sc_iid_x))
-			dx += hid_get_data(buf, len, &info->sc_loc_x);
+			evdev_push_rel(info->sc_evdev, REL_X,
+			    hid_get_data(buf, len, &info->sc_loc_x));
 
 		if ((info->sc_flags & HMS_FLAG_Y_AXIS) &&
 		    (id == info->sc_iid_y))
-			dy -= hid_get_data(buf, len, &info->sc_loc_y);
+			evdev_push_rel(info->sc_evdev, REL_Y,
+			    hid_get_data(buf, len, &info->sc_loc_y));
 
 		if ((info->sc_flags & HMS_FLAG_Z_AXIS) &&
 		    (id == info->sc_iid_z)) {
@@ -184,34 +181,25 @@ hms_intr(void *context, void *data, uint16_t len)
 			temp = hid_get_data(buf, len, &info->sc_loc_z);
 			if (info->sc_flags & HMS_FLAG_REVZ)
 				temp = -temp;
-			dz -= temp;
+			evdev_push_rel(info->sc_evdev, REL_WHEEL, temp);
 		}
 
 		if ((info->sc_flags & HMS_FLAG_T_AXIS) &&
-		    (id == info->sc_iid_t)) {
-			dt += hid_get_data(buf, len, &info->sc_loc_t);
-		}
+		    (id == info->sc_iid_t))
+			evdev_push_rel(info->sc_evdev, REL_HWHEEL,
+			    hid_get_data(buf, len, &info->sc_loc_t));
 
 		for (i = 0; i < info->sc_buttons; i++) {
-			uint32_t mask;
-			mask = 1UL << i;
 			/* check for correct button ID */
 			if (id != info->sc_iid_btn[i])
 				continue;
 			/* check for button pressed */
-			if (hid_get_data(buf, len, &info->sc_loc_btn[i]))
-				buttons |= mask;
+			evdev_push_key(info->sc_evdev, HMS_BUT(i),
+			    hid_get_data(buf, len, &info->sc_loc_btn[i]));
 		}
-	}
 
-	/* Push evdev event */
-	evdev_push_rel(sc->sc_evdev, REL_X, dx);
-	evdev_push_rel(sc->sc_evdev, REL_Y, -dy);
-	evdev_push_rel(sc->sc_evdev, REL_WHEEL, -dz);
-	evdev_push_rel(sc->sc_evdev, REL_HWHEEL, dt);
-	for (i = 0; i < HMS_BUTTON_MAX; i++)
-		evdev_push_key(sc->sc_evdev, HMS_BUT(i), buttons & (1 << i));
-	evdev_sync(sc->sc_evdev);
+		evdev_sync(info->sc_evdev);
+	}
 }
 
 /* A match on these entries will load hms */
@@ -417,38 +405,42 @@ hms_attach(device_t dev)
 
 	hid_set_intr(dev, hms_intr);
 
-	sc->sc_evdev = evdev_alloc();
-	evdev_set_name(sc->sc_evdev, device_get_desc(dev));
-	evdev_set_phys(sc->sc_evdev, device_get_nameunit(dev));
-	evdev_set_id(sc->sc_evdev, BUS_USB, hw->idVendor, hw->idProduct,
-	    hw->idVersion);
-//	evdev_set_serial(sc->sc_evdev, usb_get_serial(uaa->device));
-	evdev_set_methods(sc->sc_evdev, dev, &hms_evdev_methods);
-	evdev_support_prop(sc->sc_evdev, INPUT_PROP_POINTER);
-	evdev_support_event(sc->sc_evdev, EV_SYN);
-	evdev_support_event(sc->sc_evdev, EV_REL);
-	evdev_support_event(sc->sc_evdev, EV_KEY);
+	for (info = sc->sc_info; info != &sc->sc_info[HMS_INFO_MAX]; info++) {
 
-	info = &sc->sc_info[0];
+		if (info->sc_flags == 0)
+			continue;
 
-	if (info->sc_flags & HMS_FLAG_X_AXIS)
-		evdev_support_rel(sc->sc_evdev, REL_X);
+		info->sc_evdev = evdev_alloc();
+		evdev_set_name(info->sc_evdev, device_get_desc(dev));
+		evdev_set_phys(info->sc_evdev, device_get_nameunit(dev));
+		evdev_set_id(info->sc_evdev, BUS_USB, hw->idVendor,
+		    hw->idProduct, hw->idVersion);
+//		evdev_set_serial(sc->sc_evdev, usb_get_serial(uaa->device));
+		evdev_set_methods(info->sc_evdev, dev, &hms_evdev_methods);
+		evdev_support_prop(info->sc_evdev, INPUT_PROP_POINTER);
+		evdev_support_event(info->sc_evdev, EV_SYN);
+		evdev_support_event(info->sc_evdev, EV_REL);
+		evdev_support_event(info->sc_evdev, EV_KEY);
 
-	if (info->sc_flags & HMS_FLAG_Y_AXIS)
-		evdev_support_rel(sc->sc_evdev, REL_Y);
+		if (info->sc_flags & HMS_FLAG_X_AXIS)
+			evdev_support_rel(info->sc_evdev, REL_X);
 
-	if (info->sc_flags & HMS_FLAG_Z_AXIS)
-		evdev_support_rel(sc->sc_evdev, REL_WHEEL);
+		if (info->sc_flags & HMS_FLAG_Y_AXIS)
+			evdev_support_rel(info->sc_evdev, REL_Y);
 
-	if (info->sc_flags & HMS_FLAG_T_AXIS)
-		evdev_support_rel(sc->sc_evdev, REL_HWHEEL);
+		if (info->sc_flags & HMS_FLAG_Z_AXIS)
+			evdev_support_rel(info->sc_evdev, REL_WHEEL);
 
-	for (i = 0; i < info->sc_buttons; i++)
-		evdev_support_key(sc->sc_evdev, HMS_BUT(i));
+		if (info->sc_flags & HMS_FLAG_T_AXIS)
+			evdev_support_rel(info->sc_evdev, REL_HWHEEL);
 
-	err = evdev_register_mtx(sc->sc_evdev, hid_get_lock(dev));
-	if (err)
-		goto detach;
+		for (i = 0; i < info->sc_buttons; i++)
+			evdev_support_key(info->sc_evdev, HMS_BUT(i));
+
+		err = evdev_register_mtx(info->sc_evdev, hid_get_lock(dev));
+		if (err)
+			goto detach;
+	}
 
 	SYSCTL_ADD_PROC(device_get_sysctl_ctx(dev),
 	    SYSCTL_CHILDREN(device_get_sysctl_tree(dev)),
@@ -467,10 +459,12 @@ static int
 hms_detach(device_t self)
 {
 	struct hms_softc *sc = device_get_softc(self);
+	int i;
 
 	DPRINTF("sc=%p\n", sc);
 
-	evdev_free(sc->sc_evdev);
+	for (i = 0; i < HMS_INFO_MAX; i++)
+		evdev_free(sc->sc_info[i].sc_evdev);
 
 	return (0);
 }
