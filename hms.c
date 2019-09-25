@@ -82,26 +82,26 @@ SYSCTL_INT(_hw_usb_hms, OID_AUTO, debug, CTLFLAG_RWTUN,
 #define	HMS_INFO_MAX	  2		/* maximum number of HID sets */
 
 struct hms_info {
-	struct hid_location sc_loc_w;
 	struct hid_location sc_loc_x;
 	struct hid_location sc_loc_y;
 	struct hid_location sc_loc_z;
-	struct hid_location sc_loc_t;
+	struct hid_location sc_loc_wh;
+	struct hid_location sc_loc_hwh;
 	struct hid_location sc_loc_btn[HMS_BUTTON_MAX];
 
 	uint32_t sc_flags;
 #define	HMS_FLAG_X_AXIS     0x0001
 #define	HMS_FLAG_Y_AXIS     0x0002
 #define	HMS_FLAG_Z_AXIS     0x0004
-#define	HMS_FLAG_T_AXIS     0x0008
-#define	HMS_FLAG_REVZ	    0x0020	/* Z-axis is reversed */
-#define	HMS_FLAG_W_AXIS     0x0040
+#define	HMS_FLAG_WHEEL      0x0008
+#define	HMS_FLAG_HWHEEL     0x0010
+#define	HMS_FLAG_REVWH	    0x0020	/* Wheel-axis is reversed */
 
-	uint8_t	sc_iid_w;
 	uint8_t	sc_iid_x;
 	uint8_t	sc_iid_y;
 	uint8_t	sc_iid_z;
-	uint8_t	sc_iid_t;
+	uint8_t	sc_iid_wh;
+	uint8_t	sc_iid_hwh;
 	uint8_t	sc_iid_btn[HMS_BUTTON_MAX];
 	uint8_t	sc_buttons;
 
@@ -138,7 +138,6 @@ hms_intr(void *context, void *data, uint16_t len)
 	struct hms_softc *sc = device_get_softc(dev);
 	struct hms_info *info;
 	uint8_t *buf = data;
-	int32_t dw = 0;
 	uint8_t i;
 	uint8_t id;
 
@@ -161,10 +160,6 @@ hms_intr(void *context, void *data, uint16_t len)
 		if (info->sc_flags == 0)
 			continue;
 
-		if ((info->sc_flags & HMS_FLAG_W_AXIS) &&
-		    (id == info->sc_iid_w))
-			dw += hid_get_data(buf, len, &info->sc_loc_w);
-
 		if ((info->sc_flags & HMS_FLAG_X_AXIS) && 
 		    (id == info->sc_iid_x))
 			evdev_push_rel(info->sc_evdev, REL_X,
@@ -176,18 +171,23 @@ hms_intr(void *context, void *data, uint16_t len)
 			    hid_get_data(buf, len, &info->sc_loc_y));
 
 		if ((info->sc_flags & HMS_FLAG_Z_AXIS) &&
-		    (id == info->sc_iid_z)) {
+		    (id == info->sc_iid_z))
+			evdev_push_rel(info->sc_evdev, REL_Z,
+			    hid_get_data(buf, len, &info->sc_loc_z));
+
+		if ((info->sc_flags & HMS_FLAG_WHEEL) &&
+		    (id == info->sc_iid_wh)) {
 			int32_t temp;
-			temp = hid_get_data(buf, len, &info->sc_loc_z);
-			if (info->sc_flags & HMS_FLAG_REVZ)
+			temp = hid_get_data(buf, len, &info->sc_loc_wh);
+			if (info->sc_flags & HMS_FLAG_REVWH)
 				temp = -temp;
 			evdev_push_rel(info->sc_evdev, REL_WHEEL, temp);
 		}
 
-		if ((info->sc_flags & HMS_FLAG_T_AXIS) &&
-		    (id == info->sc_iid_t))
+		if ((info->sc_flags & HMS_FLAG_HWHEEL) &&
+		    (id == info->sc_iid_hwh))
 			evdev_push_rel(info->sc_evdev, REL_HWHEEL,
-			    hid_get_data(buf, len, &info->sc_loc_t));
+			    hid_get_data(buf, len, &info->sc_loc_hwh));
 
 		for (i = 0; i < info->sc_buttons; i++) {
 			/* check for correct button ID */
@@ -253,40 +253,27 @@ hms_hid_parse(struct hms_softc *sc, device_t dev, const uint8_t *buf,
 			info->sc_flags |= HMS_FLAG_Y_AXIS;
 		}
 	}
-	/* Try the wheel first as the Z activator since it's tradition. */
-	if (hid_locate(buf, len, HID_USAGE2(HUP_GENERIC_DESKTOP,
-	    HUG_WHEEL), hid_input, index, &info->sc_loc_z, &flags,
-	    &info->sc_iid_z)) {
-		if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS) {
-			info->sc_flags |= HMS_FLAG_Z_AXIS;
-		}
-		/*
-		 * We might have both a wheel and Z direction, if so put
-		 * put the Z on the W coordinate.
-		 */
-		if (hid_locate(buf, len, HID_USAGE2(HUP_GENERIC_DESKTOP,
-		    HUG_Z), hid_input, index, &info->sc_loc_w, &flags,
-		    &info->sc_iid_w)) {
-
-			if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS) {
-				info->sc_flags |= HMS_FLAG_W_AXIS;
-			}
-		}
-	} else if (hid_locate(buf, len, HID_USAGE2(HUP_GENERIC_DESKTOP,
-	    HUG_Z), hid_input, index, &info->sc_loc_z, &flags, 
-	    &info->sc_iid_z)) {
+	if (hid_locate(buf, len, HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_Z),
+	    hid_input, index, &info->sc_loc_z, &flags, &info->sc_iid_z)) {
 
 		if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS) {
 			info->sc_flags |= HMS_FLAG_Z_AXIS;
 		}
 	}
-	if (hid_locate(buf, len, HID_USAGE2(HUP_CONSUMER,
-		HUC_AC_PAN), hid_input, index, &info->sc_loc_t,
-		&flags, &info->sc_iid_t)) {
+	if (hid_locate(buf, len, HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_WHEEL),
+	    hid_input, index, &info->sc_loc_wh, &flags, &info->sc_iid_wh)) {
+
+		if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS) {
+			info->sc_flags |= HMS_FLAG_WHEEL;
+		}
+	}
+	if (hid_locate(buf, len, HID_USAGE2(HUP_CONSUMER, HUC_AC_PAN),
+	    hid_input, index, &info->sc_loc_hwh, &flags, &info->sc_iid_hwh)) {
 
 		if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS)
-			info->sc_flags |= HMS_FLAG_T_AXIS;
+			info->sc_flags |= HMS_FLAG_HWHEEL;
 	}
+
 	/* figure out the number of buttons */
 
 	for (i = 0; i < HMS_BUTTON_MAX; i++) {
@@ -315,14 +302,14 @@ hms_hid_parse(struct hms_softc *sc, device_t dev, const uint8_t *buf,
 	if (info->sc_flags == 0)
 		return;
 
-	/* announce information about the mouse */
+	/* announce information about the mouse in ums(4) style */
 	device_printf(dev, "%d buttons and [%s%s%s%s%s] coordinates ID=%u\n",
 	    (info->sc_buttons),
 	    (info->sc_flags & HMS_FLAG_X_AXIS) ? "X" : "",
 	    (info->sc_flags & HMS_FLAG_Y_AXIS) ? "Y" : "",
-	    (info->sc_flags & HMS_FLAG_Z_AXIS) ? "Z" : "",
-	    (info->sc_flags & HMS_FLAG_T_AXIS) ? "T" : "",
-	    (info->sc_flags & HMS_FLAG_W_AXIS) ? "W" : "",
+	    (info->sc_flags & HMS_FLAG_WHEEL) ?  "Z" : "",
+	    (info->sc_flags & HMS_FLAG_HWHEEL) ? "T" : "",
+	    (info->sc_flags & HMS_FLAG_Z_AXIS) ? "W" : "",
 	    info->sc_iid_x);
 }
 
@@ -387,12 +374,12 @@ hms_attach(device_t dev)
 		    info->sc_loc_x.size, info->sc_iid_x);
 		DPRINTF("Y\t%d/%d id=%d\n", info->sc_loc_y.pos,
 		    info->sc_loc_y.size, info->sc_iid_y);
-		DPRINTF("Z\t%d/%d id=%d\n", info->sc_loc_z.pos,
+		DPRINTF("Z\t%d/%d id=%d\n", info->sc_loc_wh.pos,
+		    info->sc_loc_wh.size, info->sc_iid_wh);
+		DPRINTF("T\t%d/%d id=%d\n", info->sc_loc_hwh.pos,
+		    info->sc_loc_hwh.size, info->sc_iid_hwh);
+		DPRINTF("W\t%d/%d id=%d\n", info->sc_loc_z.pos,
 		    info->sc_loc_z.size, info->sc_iid_z);
-		DPRINTF("T\t%d/%d id=%d\n", info->sc_loc_t.pos,
-		    info->sc_loc_t.size, info->sc_iid_t);
-		DPRINTF("W\t%d/%d id=%d\n", info->sc_loc_w.pos,
-		    info->sc_loc_w.size, info->sc_iid_w);
 
 		for (i = 0; i < info->sc_buttons; i++) {
 			DPRINTF("B%d\t%d/%d id=%d\n",
@@ -429,9 +416,12 @@ hms_attach(device_t dev)
 			evdev_support_rel(info->sc_evdev, REL_Y);
 
 		if (info->sc_flags & HMS_FLAG_Z_AXIS)
+			evdev_support_rel(info->sc_evdev, REL_Z);
+
+		if (info->sc_flags & HMS_FLAG_WHEEL)
 			evdev_support_rel(info->sc_evdev, REL_WHEEL);
 
-		if (info->sc_flags & HMS_FLAG_T_AXIS)
+		if (info->sc_flags & HMS_FLAG_HWHEEL)
 			evdev_support_rel(info->sc_evdev, REL_HWHEEL);
 
 		for (i = 0; i < info->sc_buttons; i++)
@@ -500,7 +490,7 @@ hms_sysctl_handler_parseinfo(SYSCTL_HANDLER_ARGS)
 		/* Don't emit empty info */
 		if ((info->sc_flags &
 		    (HMS_FLAG_X_AXIS | HMS_FLAG_Y_AXIS | HMS_FLAG_Z_AXIS |
-		     HMS_FLAG_T_AXIS | HMS_FLAG_W_AXIS)) == 0 &&
+		     HMS_FLAG_WHEEL | HMS_FLAG_HWHEEL)) == 0 &&
 		    info->sc_buttons == 0)
 			continue;
 
@@ -518,21 +508,21 @@ hms_sysctl_handler_parseinfo(SYSCTL_HANDLER_ARGS)
 			    (int)info->sc_iid_y,
 			    (int)info->sc_loc_y.pos,
 			    (int)info->sc_loc_y.size);
-		if (info->sc_flags & HMS_FLAG_Z_AXIS)
+		if (info->sc_flags & HMS_FLAG_WHEEL)
 			sbuf_printf(sb, " Z:r%d, p%d, s%d;",
+			    (int)info->sc_iid_wh,
+			    (int)info->sc_loc_wh.pos,
+			    (int)info->sc_loc_wh.size);
+		if (info->sc_flags & HMS_FLAG_HWHEEL)
+			sbuf_printf(sb, " T:r%d, p%d, s%d;",
+			    (int)info->sc_iid_hwh,
+			    (int)info->sc_loc_hwh.pos,
+			    (int)info->sc_loc_hwh.size);
+		if (info->sc_flags & HMS_FLAG_Z_AXIS)
+			sbuf_printf(sb, " W:r%d, p%d, s%d;",
 			    (int)info->sc_iid_z,
 			    (int)info->sc_loc_z.pos,
 			    (int)info->sc_loc_z.size);
-		if (info->sc_flags & HMS_FLAG_T_AXIS)
-			sbuf_printf(sb, " T:r%d, p%d, s%d;",
-			    (int)info->sc_iid_t,
-			    (int)info->sc_loc_t.pos,
-			    (int)info->sc_loc_t.size);
-		if (info->sc_flags & HMS_FLAG_W_AXIS)
-			sbuf_printf(sb, " W:r%d, p%d, s%d;",
-			    (int)info->sc_iid_w,
-			    (int)info->sc_loc_w.pos,
-			    (int)info->sc_loc_w.size);
 
 		for (j = 0; j < info->sc_buttons; j++) {
 			sbuf_printf(sb, " B%d:r%d, p%d, s%d;", j + 1,
