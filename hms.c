@@ -64,8 +64,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/evdev/input.h>
 #include <dev/evdev/evdev.h>
 
-#include <sys/mouse.h>
-
 #include "hidbus.h"
 
 #ifdef USB_DEBUG
@@ -80,7 +78,7 @@ SYSCTL_INT(_hw_usb_ums, OID_AUTO, debug, CTLFLAG_RWTUN,
 #define	MOUSE_FLAGS (HIO_RELATIVE)
 
 #define	UMS_BUTTON_MAX   31		/* exclusive, must be less than 32 */
-#define	UMS_BUT(i) ((i) < 3 ? (((i) + 2) % 3) : (i))
+#define	UMS_BUT(i) ((i) < 16 ? BTN_MOUSE + (i) : BTN_MISC + (i) - 16)
 #define	UMS_INFO_MAX	  2		/* maximum number of HID sets */
 
 struct ums_info {
@@ -125,8 +123,6 @@ static device_detach_t ums_detach;
 
 static evdev_open_t ums_ev_open;
 static evdev_close_t ums_ev_close;
-static void ums_evdev_push(struct ums_softc *, int32_t, int32_t,
-    int32_t, int32_t, int32_t);
 
 static int	ums_sysctl_handler_parseinfo(SYSCTL_HANDLER_ARGS);
 
@@ -194,7 +190,7 @@ ums_intr(void *context, void *data, uint16_t len)
 
 		for (i = 0; i < info->sc_buttons; i++) {
 			uint32_t mask;
-			mask = 1UL << UMS_BUT(i);
+			mask = 1UL << i;
 			/* check for correct button ID */
 			if (id != info->sc_iid_btn[i])
 				continue;
@@ -206,7 +202,14 @@ ums_intr(void *context, void *data, uint16_t len)
 		if (++info != &sc->sc_info[UMS_INFO_MAX])
 			goto repeat;
 
-		ums_evdev_push(sc, dx, dy, dz, dt, buttons);
+	/* Push evdev event */
+	evdev_push_rel(sc->sc_evdev, REL_X, dx);
+	evdev_push_rel(sc->sc_evdev, REL_Y, -dy);
+	evdev_push_rel(sc->sc_evdev, REL_WHEEL, -dz);
+	evdev_push_rel(sc->sc_evdev, REL_HWHEEL, dt);
+	for (i = 0; i < UMS_BUTTON_MAX; i++)
+		evdev_push_key(sc->sc_evdev, UMS_BUT(i), buttons & (1 << i));
+	evdev_sync(sc->sc_evdev);
 }
 
 /* A match on these entries will load ums */
@@ -439,7 +442,7 @@ ums_attach(device_t dev)
 		evdev_support_rel(sc->sc_evdev, REL_HWHEEL);
 
 	for (i = 0; i < info->sc_buttons; i++)
-		evdev_support_key(sc->sc_evdev, BTN_MOUSE + i);
+		evdev_support_key(sc->sc_evdev, UMS_BUT(i));
 
 	err = evdev_register_mtx(sc->sc_evdev, hid_get_lock(dev));
 	if (err)
@@ -468,23 +471,6 @@ ums_detach(device_t self)
 	evdev_free(sc->sc_evdev);
 
 	return (0);
-}
-
-static void
-ums_evdev_push(struct ums_softc *sc, int32_t dx, int32_t dy,
-    int32_t dz, int32_t dt, int32_t buttons)
-{
-		/* Push evdev event */
-		evdev_push_rel(sc->sc_evdev, REL_X, dx);
-		evdev_push_rel(sc->sc_evdev, REL_Y, -dy);
-		evdev_push_rel(sc->sc_evdev, REL_WHEEL, -dz);
-		evdev_push_rel(sc->sc_evdev, REL_HWHEEL, dt);
-		evdev_push_mouse_btn(sc->sc_evdev,
-		    (buttons & ~MOUSE_STDBUTTONS) |
-		    (buttons & (1 << 2) ? MOUSE_BUTTON1DOWN : 0) |
-		    (buttons & (1 << 1) ? MOUSE_BUTTON2DOWN : 0) |
-		    (buttons & (1 << 0) ? MOUSE_BUTTON3DOWN : 0));
-		evdev_sync(sc->sc_evdev);
 }
 
 static int
