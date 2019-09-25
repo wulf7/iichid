@@ -223,7 +223,7 @@ hms_probe(device_t dev)
 		return (ENXIO);
 
 	if (hid_is_mouse(d_ptr, d_len))
-		error = BUS_PROBE_DEFAULT;
+		error = BUS_PROBE_LOW_PRIORITY;
 	else
 		error = ENXIO;
 
