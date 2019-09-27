@@ -2,7 +2,7 @@
  * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
  *
  * Copyright (c) 1998 The NetBSD Foundation, Inc.
- * All rights reserved.
+ * Copyright (c) 2019 Vladimir Kondratyev <wulf@FreeBSD.org>
  *
  * This code is derived from software contributed to The NetBSD Foundation
  * by Lennart Augustsson (lennart@augustsson.net) at
@@ -34,7 +34,7 @@
 __FBSDID("$FreeBSD$");
 
 /*
- * HID spec: http://www.usb.org/developers/devclass_docs/HID1_11.pdf
+ * HID spec: https://www.usb.org/sites/default/files/documents/hid1_11.pdf
  */
 
 #include <sys/stdint.h>
@@ -82,6 +82,8 @@ SYSCTL_INT(_hw_usb_hms, OID_AUTO, debug, CTLFLAG_RWTUN,
 #define	HMS_INFO_MAX	  2		/* maximum number of HID sets */
 
 struct hms_info {
+	device_t sc_dev;
+
 	struct hid_location sc_loc_x;
 	struct hid_location sc_loc_y;
 	struct hid_location sc_loc_z;
@@ -96,6 +98,7 @@ struct hms_info {
 #define	HMS_FLAG_WHEEL      0x0008
 #define	HMS_FLAG_HWHEEL     0x0010
 #define	HMS_FLAG_REVWH	    0x0020	/* Wheel-axis is reversed */
+#define	HMS_FLAG_OPEN	    0x0040
 
 	uint8_t	sc_iid_x;
 	uint8_t	sc_iid_y;
@@ -397,13 +400,15 @@ hms_attach(device_t dev)
 		if (info->sc_flags == 0)
 			continue;
 
+		info->sc_dev = dev;
+
 		info->sc_evdev = evdev_alloc();
 		evdev_set_name(info->sc_evdev, device_get_desc(dev));
 		evdev_set_phys(info->sc_evdev, device_get_nameunit(dev));
 		evdev_set_id(info->sc_evdev, BUS_USB, hw->idVendor,
 		    hw->idProduct, hw->idVersion);
 //		evdev_set_serial(sc->sc_evdev, usb_get_serial(uaa->device));
-		evdev_set_methods(info->sc_evdev, dev, &hms_evdev_methods);
+		evdev_set_methods(info->sc_evdev, info, &hms_evdev_methods);
 		evdev_support_prop(info->sc_evdev, INPUT_PROP_POINTER);
 		evdev_support_event(info->sc_evdev, EV_SYN);
 		evdev_support_event(info->sc_evdev, EV_REL);
@@ -462,17 +467,33 @@ hms_detach(device_t self)
 static int
 hms_ev_open(struct evdev_dev *evdev)
 {
-	device_t dev = evdev_get_softc(evdev);
+	struct hms_info *info = evdev_get_softc(evdev);
+	struct hms_softc *sc = device_get_softc(info->sc_dev);
+	uint32_t flags = 0;
+	int i;
 
-	return (hid_start(dev));
+	for (i = 0; i < HMS_INFO_MAX; i++)
+		flags |= (sc->sc_info[i].sc_flags & HMS_FLAG_OPEN);
+
+	info->sc_flags |= HMS_FLAG_OPEN;
+
+	return (flags == 0 ? hid_start(info->sc_dev) : 0);
 }
 
 static int
 hms_ev_close(struct evdev_dev *evdev)
 {
-	device_t dev = evdev_get_softc(evdev);
+	struct hms_info *info = evdev_get_softc(evdev);
+	struct hms_softc *sc = device_get_softc(info->sc_dev);
+	uint32_t flags = 0;
+	int i;
 
-	return (hid_stop(dev));
+	info->sc_flags &= ~HMS_FLAG_OPEN;
+
+	for (i = 0; i < HMS_INFO_MAX; i++)
+		flags |= (sc->sc_info[i].sc_flags & HMS_FLAG_OPEN);
+
+	return (flags == 0 ? hid_stop(info->sc_dev) : 0);
 }
 
 static int
