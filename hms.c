@@ -144,19 +144,14 @@ hms_intr(void *context, void *data, uint16_t len)
 	uint8_t i;
 	uint8_t id;
 
-		DPRINTFN(6, "data = %02x %02x %02x %02x "
-		    "%02x %02x %02x %02x\n",
-		    (len > 0) ? buf[0] : 0, (len > 1) ? buf[1] : 0,
-		    (len > 2) ? buf[2] : 0, (len > 3) ? buf[3] : 0,
-		    (len > 4) ? buf[4] : 0, (len > 5) ? buf[5] : 0,
-		    (len > 6) ? buf[6] : 0, (len > 7) ? buf[7] : 0);
+	DPRINTFN(6, "data = %*D\n", len, buf, " ");
 
-		if (sc->sc_iid) {
-			id = *buf;
+	if (sc->sc_iid) {
+		id = *buf;
 
-			len--;
-			buf++;
-		}
+		len--;
+		buf++;
+	}
 
 	for (info = sc->sc_info; info != &sc->sc_info[HMS_INFO_MAX]; info++) {
 
