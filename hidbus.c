@@ -182,6 +182,20 @@ hid_set_report(device_t bus, void *data, uint16_t len, uint8_t type,
 	return (HID_SET_REPORT(device_get_parent(bus), data, len, type, id));
 }
 
+int
+hid_set_idle(device_t bus, uint16_t duration, uint8_t id)
+{
+
+	return (HID_SET_IDLE(device_get_parent(bus), duration, id));
+}
+
+int
+hid_set_protocol(device_t bus, uint16_t protocol)
+{
+
+	return (HID_SET_PROTOCOL(device_get_parent(bus), protocol));
+}
+
 static device_method_t hidbus_methods[] = {
 	/* device interface */
 	DEVMETHOD(device_probe,         hidbus_probe),
@@ -196,6 +210,8 @@ static device_method_t hidbus_methods[] = {
 	DEVMETHOD(hid_set_output_report,hid_set_output_report),
 	DEVMETHOD(hid_get_report,       hid_get_report),
 	DEVMETHOD(hid_set_report,       hid_set_report),
+	DEVMETHOD(hid_set_idle,		hid_set_idle),
+	DEVMETHOD(hid_set_protocol,	hid_set_protocol),
 
         DEVMETHOD_END
 };

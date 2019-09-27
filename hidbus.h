@@ -51,5 +51,7 @@ int	hid_get_input_report(device_t, void *, uint16_t);
 int	hid_set_output_report(device_t, void *, uint16_t);
 int	hid_get_report(device_t, void *, uint16_t, uint8_t, uint8_t);
 int	hid_set_report(device_t, void *, uint16_t, uint8_t, uint8_t);
+int	hid_set_idle(device_t, uint16_t, uint8_t);
+int	hid_set_protocol(device_t, uint16_t);
 
 #endif	/* _HIDBUS_H_ */

@@ -135,3 +135,20 @@ METHOD int set_report {
 	uint8_t type;
 	uint8_t id;
 };
+
+#
+# Set duration between input reports (in mSec).
+#
+METHOD int set_idle {
+	device_t dev;
+	uint16_t duration;
+	uint8_t id;
+};
+
+#
+# Switch between the boot protocol and the report protocol (or vice versa).
+#
+METHOD int set_protocol {
+	device_t dev;
+	uint16_t protocol;
+};

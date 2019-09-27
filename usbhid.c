@@ -502,6 +502,35 @@ usbhid_set_report(device_t dev, void *buf, uint16_t len, uint8_t type,
 	return (err);
 }
 
+static int
+usbhid_set_idle(device_t dev, uint16_t duration, uint8_t id)
+{
+	struct uhid_softc* sc = device_get_softc(dev);
+	int err;
+
+	/* Duration is measured in 4 milliseconds per unit. */
+	err = usbd_req_set_idle(sc->sc_udev, NULL, sc->sc_iface_index,
+	    (duration + 3) / 4, id);
+	if (err)
+                err = ENXIO;
+
+	return (err);
+}
+
+static int
+usbhid_set_protocol(device_t dev, uint16_t protocol)
+{
+	struct uhid_softc* sc = device_get_softc(dev);
+	int err;
+
+	err = usbd_req_set_protocol(sc->sc_udev, NULL, sc->sc_iface_index,
+	    protocol);
+	if (err)
+                err = ENXIO;
+
+	return (err);
+}
+
 static const STRUCT_USB_HOST_ID usbhid_devs[] = {
 	/* generic HID class */
 	{USB_IFACE_CLASS(UICLASS_HID),},
@@ -719,6 +748,8 @@ static device_method_t usbhid_methods[] = {
 	DEVMETHOD(hid_set_output_report,usbhid_set_output_report),
 	DEVMETHOD(hid_get_report,	usbhid_get_report),
 	DEVMETHOD(hid_set_report,	usbhid_set_report),
+	DEVMETHOD(hid_set_idle,		usbhid_set_idle),
+	DEVMETHOD(hid_set_protocol,	usbhid_set_protocol),
 
 	DEVMETHOD_END
 };

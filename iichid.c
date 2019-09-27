@@ -821,6 +821,20 @@ iichid_set_report(device_t dev, void *buf, uint16_t len, uint8_t type,
 }
 
 static int
+iichid_set_idle(device_t dev, uint16_t duration, uint8_t id)
+{
+
+	return (ENOTSUP);
+}
+
+static int
+iichid_set_protocol(device_t dev, uint16_t protocol)
+{
+
+	return (ENOTSUP);
+}
+
+static int
 iichid_attach(device_t dev)
 {
 	struct iichid_softc* sc = device_get_softc(dev);
@@ -1197,6 +1211,8 @@ static device_method_t iichid_methods[] = {
 	DEVMETHOD(hid_set_output_report,iichid_set_output_report),
 	DEVMETHOD(hid_get_report,	iichid_get_report),
 	DEVMETHOD(hid_set_report,	iichid_set_report),
+	DEVMETHOD(hid_set_idle,		iichid_set_idle),
+	DEVMETHOD(hid_set_protocol,	iichid_set_protocol),
 
         DEVMETHOD_END
 };
