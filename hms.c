@@ -335,16 +335,13 @@ hms_attach(device_t dev)
 
 	device_set_desc(dev, hw->hid);
 
-#ifdef NOT_YET
 	/*
          * Force the report (non-boot) protocol.
          *
          * Mice without boot protocol support may choose not to implement
          * Set_Protocol at all; Ignore any error.
          */
-	err = usbd_req_set_protocol(uaa->device, NULL,
-	    uaa->info.bIfaceIndex, 1);
-#endif
+	err = hid_set_protocol(dev, 1);
 
 	/* Get HID descriptor */
 	err = hid_get_report_descr(dev, &d_ptr, &d_len);
