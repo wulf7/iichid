@@ -1,17 +1,8 @@
-/*	$NetBSD: uhid.c,v 1.46 2001/11/13 06:24:55 lukem Exp $	*/
-
-/* Also already merged from NetBSD:
- *	$NetBSD: uhid.c,v 1.54 2002/09/23 05:51:21 simonb Exp $
- */
-
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 /*-
  * SPDX-License-Identifier: BSD-2-Clause-NetBSD
  *
  * Copyright (c) 1998 The NetBSD Foundation, Inc.
- * All rights reserved.
+ * Copyright (c) 2019 Vladimir Kondratyev <wulf@FreeBSD.org>
  *
  * This code is derived from software contributed to The NetBSD Foundation
  * by Lennart Augustsson (lennart@augustsson.net) at
@@ -39,8 +30,11 @@ __FBSDID("$FreeBSD$");
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <sys/cdefs.h>
+__FBSDID("$FreeBSD$");
+
 /*
- * HID spec: http://www.usb.org/developers/devclass_docs/HID1_11.pdf
+ * HID spec: https://www.usb.org/sites/default/files/documents/hid1_11.pdf
  */
 
 #include <sys/stdint.h>
