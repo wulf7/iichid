@@ -75,11 +75,18 @@ SYSCTL_INT(_hw_usb_hms, OID_AUTO, debug, CTLFLAG_RWTUN,
 #endif
 
 #define	MOUSE_FLAGS_MASK (HIO_CONST|HIO_RELATIVE)
-#define	MOUSE_FLAGS (HIO_RELATIVE)
+#define	MOUSE_FLAGS_REL (HIO_RELATIVE)
+#define	MOUSE_FLAGS_ABS 0
 
 #define	HMS_BUTTON_MAX   31		/* exclusive, must be less than 32 */
 #define	HMS_BUT(i) ((i) < 16 ? BTN_MOUSE + (i) : BTN_MISC + (i) - 16)
 #define	HMS_INFO_MAX	  2		/* maximum number of HID sets */
+
+struct hms_absinfo {
+	int32_t min;
+	int32_t max;
+	int32_t res;
+};
 
 struct hms_info {
 	device_t sc_dev;
@@ -91,6 +98,9 @@ struct hms_info {
 	struct hid_location sc_loc_hwh;
 	struct hid_location sc_loc_btn[HMS_BUTTON_MAX];
 
+	struct hms_absinfo  sc_ai_x;
+	struct hms_absinfo  sc_ai_y;
+
 	uint32_t sc_flags;
 #define	HMS_FLAG_X_AXIS     0x0001
 #define	HMS_FLAG_Y_AXIS     0x0002
@@ -99,6 +109,8 @@ struct hms_info {
 #define	HMS_FLAG_HWHEEL     0x0010
 #define	HMS_FLAG_REVWH	    0x0020	/* Wheel-axis is reversed */
 #define	HMS_FLAG_OPEN	    0x0040
+#define	HMS_FLAG_ABSX	    0x0080
+#define	HMS_FLAG_ABSY	    0x0100
 
 	uint8_t	sc_iid_x;
 	uint8_t	sc_iid_y;
@@ -159,14 +171,26 @@ hms_intr(void *context, void *data, uint16_t len)
 			continue;
 
 		if ((info->sc_flags & HMS_FLAG_X_AXIS) && 
-		    (id == info->sc_iid_x))
-			evdev_push_rel(info->sc_evdev, REL_X,
-			    hid_get_data(buf, len, &info->sc_loc_x));
+		    (id == info->sc_iid_x)) {
+			if (info->sc_flags & HMS_FLAG_ABSX)
+				evdev_push_abs(info->sc_evdev, ABS_X,
+				    hid_get_data_unsigned(buf, len,
+				    &info->sc_loc_x));
+			else
+				evdev_push_rel(info->sc_evdev, REL_X,
+				    hid_get_data(buf, len, &info->sc_loc_x));
+		}
 
 		if ((info->sc_flags & HMS_FLAG_Y_AXIS) &&
-		    (id == info->sc_iid_y))
-			evdev_push_rel(info->sc_evdev, REL_Y,
-			    hid_get_data(buf, len, &info->sc_loc_y));
+		    (id == info->sc_iid_y)) {
+			if (info->sc_flags & HMS_FLAG_ABSY)
+				evdev_push_abs(info->sc_evdev, ABS_Y,
+				    hid_get_data_unsigned(buf, len,
+				    &info->sc_loc_y));
+			else
+				evdev_push_rel(info->sc_evdev, REL_Y,
+				    hid_get_data(buf, len, &info->sc_loc_y));
+		}
 
 		if ((info->sc_flags & HMS_FLAG_Z_AXIS) &&
 		    (id == info->sc_iid_z))
@@ -208,6 +232,15 @@ static const STRUCT_USB_HOST_ID __used hms_devs[] = {
 };
 
 static int
+hms_hid_is_mouse(const void *d_ptr, uint16_t d_len)
+{
+	if (hid_is_collection(d_ptr, d_len,
+	    HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_MOUSE)))
+		return (1);
+	return (0);
+}
+
+static int
 hms_probe(device_t dev)
 {
 	void *d_ptr;
@@ -220,12 +253,50 @@ hms_probe(device_t dev)
 	if (error)
 		return (ENXIO);
 
-	if (hid_is_mouse(d_ptr, d_len))
+	if (hms_hid_is_mouse(d_ptr, d_len))
 		error = BUS_PROBE_LOW_PRIORITY;
 	else
 		error = ENXIO;
 
 	return (error);
+}
+
+static int
+hms_hid_locate(const void *desc, usb_size_t size, int32_t u, enum hid_kind k,
+    uint8_t index, struct hid_location *loc, uint32_t *flags, uint8_t *id,
+    struct hms_absinfo *ai)
+{
+	struct hid_data *d;
+	struct hid_item h;
+
+	for (d = hid_start_parse(desc, size, 1 << k); hid_get_item(d, &h);) {
+		if (h.kind == k && !(h.flags & HIO_CONST) && h.usage == u) {
+			if (index--)
+				continue;
+			if (loc != NULL)
+				*loc = h.loc;
+			if (flags != NULL)
+				*flags = h.flags;
+			if (id != NULL)
+				*id = h.report_ID;
+			if (ai != NULL && (h.flags & HIO_RELATIVE) == 0)
+				*ai = (struct hms_absinfo) {
+					.max = h.logical_maximum,
+					.min = h.logical_minimum,
+					.res = hid_item_resolution(&h),
+				};
+			hid_end_parse(d);
+			return (1);
+		}
+	}
+	if (loc != NULL)
+		loc->size = 0;
+	if (flags != NULL)
+		*flags = 0;
+	if (id != NULL)
+		*id = 0;
+	hid_end_parse(d);
+	return (0);
 }
 
 static void
@@ -237,38 +308,42 @@ hms_hid_parse(struct hms_softc *sc, device_t dev, const uint8_t *buf,
 	uint8_t i;
 	uint8_t j;
 
-	if (hid_locate(buf, len, HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_X),
-	    hid_input, index, &info->sc_loc_x, &flags, &info->sc_iid_x)) {
+	if (hms_hid_locate(buf, len, HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_X),
+	    hid_input, index, &info->sc_loc_x, &flags, &info->sc_iid_x,
+	    &info->sc_ai_x)) {
 
-		if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS) {
+		if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS_REL)
 			info->sc_flags |= HMS_FLAG_X_AXIS;
-		}
+		else if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS_ABS)
+			info->sc_flags |= HMS_FLAG_X_AXIS | HMS_FLAG_ABSX;
 	}
-	if (hid_locate(buf, len, HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_Y),
-	    hid_input, index, &info->sc_loc_y, &flags, &info->sc_iid_y)) {
 
-		if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS) {
+	if (hms_hid_locate(buf, len, HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_Y),
+	    hid_input, index, &info->sc_loc_y, &flags, &info->sc_iid_y,
+	    &info->sc_ai_y)) {
+
+		if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS_REL)
 			info->sc_flags |= HMS_FLAG_Y_AXIS;
-		}
+		else if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS_ABS)
+			info->sc_flags |= HMS_FLAG_Y_AXIS | HMS_FLAG_ABSY;
 	}
+
 	if (hid_locate(buf, len, HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_Z),
 	    hid_input, index, &info->sc_loc_z, &flags, &info->sc_iid_z)) {
 
-		if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS) {
+		if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS_REL)
 			info->sc_flags |= HMS_FLAG_Z_AXIS;
-		}
 	}
 	if (hid_locate(buf, len, HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_WHEEL),
 	    hid_input, index, &info->sc_loc_wh, &flags, &info->sc_iid_wh)) {
 
-		if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS) {
+		if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS_REL)
 			info->sc_flags |= HMS_FLAG_WHEEL;
-		}
 	}
 	if (hid_locate(buf, len, HID_USAGE2(HUP_CONSUMER, HUC_AC_PAN),
 	    hid_input, index, &info->sc_loc_hwh, &flags, &info->sc_iid_hwh)) {
 
-		if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS)
+		if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS_REL)
 			info->sc_flags |= HMS_FLAG_HWHEEL;
 	}
 
@@ -401,16 +476,36 @@ hms_attach(device_t dev)
 		    hw->idProduct, hw->idVersion);
 //		evdev_set_serial(sc->sc_evdev, usb_get_serial(uaa->device));
 		evdev_set_methods(info->sc_evdev, info, &hms_evdev_methods);
-		evdev_support_prop(info->sc_evdev, INPUT_PROP_POINTER);
+		if ((info->sc_flags & (HMS_FLAG_ABSX | HMS_FLAG_ABSY)) == 0) {
+			evdev_support_event(info->sc_evdev, EV_REL);
+			evdev_support_prop(info->sc_evdev, INPUT_PROP_POINTER);
+		} else {
+			evdev_support_event(info->sc_evdev, EV_ABS);
+			evdev_support_prop(info->sc_evdev, INPUT_PROP_DIRECT);
+		}
 		evdev_support_event(info->sc_evdev, EV_SYN);
-		evdev_support_event(info->sc_evdev, EV_REL);
+		if (info->sc_flags &
+		    (HMS_FLAG_Z_AXIS | HMS_FLAG_WHEEL | HMS_FLAG_HWHEEL))
+			evdev_support_event(info->sc_evdev, EV_REL);
 		evdev_support_event(info->sc_evdev, EV_KEY);
 
-		if (info->sc_flags & HMS_FLAG_X_AXIS)
-			evdev_support_rel(info->sc_evdev, REL_X);
+		if (info->sc_flags & HMS_FLAG_X_AXIS) {
+			if (info->sc_flags & HMS_FLAG_ABSX)
+				evdev_support_abs(info->sc_evdev, ABS_X, 0,
+				    info->sc_ai_x.min, info->sc_ai_x.max, 0, 0,
+				    info->sc_ai_x.res);
+			else
+				evdev_support_rel(info->sc_evdev, REL_X);
+		}
 
-		if (info->sc_flags & HMS_FLAG_Y_AXIS)
-			evdev_support_rel(info->sc_evdev, REL_Y);
+		if (info->sc_flags & HMS_FLAG_Y_AXIS) {
+			if (info->sc_flags & HMS_FLAG_ABSY)
+				evdev_support_abs(info->sc_evdev, ABS_Y, 0,
+				    info->sc_ai_y.min, info->sc_ai_y.max, 0, 0,
+				    info->sc_ai_y.res);
+			else
+				evdev_support_rel(info->sc_evdev, REL_Y);
+		}
 
 		if (info->sc_flags & HMS_FLAG_Z_AXIS)
 			evdev_support_rel(info->sc_evdev, REL_Z);
