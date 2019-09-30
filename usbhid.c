@@ -62,7 +62,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/usb/usb.h>
 #include <dev/usb/usbdi.h>
 #include <dev/usb/usbdi_util.h>
-#include <dev/usb/usbhid.h>
 #include <dev/usb/usb_ioctl.h>
 
 #define	USB_DEBUG_VAR uhid_debug
@@ -71,6 +70,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/usb/input/usb_rdesc.h>
 #include <dev/usb/quirk/usb_quirk.h>
 
+#include "hid.h"
 #include "hidbus.h"
 #include "hid_if.h"
 
@@ -762,6 +762,7 @@ static driver_t usbhid_driver = {
 
 DRIVER_MODULE(usbhid, uhub, usbhid_driver, usbhid_devclass, NULL, 0);
 MODULE_DEPEND(usbhid, usb, 1, 1, 1);
+MODULE_DEPEND(usbhid, hid, 1, 1, 1);
 MODULE_DEPEND(usbhid, hidbus, 1, 1, 1);
 MODULE_VERSION(usbhid, 1);
 USB_PNP_HOST_INFO(usbhid_devs);

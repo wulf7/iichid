@@ -52,10 +52,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/iicbus/iic.h>
 #include <dev/iicbus/iiconf.h>
 
-#include <dev/usb/usb.h>
-#include <dev/usb/usbdi.h>
-#include <dev/usb/usbhid.h>
-
+#include "hid.h"
 #include "iichidvar.h"
 
 #include "hid_if.h"
@@ -1226,7 +1223,7 @@ static driver_t iichid_driver = {
 DRIVER_MODULE(iichid, iicbus, iichid_driver, iichid_devclass, NULL, 0);
 MODULE_DEPEND(iichid, iicbus, IICBUS_MINVER, IICBUS_PREFVER, IICBUS_MAXVER);
 MODULE_DEPEND(iichid, acpi, 1, 1, 1);
-MODULE_DEPEND(iichid, usb, 1, 1, 1);
+MODULE_DEPEND(iichid, hid, 1, 1, 1);
 MODULE_VERSION(iichid, 1);
 
 #ifndef HAVE_ACPI_IICBUS

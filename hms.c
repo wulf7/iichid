@@ -50,23 +50,31 @@ __FBSDID("$FreeBSD$");
 #include <sys/sysctl.h>
 #include <sys/sbuf.h>
 
-#include <dev/usb/usb.h>
-#include <dev/usb/usbdi.h>
-#include <dev/usb/usbdi_util.h>
-#include <dev/usb/usbhid.h>
-#include "usbdevs.h"
-
-#define	USB_DEBUG_VAR hms_debug
-#include <dev/usb/usb_debug.h>
-
-#include <dev/usb/quirk/usb_quirk.h>
-
 #include <dev/evdev/input.h>
 #include <dev/evdev/evdev.h>
 
+#include "hid.h"
 #include "hidbus.h"
 
-#ifdef USB_DEBUG
+#define	HMS_DEBUG
+#define	HMS_DEBUG_VAR	hms_debug
+
+/* Check if debugging is enabled. */
+#ifdef HMS_DEBUG_VAR
+#ifdef HMS_DEBUG
+#define	DPRINTFN(n,fmt,...) do {					\
+	if ((HMS_DEBUG_VAR) >= (n)) {					\
+		printf("%s: " fmt, __FUNCTION__ ,##__VA_ARGS__);	\
+	}								\
+} while (0)
+#define DPRINTF(...)    DPRINTFN(1, __VA_ARGS__)
+#else
+#define DPRINTF(...) do { } while (0)
+#define DPRINTFN(...) do { } while (0)
+#endif
+#endif
+
+#ifdef HMS_DEBUG
 static int hms_debug = 0;
 
 static SYSCTL_NODE(_hw_usb, OID_AUTO, hms, CTLFLAG_RW, 0, "USB hms");
@@ -262,7 +270,7 @@ hms_probe(device_t dev)
 }
 
 static int
-hms_hid_locate(const void *desc, usb_size_t size, int32_t u, enum hid_kind k,
+hms_hid_locate(const void *desc, hid_size_t size, int32_t u, enum hid_kind k,
     uint8_t index, struct hid_location *loc, uint32_t *flags, uint8_t *id,
     struct hms_absinfo *ai)
 {
@@ -663,7 +671,7 @@ static driver_t hms_driver = {
 };
 
 DRIVER_MODULE(hms, hidbus, hms_driver, hms_devclass, NULL, 0);
-MODULE_DEPEND(hms, usb, 1, 1, 1);
+MODULE_DEPEND(hms, hid, 1, 1, 1);
 MODULE_DEPEND(hms, evdev, 1, 1, 1);
 MODULE_VERSION(hms, 1);
 USB_PNP_HOST_INFO(hms_devs);

@@ -47,10 +47,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/evdev/evdev.h>
 #include <dev/evdev/input.h>
 
-#include <dev/usb/usb.h>
-#include <dev/usb/usbdi.h>
-#include <dev/usb/usbhid.h>
-
+#include "hid.h"
 #include "hidbus.h"
 
 #define	HMT_DEBUG
@@ -967,6 +964,6 @@ hmt_set_input_mode(struct hmt_softc *sc, enum hmt_input_mode mode)
 
 DRIVER_MODULE(hmt, hidbus, hmt_driver, hmt_devclass, NULL, 0);
 MODULE_DEPEND(hmt, hidbus, 1, 1, 1);
-MODULE_DEPEND(hmt, usb, 1, 1, 1);
+MODULE_DEPEND(hmt, hid, 1, 1, 1);
 MODULE_DEPEND(hmt, evdev, 1, 1, 1);
 MODULE_VERSION(hmt, 1);
