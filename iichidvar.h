@@ -27,8 +27,6 @@
 #ifndef _IICHIDVAR_H_
 #define _IICHIDVAR_H_
 
-#include "hidbus.h"
-
 #define	I2C_HID_REPORT_TYPE_INPUT	0x1
 #define	I2C_HID_REPORT_TYPE_OUTPUT	0x2
 #define	I2C_HID_REPORT_TYPE_FEATURE	0x3
@@ -79,47 +77,5 @@ struct i2c_hid_desc {
 	uint16_t wVersionID;
 	uint32_t reserved;
 } __packed;
-
-struct iichid_softc {
-	device_t		dev;
-	device_t		child;
-	struct sx		lock;
-
-	bool			probe_done;
-	int			probe_result;
-
-	struct hid_hw		hw;
-	uint16_t		config_reg;
-	struct i2c_hid_desc	desc;
-
-	hid_intr_t		*intr_handler;
-	void			*intr_context;
-	struct mtx		*intr_mtx;
-
-	uint8_t			*rep_desc;
-	uint8_t			*ibuf;
-	int			isize;
-	uint8_t			iid;
-
-	int			irq_rid;
-	struct resource		*irq_res;
-	void			*irq_cookie;
-
-	int			sampling_rate_fast;
-	int			sampling_rate_slow;
-	int			sampling_hysteresis;
-	int			missing_samples;
-	struct callout		periodic_callout;
-	bool			callout_setup;
-
-	struct taskqueue	*taskqueue;
-	struct task		event_task;
-	struct task		power_task;
-
-	/* XXX: Need barriers or atomic type? */
-	volatile bool		open;
-	bool			suspend;
-	bool			power_on;
-};
 
 #endif	/* _IICHIDVAR_H_ */
