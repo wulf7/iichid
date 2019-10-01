@@ -42,9 +42,6 @@ enum {
         I2C_HID_CMD_GET_PROTO   = 0x6,
         I2C_HID_CMD_SET_PROTO   = 0x7,
         I2C_HID_CMD_SET_POWER   = 0x8,
-
-        /* pseudo commands */
-        I2C_HID_REPORT_DESCR    = 0x100,
 };
 
 /*
