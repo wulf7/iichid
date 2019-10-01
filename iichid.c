@@ -56,7 +56,7 @@ __FBSDID("$FreeBSD$");
 #include "hidbus.h"
 #include "hid_if.h"
 
-#include "iichidvar.h"
+#include "iichid.h"
 
 #define IICHID_DEBUG
 
