@@ -81,6 +81,7 @@ struct iichid_softc {
 	int			probe_result;
 
 	struct hid_hw		hw;
+	uint16_t		addr;	/* Shifted left by 1 */
 	uint16_t		config_reg;
 	struct i2c_hid_desc	desc;
 
@@ -257,11 +258,10 @@ iichid_cmd_get_input_report(struct iichid_softc* sc, void *buf, int len,
 	 * 6.1.3 - Retrieval of Input Reports
 	 * DEVICE returns the length (2 Bytes) and the entire Input Report.
 	 */
-	uint16_t addr = iicbus_get_addr(sc->dev);
 	uint8_t actbuf[2] = { 0, 0 };
 	/* Read actual input report length */
 	struct iic_msg msgs[] = {
-	    { addr << 1, IIC_M_RD | IIC_M_NOSTOP, sizeof(actbuf), actbuf },
+	    { sc->addr, IIC_M_RD | IIC_M_NOSTOP, sizeof(actbuf), actbuf },
 	};
 	device_t parent = device_get_parent(sc->dev);
 	/*
@@ -284,7 +284,7 @@ iichid_cmd_get_input_report(struct iichid_softc* sc, void *buf, int len,
 	if (actlen <= 2 || actlen == 0xFFFF) {
 		/* Read and discard 1 byte to send I2C STOP condition */
 		msgs[0] = (struct iic_msg)
-		    { addr << 1, IIC_M_RD | IIC_M_NOSTART, 1, actbuf };
+		    { sc->addr, IIC_M_RD | IIC_M_NOSTART, 1, actbuf };
 		actlen = 0;
 	} else {
 		actlen -= 2;
@@ -295,7 +295,7 @@ iichid_cmd_get_input_report(struct iichid_softc* sc, void *buf, int len,
 		}
 		/* Read input report itself */
 		msgs[0] = (struct iic_msg)
-		    { addr << 1, IIC_M_RD | IIC_M_NOSTART, actlen, buf };
+		    { sc->addr, IIC_M_RD | IIC_M_NOSTART, actlen, buf };
 	}
 
 	error = iicbus_transfer(sc->dev, msgs, 1);
@@ -313,12 +313,11 @@ iichid_cmd_set_output_report(struct iichid_softc *sc, void *buf, int len)
 {
 	/* 6.2.3 - Sending Output Reports */
 	uint8_t *cmdreg = (uint8_t *)&sc->desc.wOutputRegister;
-	uint16_t addr = iicbus_get_addr(sc->dev);
 	uint16_t replen = 2 + len;
 	uint8_t cmd[4] = { cmdreg[0], cmdreg[1], replen & 0xFF, replen >> 8 };
 	struct iic_msg msgs[] = {
-	    { addr << 1, IIC_M_WR | IIC_M_NOSTOP, sizeof(cmd), cmd },
-	    { addr << 1, IIC_M_WR | IIC_M_NOSTART, len, buf },
+	    { sc->addr, IIC_M_WR | IIC_M_NOSTOP, sizeof(cmd), cmd },
+	    { sc->addr, IIC_M_WR | IIC_M_NOSTART, len, buf },
 	};
 
 	if (le16toh(sc->desc.wMaxOutputLength) == 0)
@@ -340,11 +339,10 @@ iichid_cmd_get_hid_desc(struct iichid_softc *sc, uint16_t config_reg,
 	 * 5.2.2 - HID Descriptor Retrieval
 	 * register is passed from the controller
 	 */
-	uint16_t addr = iicbus_get_addr(sc->dev);
 	uint16_t cmd = htole16(config_reg);
 	struct iic_msg msgs[] = {
-	    { addr << 1, IIC_M_WR | IIC_M_NOSTOP, 2, (uint8_t *)&cmd },
-	    { addr << 1, IIC_M_RD, sizeof(*hid_desc), (uint8_t *)hid_desc },
+	    { sc->addr, IIC_M_WR | IIC_M_NOSTOP, 2, (uint8_t *)&cmd },
+	    { sc->addr, IIC_M_RD, sizeof(*hid_desc), (uint8_t *)hid_desc },
 	};
 	int error;
 
@@ -363,11 +361,10 @@ iichid_cmd_get_hid_desc(struct iichid_softc *sc, uint16_t config_reg,
 static int
 iichid_set_power(struct iichid_softc *sc, uint8_t param)
 {
-	uint16_t addr = iicbus_get_addr(sc->dev);
 	uint8_t *cmdreg = (uint8_t *)&sc->desc.wCommandRegister;
 	uint8_t cmd[] = { cmdreg[0], cmdreg[1], param, I2C_HID_CMD_SET_POWER };
 	struct iic_msg msgs[] = {
-	    { addr << 1, IIC_M_WR, sizeof(cmd), cmd },
+	    { sc->addr, IIC_M_WR, sizeof(cmd), cmd },
 	};
 
 	DPRINTF(sc, "HID command I2C_HID_CMD_SET_POWER(%d)\n", param);
@@ -378,11 +375,10 @@ iichid_set_power(struct iichid_softc *sc, uint8_t param)
 static int
 iichid_reset(struct iichid_softc *sc)
 {
-	uint16_t addr = iicbus_get_addr(sc->dev);
 	uint8_t *cmdreg = (uint8_t *)&sc->desc.wCommandRegister;
 	uint8_t cmd[] = { cmdreg[0], cmdreg[1], 0, I2C_HID_CMD_RESET };
 	struct iic_msg msgs[] = {
-	    { addr << 1, IIC_M_WR, sizeof(cmd), cmd },
+	    { sc->addr, IIC_M_WR, sizeof(cmd), cmd },
 	};
 
 	DPRINTF(sc, "HID command I2C_HID_CMD_RESET\n");
@@ -394,10 +390,9 @@ static int
 iichid_cmd_get_report_desc(struct iichid_softc* sc, void *buf, int len)
 {
 	uint16_t cmd = sc->desc.wReportDescRegister;
-	uint16_t addr = iicbus_get_addr(sc->dev);
 	struct iic_msg msgs[] = {
-	    { addr << 1, IIC_M_WR | IIC_M_NOSTOP, 2, (uint8_t *)&cmd },
-	    { addr << 1, IIC_M_RD, len, buf },
+	    { sc->addr, IIC_M_WR | IIC_M_NOSTOP, 2, (uint8_t *)&cmd },
+	    { sc->addr, IIC_M_RD, len, buf },
 	};
 	int error;
 
@@ -423,7 +418,6 @@ iichid_cmd_get_report(struct iichid_softc* sc, void *buf, int len,
 	 * must be set to 1111 and a Third Byte is appended to the protocol.
 	 * This Third Byte contains the entire/actual report ID."
 	 */
-	uint16_t addr = iicbus_get_addr(sc->dev);
 	uint8_t *dtareg = (uint8_t *)&sc->desc.wDataRegister;
 	uint8_t *cmdreg = (uint8_t *)&sc->desc.wCommandRegister;
 	uint8_t cmd[] =	{   /*________|______id>=15_____|______id<15______*/
@@ -439,9 +433,9 @@ iichid_cmd_get_report(struct iichid_softc* sc, void *buf, int len,
 	uint8_t actlen[2] = { 0, 0 };
 	int d, error;
 	struct iic_msg msgs[] = {
-	    { addr << 1, IIC_M_WR | IIC_M_NOSTOP, cmdlen, cmd },
-	    { addr << 1, IIC_M_RD | IIC_M_NOSTOP, 2, actlen },
-	    { addr << 1, IIC_M_RD | IIC_M_NOSTART, len, buf },
+	    { sc->addr, IIC_M_WR | IIC_M_NOSTOP, cmdlen, cmd },
+	    { sc->addr, IIC_M_RD | IIC_M_NOSTOP, 2, actlen },
+	    { sc->addr, IIC_M_RD | IIC_M_NOSTART, len, buf },
 	};
 
 	if (len < 1)
@@ -484,7 +478,6 @@ iichid_cmd_set_report(struct iichid_softc* sc, void *buf, int len,
 	 * must be set to 1111 and a Third Byte is appended to the protocol.
 	 * This Third Byte contains the entire/actual report ID."
 	 */
-	uint16_t addr = iicbus_get_addr(sc->dev);
 	uint8_t *dtareg = (uint8_t *)&sc->desc.wDataRegister;
 	uint8_t *cmdreg = (uint8_t *)&sc->desc.wCommandRegister;
 	uint16_t replen = 2 + len;
@@ -501,8 +494,8 @@ iichid_cmd_set_report(struct iichid_softc* sc, void *buf, int len,
 			};
 	int cmdlen    =	    (id >= 15 ?		9	:	8	  );
 	struct iic_msg msgs[] = {
-	    { addr << 1, IIC_M_WR | IIC_M_NOSTOP, cmdlen, cmd },
-	    { addr << 1, IIC_M_WR | IIC_M_NOSTART, len, buf },
+	    { sc->addr, IIC_M_WR | IIC_M_NOSTOP, cmdlen, cmd },
+	    { sc->addr, IIC_M_WR | IIC_M_NOSTART, len, buf },
 	};
 
 	DPRINTF(sc, "HID command I2C_HID_CMD_SET_REPORT %d (type %d, len %d): "
@@ -865,7 +858,6 @@ iichid_attach(device_t dev)
 	ACPI_HANDLE handle;
 	ACPI_STATUS status;
 	ACPI_DEVICE_INFO *device_info;
-	uint16_t addr = iicbus_get_addr(dev);
 	int error;
 
 	/* Fetch hardware settings from ACPI */
@@ -891,7 +883,7 @@ iichid_attach(device_t dev)
 	AcpiOsFree(device_info);
 
 	DPRINTF(sc, "  ACPI Hardware ID  : %s\n", sc->hw.hid);
-	DPRINTF(sc, "  IICbus addr       : 0x%02X\n", addr);
+	DPRINTF(sc, "  IICbus addr       : 0x%02X\n", sc->addr >> 1);
 	DPRINTF(sc, "  HID descriptor reg: 0x%02X\n", sc->config_reg);
 
 	sc->hw.idVendor = le16toh(sc->desc.wVendorID);
@@ -1011,7 +1003,7 @@ iichid_probe(device_t dev)
 {
 	struct iichid_softc *sc = device_get_softc(dev);
 	ACPI_HANDLE handle;
-	uint16_t addr = iicbus_get_addr(dev);
+	uint16_t addr = iicbus_get_addr(dev) << 1;
 	int error;
 
 	if (sc->probe_done)
@@ -1027,6 +1019,7 @@ iichid_probe(device_t dev)
 
 	sc->dev = dev;
 	sc->ibuf = NULL;
+	sc->addr = addr;
 
 #ifdef HAVE_ACPI_IICBUS
 	handle = acpi_get_handle(dev);
