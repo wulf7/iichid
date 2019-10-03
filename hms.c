@@ -398,7 +398,7 @@ static int
 hms_attach(device_t dev)
 {
 	struct hms_softc *sc = device_get_softc(dev);
-	struct hid_hw *hw = device_get_ivars(dev);
+	struct hid_device_info *hw = device_get_ivars(dev);
 	struct hms_info *info;
 	void *d_ptr = NULL;
 	int isize;
@@ -411,7 +411,7 @@ hms_attach(device_t dev)
 
 	DPRINTFN(11, "sc=%p\n", sc);
 
-	device_set_desc(dev, hw->hid);
+	device_set_desc(dev, hw->name);
 
 	/*
          * Force the report (non-boot) protocol.
@@ -480,9 +480,9 @@ hms_attach(device_t dev)
 		info->sc_evdev = evdev_alloc();
 		evdev_set_name(info->sc_evdev, device_get_desc(dev));
 		evdev_set_phys(info->sc_evdev, device_get_nameunit(dev));
-		evdev_set_id(info->sc_evdev, BUS_USB, hw->idVendor,
+		evdev_set_id(info->sc_evdev, hw->idBus, hw->idVendor,
 		    hw->idProduct, hw->idVersion);
-//		evdev_set_serial(sc->sc_evdev, usb_get_serial(uaa->device));
+		evdev_set_serial(info->sc_evdev, hw->serial);
 		evdev_set_methods(info->sc_evdev, info, &hms_evdev_methods);
 		if ((info->sc_flags & (HMS_FLAG_ABSX | HMS_FLAG_ABSY)) == 0) {
 			evdev_support_event(info->sc_evdev, EV_REL);

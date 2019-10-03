@@ -48,6 +48,8 @@ __FBSDID("$FreeBSD$");
 #include <contrib/dev/acpica/include/accommon.h>
 #include <dev/acpica/acpivar.h>
 
+#include <dev/evdev/input.h>
+
 #include <dev/iicbus/iicbus.h>
 #include <dev/iicbus/iic.h>
 #include <dev/iicbus/iiconf.h>
@@ -80,7 +82,7 @@ struct iichid_softc {
 	bool			probe_done;
 	int			probe_result;
 
-	struct hid_hw		hw;
+	struct hid_device_info	hw;
 	uint16_t		addr;	/* Shifted left by 1 */
 	uint16_t		config_reg;
 	struct i2c_hid_desc	desc;
@@ -876,16 +878,20 @@ iichid_attach(device_t dev)
 		return (ENXIO);
 	}
 
-	if (device_info->Valid & ACPI_VALID_HID)
-		strlcpy(sc->hw.hid, device_info->HardwareId.String,
-		    sizeof(sc->hw.hid));
-
-	AcpiOsFree(device_info);
-
-	DPRINTF(sc, "  ACPI Hardware ID  : %s\n", sc->hw.hid);
+	DPRINTF(sc, "  ACPI Hardware ID  : %s\n",
+	    device_info->HardwareId.String);
 	DPRINTF(sc, "  IICbus addr       : 0x%02X\n", sc->addr >> 1);
 	DPRINTF(sc, "  HID descriptor reg: 0x%02X\n", sc->config_reg);
 
+	if (device_info->Valid & ACPI_VALID_HID)
+		strlcpy(sc->hw.name, device_info->HardwareId.String,
+		    sizeof(sc->hw.name));
+
+	AcpiOsFree(device_info);
+
+	sc->hw.parent = dev;
+	strlcpy(sc->hw.serial, "", sizeof(sc->hw.serial));
+	sc->hw.idBus = BUS_I2C;
 	sc->hw.idVendor = le16toh(sc->desc.wVendorID);
 	sc->hw.idProduct = le16toh(sc->desc.wProductID);
 	sc->hw.idVersion = le16toh(sc->desc.wVersionID);

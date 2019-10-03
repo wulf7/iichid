@@ -297,7 +297,7 @@ hmt_ev_open(struct evdev_dev *evdev)
 static int
 hmt_probe(device_t dev)
 {
-	struct hid_hw *hw = device_get_ivars(dev);
+	struct hid_device_info *hw = device_get_ivars(dev);
 	void *d_ptr;
 	uint16_t d_len;
 	int error;
@@ -316,7 +316,7 @@ hmt_probe(device_t dev)
 
 out:
 	if (error <= 0)
-		device_set_desc(dev, hw->hid);
+		device_set_desc(dev, hw->name);
 
 	return (error);
 }
@@ -325,7 +325,7 @@ static int
 hmt_attach(device_t dev)
 {
 	struct hmt_softc *sc = device_get_softc(dev);
-	struct hid_hw *hw = device_get_ivars(dev);
+	struct hid_device_info *hw = device_get_ivars(dev);
 	void *d_ptr, *fbuf = NULL;
 	uint16_t d_len, fsize;
 	int nbuttons;
@@ -391,9 +391,9 @@ hmt_attach(device_t dev)
 	sc->evdev = evdev_alloc();
 	evdev_set_name(sc->evdev, device_get_desc(dev));
 	evdev_set_phys(sc->evdev, device_get_nameunit(dev));
-	evdev_set_id(sc->evdev, BUS_I2C, hw->idVendor, hw->idProduct,
+	evdev_set_id(sc->evdev, hw->idBus, hw->idVendor, hw->idProduct,
 	    hw->idVersion);
-//	evdev_set_serial(sc->evdev, usb_get_serial(uaa->device));
+	evdev_set_serial(sc->evdev, hw->serial);
 	evdev_set_methods(sc->evdev, dev, &hmt_evdev_methods);
 	evdev_set_flag(sc->evdev, EVDEV_FLAG_MT_STCOMPAT);
 	switch (sc->type) {

@@ -58,6 +58,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/conf.h>
 #include <sys/fcntl.h>
 
+#include <dev/evdev/input.h>
+
 #include "usbdevs.h"
 #include <dev/usb/usb.h>
 #include <dev/usb/usbdi.h>
@@ -104,7 +106,7 @@ struct uhid_softc {
 	void *sc_intr_context;
 	struct mtx *sc_intr_mtx;
 
-	struct hid_hw sc_hw;
+	struct hid_device_info sc_hw;
 
 	struct usb_xfer *sc_xfer[UHID_N_TRANSFER];
 	struct usb_device *sc_udev;
@@ -686,7 +688,11 @@ uhid_attach(device_t dev)
 	}
 	sc->sc_ibuf = malloc(sc->sc_isize, M_USBDEV, M_ZERO | M_WAITOK);
 
-	strlcpy(sc->sc_hw.hid, device_get_desc(dev), sizeof(sc->sc_hw.hid));
+	sc->sc_hw.parent = dev;
+	strlcpy(sc->sc_hw.name, device_get_desc(dev), sizeof(sc->sc_hw.name));
+	strlcpy(sc->sc_hw.serial, usb_get_serial(uaa->device),
+	    sizeof(sc->sc_hw.serial));
+	sc->sc_hw.idBus = BUS_USB;
 	sc->sc_hw.idVendor = uaa->info.idVendor;
 	sc->sc_hw.idProduct = uaa->info.idProduct;
 	sc->sc_hw.idVersion = 0;

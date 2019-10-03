@@ -32,8 +32,11 @@
 
 typedef void hid_intr_t(void *context, void *data, uint16_t len);
 
-struct hid_hw {
-	char		hid[80];
+struct hid_device_info {
+	device_t	parent;
+	char		name[80];
+	char		serial[80];
+	uint16_t	idBus;
 	uint16_t	idVendor;
 	uint16_t	idProduct;
 	uint16_t	idVersion;
