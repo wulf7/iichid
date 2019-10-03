@@ -250,17 +250,6 @@ iichid_get_handle(device_t dev)
 #endif /* HAVE_ACPI_IICBUS */
 
 static int
-iichid_write_register(device_t dev, void* cmd, int cmdlen)
-{
-	uint16_t addr = iicbus_get_addr(dev);
-	struct iic_msg msgs[] = {
-	    { addr << 1, IIC_M_WR, cmdlen, cmd },
-	};
-
-	return (iicbus_transfer(dev, msgs, nitems(msgs)));
-}
-
-static int
 iichid_cmd_get_input_report(struct iichid_softc* sc, void *buf, int len,
     int *actual_len, bool do_poll)
 {
@@ -372,39 +361,33 @@ iichid_cmd_get_hid_desc(struct iichid_softc *sc, uint16_t config_reg,
 }
 
 static int
-iichid_set_power(device_t dev, bool enable)
+iichid_set_power(struct iichid_softc *sc, uint8_t param)
 {
-	struct iichid_softc *sc = device_get_softc(dev);
-	uint16_t cmdreg = htole16(sc->desc.wCommandRegister);
-	uint8_t power_state = enable ? 0 : 1;
-	/* 0x08, 4 reserved bits plus opcode (4 bit) */
-	uint8_t cmd[] = {
-		cmdreg & 0xff,
-		cmdreg >> 8,
-		power_state,
-		I2C_HID_CMD_SET_POWER,
+	uint16_t addr = iicbus_get_addr(sc->dev);
+	uint8_t *cmdreg = (uint8_t *)&sc->desc.wCommandRegister;
+	uint8_t cmd[] = { cmdreg[0], cmdreg[1], param, I2C_HID_CMD_SET_POWER };
+	struct iic_msg msgs[] = {
+	    { addr << 1, IIC_M_WR, sizeof(cmd), cmd },
 	};
 
-	DPRINTF(sc, "HID command I2C_HID_CMD_SET_POWER(%d)\n", power_state);
+	DPRINTF(sc, "HID command I2C_HID_CMD_SET_POWER(%d)\n", param);
 
-	return (iichid_write_register(dev, cmd, sizeof(cmd)));
+	return (iicbus_transfer(sc->dev, msgs, nitems(msgs)));
 }
 
 static int
-iichid_reset(device_t dev)
+iichid_reset(struct iichid_softc *sc)
 {
-	struct iichid_softc *sc = device_get_softc(dev);
-	uint16_t cmdreg = htole16(sc->desc.wCommandRegister);
-	uint8_t cmd[] = {
-		cmdreg & 0xff,
-		cmdreg >> 8,
-		0,
-		I2C_HID_CMD_RESET,
+	uint16_t addr = iicbus_get_addr(sc->dev);
+	uint8_t *cmdreg = (uint8_t *)&sc->desc.wCommandRegister;
+	uint8_t cmd[] = { cmdreg[0], cmdreg[1], 0, I2C_HID_CMD_RESET };
+	struct iic_msg msgs[] = {
+	    { addr << 1, IIC_M_WR, sizeof(cmd), cmd },
 	};
 
 	DPRINTF(sc, "HID command I2C_HID_CMD_RESET\n");
 
-	return (iichid_write_register(dev, cmd, sizeof(cmd)));
+	return (iicbus_transfer(sc->dev, msgs, nitems(msgs)));
 }
 
 static int
@@ -611,7 +594,8 @@ iichid_set_power_state(struct iichid_softc *sc)
 
 	power_on = sc->open & !sc->suspend;
 	if (power_on != sc->power_on) {
-		error = iichid_set_power(sc->dev, power_on);
+		error = iichid_set_power(sc,
+		    power_on ? I2C_HID_POWER_ON : I2C_HID_POWER_OFF);
 		mtx_lock(sc->intr_mtx);
 		if (sc->sampling_rate_fast >= 0 && sc->intr_handler != NULL) {
 			if (power_on) {
@@ -914,7 +898,7 @@ iichid_attach(device_t dev)
 	sc->hw.idProduct = le16toh(sc->desc.wProductID);
 	sc->hw.idVersion = le16toh(sc->desc.wVersionID);
 
-	error = iichid_set_power(dev, true);
+	error = iichid_set_power(sc, I2C_HID_POWER_ON);
 	if (error) {
 		device_printf(dev, "failed to power on: %d\n", error);
 		return (ENXIO);
@@ -928,7 +912,7 @@ iichid_attach(device_t dev)
 	else
 		tsleep(sc, 0, "iichid", (hz + 999) / 1000);
 
-	error = iichid_reset(dev);
+	error = iichid_reset(sc);
 	if (error) {
 		device_printf(dev, "failed to reset hardware: %d\n", error);
 		return (ENXIO);
@@ -1018,7 +1002,7 @@ iichid_attach(device_t dev)
 		device_printf(dev, "failed to attach child: error %d\n", error);
 
 done:
-	(void)iichid_set_power(dev, false);
+	(void)iichid_set_power(sc, I2C_HID_POWER_OFF);
 	return (error);
 }
 

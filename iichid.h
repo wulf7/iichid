@@ -44,6 +44,9 @@ enum {
         I2C_HID_CMD_SET_POWER   = 0x8,
 };
 
+#define	I2C_HID_POWER_ON		0x0
+#define	I2C_HID_POWER_OFF		0x1
+
 /*
  * Since interrupt resource acquisition is not always possible (in case of GPIO
  * interrupts) iichid now supports a sampling_mode.
