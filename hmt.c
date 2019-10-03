@@ -297,28 +297,22 @@ hmt_ev_open(struct evdev_dev *evdev)
 static int
 hmt_probe(device_t dev)
 {
-	struct hid_device_info *hw = device_get_ivars(dev);
 	void *d_ptr;
 	uint16_t d_len;
 	int error;
-	int hid_type;
 
 	error = hid_get_report_descr(dev, &d_ptr, &d_len);
 	if (error) {
-		device_printf(dev, "could not retrieve report descriptor from device: %d\n", error);
-		error = ENXIO;
-		goto out;
+		device_printf(dev, "could not retrieve report descriptor from "
+		     "device: %d\n", error);
+		return (ENXIO);
 	}
 
 	/* Check if report descriptor belongs to a HID multitouch device */
-	hid_type = hmt_hid_parse(NULL, d_ptr, d_len);
-	error = hid_type != 0 ? BUS_PROBE_DEFAULT : ENXIO;
+	if (hmt_hid_parse(NULL, d_ptr, d_len) == 0)
+		return (ENXIO);
 
-out:
-	if (error <= 0)
-		device_set_desc(dev, hw->name);
-
-	return (error);
+	return (BUS_PROBE_DEFAULT);
 }
 
 static int
@@ -332,6 +326,8 @@ hmt_attach(device_t dev)
 	size_t i;
 	uint8_t fid;
 	int error;
+
+	device_set_desc(dev, hw->name);
 
 	error = hid_get_report_descr(dev, &d_ptr, &d_len);
 	if (error) {
