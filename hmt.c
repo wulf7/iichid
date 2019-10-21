@@ -252,6 +252,7 @@ static hid_intr_t		hmt_intr;
 static device_probe_t		hmt_probe;
 static device_attach_t		hmt_attach;
 static device_detach_t		hmt_detach;
+static device_resume_t		hmt_resume;
 
 static evdev_open_t	hmt_ev_open;
 static evdev_close_t	hmt_ev_close;
@@ -263,6 +264,7 @@ static device_method_t hmt_methods[] = {
 	DEVMETHOD(device_probe,		hmt_probe),
 	DEVMETHOD(device_attach,	hmt_attach),
 	DEVMETHOD(device_detach,	hmt_detach),
+	DEVMETHOD(device_resume,	hmt_resume),
 
 	DEVMETHOD_END
 };
@@ -446,6 +448,21 @@ hmt_detach(device_t dev)
 	struct hmt_softc *sc = device_get_softc(dev);
 
 	evdev_free(sc->evdev);
+
+	return (0);
+}
+
+static int
+hmt_resume(device_t dev)
+{
+	struct hmt_softc *sc = device_get_softc(dev);
+	int error;
+
+	if (sc->type == HUD_TOUCHPAD && sc->input_mode_rlen > 1) {
+		error = hmt_set_input_mode(sc, HMT_INPUT_MODE_MT_TOUCHPAD);
+		if (error)
+			DPRINTF("Failed to set input mode: %d\n", error);
+	}
 
 	return (0);
 }
