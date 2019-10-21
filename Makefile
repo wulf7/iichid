@@ -3,7 +3,7 @@
 #.PATH:		${SRCTOP}/sys/dev/iicbus/input
 
 KMOD	= iichid
-SRCS	= iichid.c iichid.h hconf.c hconf.h hms.c hmt.c
+SRCS	= iichid.c iichid.h hconf.c hconf.h hms.c hmt.c hpen.c
 SRCS	+= hidbus.c hidbus.h hid_if.c hid_if.h hid.c hid.h hid_lookup.c
 SRCS	+= hid_debug.h hid_debug.c
 SRCS	+= usbdevs.h usbhid.c
