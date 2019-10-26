@@ -56,29 +56,14 @@ __FBSDID("$FreeBSD$");
 #include "hid.h"
 #include "hidbus.h"
 
-#define	HMS_DEBUG
-#define	HMS_DEBUG_VAR	hms_debug
+#define	HID_DEBUG_VAR	hms_debug
+#include "hid_debug.h"
 
-/* Check if debugging is enabled. */
-#ifdef HMS_DEBUG_VAR
-#ifdef HMS_DEBUG
-#define	DPRINTFN(n,fmt,...) do {					\
-	if ((HMS_DEBUG_VAR) >= (n)) {					\
-		printf("%s: " fmt, __FUNCTION__ ,##__VA_ARGS__);	\
-	}								\
-} while (0)
-#define DPRINTF(...)    DPRINTFN(1, __VA_ARGS__)
-#else
-#define DPRINTF(...) do { } while (0)
-#define DPRINTFN(...) do { } while (0)
-#endif
-#endif
-
-#ifdef HMS_DEBUG
+#ifdef HID_DEBUG
 static int hms_debug = 0;
 
-static SYSCTL_NODE(_hw_usb, OID_AUTO, hms, CTLFLAG_RW, 0, "USB hms");
-SYSCTL_INT(_hw_usb_hms, OID_AUTO, debug, CTLFLAG_RWTUN,
+static SYSCTL_NODE(_hw_hid, OID_AUTO, hms, CTLFLAG_RW, 0, "USB hms");
+SYSCTL_INT(_hw_hid_hms, OID_AUTO, debug, CTLFLAG_RWTUN,
     &hms_debug, 0, "Debug level");
 #endif
 

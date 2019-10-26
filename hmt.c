@@ -50,30 +50,15 @@ __FBSDID("$FreeBSD$");
 #include "hid.h"
 #include "hidbus.h"
 
-#define	HMT_DEBUG
-#define	HMT_DEBUG_VAR	hmt_debug
+#define	HID_DEBUG_VAR	hmt_debug
+#include "hid_debug.h"
 
-/* Check if debugging is enabled. */
-#ifdef HMT_DEBUG_VAR
-#ifdef HMT_DEBUG
-#define	DPRINTFN(n,fmt,...) do {					\
-	if ((HMT_DEBUG_VAR) >= (n)) {					\
-		printf("%s: " fmt, __FUNCTION__ ,##__VA_ARGS__);	\
-	}								\
-} while (0)
-#define	DPRINTF(...)	DPRINTFN(1, __VA_ARGS__)
-#else
-#define	DPRINTF(...) do { } while (0)
-#define	DPRINTFN(...) do { } while (0)
-#endif
-#endif
-
-#ifdef HMT_DEBUG
+#ifdef HID_DEBUG
 static int hmt_debug = 0;
 
-static SYSCTL_NODE(_hw, OID_AUTO, hmt, CTLFLAG_RW, 0,
+static SYSCTL_NODE(_hw_hid, OID_AUTO, hmt, CTLFLAG_RW, 0,
     "MSWindows 7/8/10 compatible HID Multi-touch Device");
-SYSCTL_INT(_hw_hmt, OID_AUTO, debug, CTLFLAG_RWTUN,
+SYSCTL_INT(_hw_hid_hmt, OID_AUTO, debug, CTLFLAG_RWTUN,
     &hmt_debug, 1, "Debug level");
 #endif
 
@@ -553,7 +538,7 @@ hmt_intr(void *context, void *buf, uint16_t len)
 	if (cont_count != 0)
 		sc->nconts_todo = cont_count;
 
-#ifdef HMT_DEBUG
+#ifdef HID_DEBUG
 	DPRINTFN(6, "cont_count:%2u", (unsigned)cont_count);
 	if (hmt_debug >= 6) {
 		HMT_FOREACH_USAGE(sc->caps, usage) {
@@ -580,7 +565,7 @@ hmt_intr(void *context, void *buf, uint16_t len)
 		slot = evdev_get_mt_slot_by_tracking_id(sc->evdev,
 		    slot_data[HMT_CONTACTID]);
 
-#ifdef HMT_DEBUG
+#ifdef HID_DEBUG
 		DPRINTFN(6, "cont%01x: data = ", cont);
 		if (hmt_debug >= 6) {
 			HMT_FOREACH_USAGE(sc->caps, usage) {

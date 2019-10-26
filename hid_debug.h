@@ -1,10 +1,9 @@
 /* $FreeBSD$ */
 /*-
- * SPDX-License-Identifier: BSD-2-Clause-NetBSD
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
  *
- * Copyright (c) 2008 Hans Petter Selasky. All rights reserved.
- * Copyright (c) 1998 The NetBSD Foundation, Inc. All rights reserved.
- * Copyright (c) 1998 Lennart Augustsson. All rights reserved.
+ * Copyright (c) 2008 Hans Petter Selasky.
+ * Copyright (c) 2019 Vladimir Kondratyev <wulf@FreeBSD.org>
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,18 +27,28 @@
  * SUCH DAMAGE.
  */
 
-#ifndef _HID_H_
-#define	_HID_H_
+/* This file contains various factored out debug macros. */
 
-#include <dev/usb/usb.h>
-#include <dev/usb/usbdi.h>
-#include <dev/usb/usbhid.h>
+#ifndef _HID_DEBUG_H_
+#define	_HID_DEBUG_H_
 
-/* Declare parent SYSCTL USB node. */
-#ifdef SYSCTL_DECL
-SYSCTL_DECL(_hw_hid);
+/* Declare global HID debug variable. */
+extern int hid_debug;
+
+/* Check if HID debugging is enabled. */
+#ifdef HID_DEBUG_VAR
+#ifdef HID_DEBUG
+#define	DPRINTFN(n,fmt,...) do {		\
+  if ((HID_DEBUG_VAR) >= (n)) {			\
+    printf("%s: " fmt,				\
+	   __FUNCTION__ ,##__VA_ARGS__);	\
+  }						\
+} while (0)
+#define	DPRINTF(...)	DPRINTFN(1, __VA_ARGS__)
+#else
+#define	DPRINTF(...) do { } while (0)
+#define	DPRINTFN(...) do { } while (0)
+#endif
 #endif
 
-typedef usb_size_t hid_size_t;
-
-#endif					/* _HID_H_ */
+#endif					/* _HID_DEBUG_H_ */

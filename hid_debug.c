@@ -1,10 +1,8 @@
-/* $FreeBSD$ */
 /*-
- * SPDX-License-Identifier: BSD-2-Clause-NetBSD
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
  *
- * Copyright (c) 2008 Hans Petter Selasky. All rights reserved.
- * Copyright (c) 1998 The NetBSD Foundation, Inc. All rights reserved.
- * Copyright (c) 1998 Lennart Augustsson. All rights reserved.
+ * Copyright (c) 2008 Hans Petter Selasky.
+ * Copyright (c) 2019 Vladimir Kondratyev <wulf@FreeBSD.org>
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,20 +24,22 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
+ *
+ * $FreeBSD$
  */
 
-#ifndef _HID_H_
-#define	_HID_H_
+#include <sys/param.h>
+#include <sys/bus.h>
+#include <sys/sysctl.h>
 
-#include <dev/usb/usb.h>
-#include <dev/usb/usbdi.h>
-#include <dev/usb/usbhid.h>
+#include "hid_debug.h"
 
-/* Declare parent SYSCTL USB node. */
-#ifdef SYSCTL_DECL
-SYSCTL_DECL(_hw_hid);
-#endif
+/*
+ * Define this unconditionally in case a kernel module is loaded that
+ * has been compiled with debugging options.
+ */
+int	hid_debug = 0;
 
-typedef usb_size_t hid_size_t;
-
-#endif					/* _HID_H_ */
+SYSCTL_NODE(_hw, OID_AUTO, hid, CTLFLAG_RW, 0, "HID debugging");
+SYSCTL_INT(_hw_hid, OID_AUTO, debug, CTLFLAG_RWTUN,
+    &hid_debug, 0, "Debug level");

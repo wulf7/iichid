@@ -42,6 +42,9 @@ __FBSDID("$FreeBSD$");
 
 #include "hid_if.h"
 
+#define	HID_DEBUG_VAR	hid_debug
+#include "hid_debug.h"
+
 static hid_intr_t	hidbus_intr;
 
 static device_probe_t	hidbus_probe;
@@ -112,7 +115,7 @@ hidbus_add_children(struct hidbus_softc *sc)
 			continue;
 		}
 		index++;
-		device_printf(sc->dev, "0x%04hx:0x%04hx\n",
+		DPRINTF("Add child TLC: 0x%04hx:0x%04hx\n",
 		    (uint16_t)(hi.usage >> 16), (uint16_t)(hi.usage & 0xFFFF));
 	}
 	hid_end_parse(hd);
