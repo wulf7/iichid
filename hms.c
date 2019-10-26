@@ -233,40 +233,23 @@ hms_intr(void *context, void *data, uint16_t len)
 }
 
 /* A match on these entries will load hms */
-static const STRUCT_USB_HOST_ID __used hms_devs[] = {
-	{USB_IFACE_CLASS(UICLASS_HID),
-	 USB_IFACE_SUBCLASS(UISUBCLASS_BOOT),
-	 USB_IFACE_PROTOCOL(UIPROTO_MOUSE),},
+static const struct hid_device_id hms_devs[] = {
+	{ HID_TLC(HUP_GENERIC_DESKTOP, HUG_MOUSE) },
 };
-
-static int
-hms_hid_is_mouse(const void *d_ptr, uint16_t d_len)
-{
-	if (hid_is_collection(d_ptr, d_len,
-	    HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_MOUSE)))
-		return (1);
-	return (0);
-}
 
 static int
 hms_probe(device_t dev)
 {
-	void *d_ptr;
+	struct hid_tlc_info *tlc = device_get_ivars(dev);
 	int error;
-	uint16_t d_len;
 
 	DPRINTFN(11, "\n");
 
-	error = hid_get_report_descr(dev, &d_ptr, &d_len);
-	if (error)
-		return (ENXIO);
+	error = hid_lookup_driver_info(hms_devs, sizeof(hms_devs), tlc);
+	if (error != 0)
+		return (error);
 
-	if (hms_hid_is_mouse(d_ptr, d_len))
-		error = BUS_PROBE_LOW_PRIORITY;
-	else
-		error = ENXIO;
-
-	return (error);
+	return (BUS_PROBE_LOW_PRIORITY);
 }
 
 static int
@@ -398,7 +381,8 @@ static int
 hms_attach(device_t dev)
 {
 	struct hms_softc *sc = device_get_softc(dev);
-	struct hid_device_info *hw = device_get_ivars(dev);
+	struct hid_tlc_info *tlc = device_get_ivars(dev);
+	struct hid_device_info *hw = tlc->device_info;
 	struct hms_info *info;
 	void *d_ptr = NULL;
 	int isize;

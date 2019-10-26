@@ -280,6 +280,11 @@ static const struct evdev_methods hmt_evdev_methods = {
 	.ev_close = &hmt_ev_close,
 };
 
+static const struct hid_device_id hmt_devs[] = {
+	{ HID_TLC(HUP_DIGITIZERS, HUD_TOUCHSCREEN) },
+	{ HID_TLC(HUP_DIGITIZERS, HUD_TOUCHPAD) },
+};
+
 static int
 hmt_ev_close(struct evdev_dev *evdev)
 {
@@ -299,12 +304,17 @@ hmt_ev_open(struct evdev_dev *evdev)
 static int
 hmt_probe(device_t dev)
 {
+	struct hid_tlc_info *tlc = device_get_ivars(dev);
 	void *d_ptr;
 	uint16_t d_len;
 	int error;
 
+	error = hid_lookup_driver_info(hmt_devs, sizeof(hmt_devs), tlc);
+	if (error != 0)
+		return (error);
+
 	error = hid_get_report_descr(dev, &d_ptr, &d_len);
-	if (error) {
+	if (error != 0) {
 		device_printf(dev, "could not retrieve report descriptor from "
 		     "device: %d\n", error);
 		return (ENXIO);
@@ -321,7 +331,8 @@ static int
 hmt_attach(device_t dev)
 {
 	struct hmt_softc *sc = device_get_softc(dev);
-	struct hid_device_info *hw = device_get_ivars(dev);
+	struct hid_tlc_info *tlc = device_get_ivars(dev);
+	struct hid_device_info *hw = tlc->device_info;
 	void *d_ptr, *fbuf = NULL;
 	uint16_t d_len, fsize;
 	int nbuttons;

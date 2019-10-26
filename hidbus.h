@@ -42,6 +42,82 @@ struct hid_device_info {
 	uint16_t	idVersion;
 };
 
+struct hid_tlc_info {
+	uint32_t		usage;
+	uint8_t			index;
+	struct hid_device_info	*device_info;
+	unsigned long		driver_info;	/* for internal use */
+};
+
+/*
+ * The following structure is used when looking up an HID driver for
+ * an HID device. It is inspired by the structure called "usb_device_id".
+ * which is originated in Linux and ported to FreeBSD.
+ */
+struct hid_device_id {
+
+	/* Select which fields to match against */
+	uint8_t
+		match_flag_usage:1,
+		match_flag_bus:1,
+		match_flag_vendor:1,
+		match_flag_product:1,
+		match_flag_ver_lo:1,
+		match_flag_ver_hi:1,
+		match_flag_unused:2;
+
+	/* Used for top level collection usage matches */
+	uint32_t usage;
+
+	/* Used for product specific matches; the Version range is inclusive */
+	uint16_t idBus;
+	uint16_t idVendor;
+	uint16_t idProduct;
+	uint16_t idVersion_lo;
+	uint16_t idVersion_hi;
+
+	/* Hook for driver specific information */
+	unsigned long driver_info;
+};
+
+#define HID_TLC(page,usg)			\
+  .match_flag_usage = 1, .usage = HID_USAGE2((page),(usg))
+
+#define HID_BUS(bus)				\
+  .match_flag_bus = 1, .idBus = (bus)
+
+#define HID_VENDOR(vend)			\
+  .match_flag_vendor = 1, .idVendor = (vend)
+
+#define HID_PRODUCT(prod)			\
+  .match_flag_product = 1, .idProduct = (prod)
+
+#define HID_VP(vend,prod)			\
+  HID_VENDOR(vend), HID_PRODUCT(prod)
+
+#define HID_BVP(bus,vend,prod)			\
+  HID_BUS(bus), HID_VENDOR(vend), HID_PRODUCT(prod)
+
+#define HID_BVPI(bus,vend,prod,info)		\
+  HID_BUS(bus), HID_VENDOR(vend), HID_PRODUCT(prod), HID_DRIVER_INFO(info)
+
+#define HID_VERSION_GTEQ(lo)	/* greater than or equal */	\
+  .match_flag_ver_lo = 1, .idVersion_lo = (lo)
+
+#define HID_VERSION_LTEQ(hi)	/* less than or equal */	\
+  .match_flag_ver_hi = 1, .idVersion_hi = (hi)
+
+#define HID_DRIVER_INFO(n)			\
+  .driver_info = (n)
+
+#define HID_GET_DRIVER_INFO(did)		\
+  (did)->driver_info
+
+const struct hid_device_id *hid_lookup_id(const struct hid_device_id *id,
+    size_t sizeof_id, const struct hid_tlc_info *tlc);
+int hid_lookup_driver_info(const struct hid_device_id *id, size_t sizeof_id,
+    struct hid_tlc_info *tlc);
+
 /* hidbus child interrupt interface */
 struct mtx *	hid_get_lock(device_t);
 void		hid_set_intr(device_t, hid_intr_t);

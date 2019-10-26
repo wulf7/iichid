@@ -34,21 +34,95 @@ __FBSDID("$FreeBSD$");
 #include <sys/lock.h>
 #include <sys/module.h>
 #include <sys/mutex.h>
+#include <sys/queue.h>
 #include <sys/systm.h>
 
+#include "hid.h"
 #include "hidbus.h"
 
 #include "hid_if.h"
 
 static hid_intr_t	hidbus_intr;
 
-struct hidbus_softc {
-	device_t	dev;
-	struct mtx	lock;
+static device_probe_t	hidbus_probe;
+static device_attach_t	hidbus_attach;
+static device_detach_t	hidbus_detach;
 
-	device_t	child;
-	hid_intr_t	*intr;
+struct hidbus_tlc {
+	device_t			child;
+	hid_intr_t			*intr;
+	bool				open;
+	struct hid_tlc_info		ivars;
+	STAILQ_ENTRY(hidbus_tlc)	link;
 };
+
+struct hidbus_softc {
+	device_t			dev;
+	struct mtx			lock;
+
+	STAILQ_HEAD(, hidbus_tlc)	tlcs;
+};
+
+static device_t
+hidbus_add_child(struct hidbus_softc *sc, uint8_t index, uint32_t usage)
+{
+	struct hid_device_info *device_info = device_get_ivars(sc->dev);
+	struct hidbus_tlc *tlc;
+	device_t child;
+
+	child = device_add_child(sc->dev, NULL, -1);
+	if (child == NULL)
+			return (child);
+
+	tlc = malloc(sizeof(struct hidbus_tlc), M_DEVBUF, M_WAITOK | M_ZERO);
+	tlc->ivars.usage = usage;
+	tlc->ivars.index = index;
+	tlc->ivars.device_info = device_info;
+	tlc->child = child;
+	STAILQ_INSERT_TAIL(&sc->tlcs, tlc, link);
+	device_set_ivars(child, &tlc->ivars);
+
+	return (child);
+}
+
+static int
+hidbus_add_children(struct hidbus_softc *sc)
+{
+	struct hid_data *hd;
+	struct hid_item hi;
+	device_t child;
+	void *data;
+	uint16_t len;
+	uint8_t index = 0;
+	int error;
+
+	error = HID_GET_REPORT_DESCR(device_get_parent(sc->dev), &data, &len);
+	if (error != 0) {
+		return (ENXIO);
+	}
+
+	/* Count the number of top level collections */
+	hd = hid_start_parse(data, len, 1 << hid_input);
+	while ((error = hid_get_item(hd, &hi))) {
+		if (hi.kind != hid_collection || hi.collevel != 1)
+			continue;
+		child = hidbus_add_child(sc, index, hi.usage);
+		if (child == NULL) {
+			device_printf(sc->dev, "Could not add HID device\n");
+			continue;
+		}
+		index++;
+		device_printf(sc->dev, "0x%04hx:0x%04hx\n",
+		    (uint16_t)(hi.usage >> 16), (uint16_t)(hi.usage & 0xFFFF));
+	}
+	hid_end_parse(hd);
+
+	if (index == 0) {
+		return (ENXIO);
+	}
+
+	return (error);
+}
 
 static int
 hidbus_probe(device_t dev)
@@ -64,21 +138,20 @@ static int
 hidbus_attach(device_t dev)
 {
 	struct hidbus_softc *sc = device_get_softc(dev);
-	device_t child;
 	int error;
-	void *ivars = device_get_ivars(dev);
 
 	sc->dev = dev;
-
-	child = device_add_child(dev, NULL, -1);
-	if (child == NULL) {
-		device_printf(dev, "Could not add HID device\n");
-		return (ENXIO);
-	}
+	STAILQ_INIT(&sc->tlcs);
 
 	mtx_init(&sc->lock, "hidbus lock", NULL, MTX_DEF);
 	HID_INTR_SETUP(device_get_parent(dev), &sc->lock, hidbus_intr, sc);
-	device_set_ivars(child, ivars);
+
+	error = hidbus_add_children(sc);
+	if (error != 0) {
+		hidbus_detach(dev);
+		return (ENXIO);
+	}
+
 	error = bus_generic_attach(dev);
 	if (error)
 		device_printf(dev, "failed to attach child: error %d\n", error);
@@ -90,12 +163,19 @@ static int
 hidbus_detach(device_t dev)
 {
 	struct hidbus_softc *sc = device_get_softc(dev);
+	struct hidbus_tlc *tlc;
 
 	bus_generic_detach(dev);
 	device_delete_children(dev);
 
 	HID_INTR_UNSETUP(device_get_parent(dev));
 	mtx_destroy(&sc->lock);
+
+	while (!STAILQ_EMPTY(&sc->tlcs)) {
+		tlc = STAILQ_FIRST(&sc->tlcs);
+		STAILQ_REMOVE_HEAD(&sc->tlcs, link);
+                free(tlc, M_DEVBUF);
+        }
 
 	return (0);
 }
@@ -113,23 +193,53 @@ hid_set_intr(device_t child, hid_intr_t intr)
 {
 	device_t bus = device_get_parent(child);
 	struct hidbus_softc *sc = device_get_softc(bus);
+	struct hidbus_tlc *tlc;
 
-	sc->child = child;
-	sc->intr = intr;
+	STAILQ_FOREACH(tlc, &sc->tlcs, link) {
+		if (tlc->child == child)
+			tlc->intr = intr;
+	}
 }
 
 void
 hidbus_intr(void *context, void *buf, uint16_t len)
 {
 	struct hidbus_softc *sc = context;
+	struct hidbus_tlc *tlc;
 
-	sc->intr(sc->child, buf, len);
+	mtx_assert(&sc->lock, MA_OWNED);
+
+	/*
+	 * Broadcast input report to all subscribers.
+	 * TODO: Add check for input report ID.
+	 */
+	 STAILQ_FOREACH(tlc, &sc->tlcs, link) {
+		if (tlc->open) {
+			KASSERT(tlc->intr != NULL,
+			    ("hidbus: interrupt handler is NULL"));
+			tlc->intr(tlc->child, buf, len);
+		}
+	}
 }
 
 int
 hid_start(device_t child)
 {
 	device_t bus = device_get_parent(child);
+	struct hidbus_softc *sc = device_get_softc(bus);
+	struct hidbus_tlc *tlc;
+	bool open = false;
+
+	mtx_assert(&sc->lock, MA_OWNED);
+
+	STAILQ_FOREACH(tlc, &sc->tlcs, link) {
+		open = open || tlc->open;
+		if (tlc->child == child)
+			tlc->open = true;
+	}
+
+	if (open)
+		return (0);
 
 	return (HID_INTR_START(device_get_parent(bus)));
 }
@@ -138,6 +248,20 @@ int
 hid_stop(device_t child)
 {
 	device_t bus = device_get_parent(child);
+	struct hidbus_softc *sc = device_get_softc(bus);
+	struct hidbus_tlc *tlc;
+	bool open = false;
+
+	mtx_assert(&sc->lock, MA_OWNED);
+
+	STAILQ_FOREACH(tlc, &sc->tlcs, link) {
+		if (tlc->child == child)
+			tlc->open = false;
+		open = open || tlc->open;
+	}
+
+	if (open)
+		return (0);
 
 	return (HID_INTR_STOP(device_get_parent(bus)));
 }
