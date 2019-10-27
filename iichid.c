@@ -1170,6 +1170,8 @@ iichid_suspend(device_t dev)
 
 	DPRINTF(sc, "Suspend called, setting device to power_state 1\n");
 
+	(void)bus_generic_suspend(dev);
+
 	/*
 	 * 8.2 - The HOST is going into a deep power optimized state and wishes
 	 * to put all the devices into a low power state also. The HOST
@@ -1186,7 +1188,7 @@ iichid_suspend(device_t dev)
 	else
 		DPRINTF(sc, "Successfully set power_state\n");
 
-        return (error);
+        return (0);
 }
 
 static int
@@ -1207,7 +1209,9 @@ iichid_resume(device_t dev)
 	else
 		DPRINTF(sc, "Successfully set power_state\n");
 
-	return (error);
+	(void)bus_generic_resume(dev);
+
+	return (0);
 }
 
 static devclass_t iichid_devclass;
