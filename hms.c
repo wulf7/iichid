@@ -75,12 +75,6 @@ SYSCTL_INT(_hw_hid_hms, OID_AUTO, debug, CTLFLAG_RWTUN,
 #define	HMS_BUT(i) ((i) < 16 ? BTN_MOUSE + (i) : BTN_MISC + (i) - 16)
 #define	HMS_INFO_MAX	  2		/* maximum number of HID sets */
 
-struct hms_absinfo {
-	int32_t min;
-	int32_t max;
-	int32_t res;
-};
-
 struct hms_info {
 	device_t sc_dev;
 
@@ -91,8 +85,8 @@ struct hms_info {
 	struct hid_location sc_loc_hwh;
 	struct hid_location sc_loc_btn[HMS_BUTTON_MAX];
 
-	struct hms_absinfo  sc_ai_x;
-	struct hms_absinfo  sc_ai_y;
+	struct hid_absinfo  sc_ai_x;
+	struct hid_absinfo  sc_ai_y;
 
 	uint32_t sc_flags;
 #define	HMS_FLAG_X_AXIS     0x0001
@@ -237,56 +231,19 @@ hms_probe(device_t dev)
 	return (BUS_PROBE_LOW_PRIORITY);
 }
 
-static int
-hms_hid_locate(const void *desc, hid_size_t size, int32_t u, enum hid_kind k,
-    uint8_t index, struct hid_location *loc, uint32_t *flags, uint8_t *id,
-    struct hms_absinfo *ai)
-{
-	struct hid_data *d;
-	struct hid_item h;
-
-	for (d = hid_start_parse(desc, size, 1 << k); hid_get_item(d, &h);) {
-		if (h.kind == k && !(h.flags & HIO_CONST) && h.usage == u) {
-			if (index--)
-				continue;
-			if (loc != NULL)
-				*loc = h.loc;
-			if (flags != NULL)
-				*flags = h.flags;
-			if (id != NULL)
-				*id = h.report_ID;
-			if (ai != NULL && (h.flags & HIO_RELATIVE) == 0)
-				*ai = (struct hms_absinfo) {
-					.max = h.logical_maximum,
-					.min = h.logical_minimum,
-					.res = hid_item_resolution(&h),
-				};
-			hid_end_parse(d);
-			return (1);
-		}
-	}
-	if (loc != NULL)
-		loc->size = 0;
-	if (flags != NULL)
-		*flags = 0;
-	if (id != NULL)
-		*id = 0;
-	hid_end_parse(d);
-	return (0);
-}
-
 static void
 hms_hid_parse(struct hms_softc *sc, device_t dev, const uint8_t *buf,
     uint16_t len, uint8_t index)
 {
 	struct hms_info *info = &sc->sc_info[index];
+	struct hid_tlc_info *tlc = device_get_ivars(dev);
 	uint32_t flags;
 	uint8_t i;
 	uint8_t j;
 
-	if (hms_hid_locate(buf, len, HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_X),
-	    hid_input, index, &info->sc_loc_x, &flags, &info->sc_iid_x,
-	    &info->sc_ai_x)) {
+	if (hid_tlc_locate(buf, len, HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_X),
+	    hid_input, tlc->index, index, &info->sc_loc_x, &flags,
+	    &info->sc_iid_x, &info->sc_ai_x)) {
 
 		if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS_REL)
 			info->sc_flags |= HMS_FLAG_X_AXIS;
@@ -294,9 +251,9 @@ hms_hid_parse(struct hms_softc *sc, device_t dev, const uint8_t *buf,
 			info->sc_flags |= HMS_FLAG_X_AXIS | HMS_FLAG_ABSX;
 	}
 
-	if (hms_hid_locate(buf, len, HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_Y),
-	    hid_input, index, &info->sc_loc_y, &flags, &info->sc_iid_y,
-	    &info->sc_ai_y)) {
+	if (hid_tlc_locate(buf, len, HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_Y),
+	    hid_input, tlc->index, index, &info->sc_loc_y, &flags,
+	    &info->sc_iid_y, &info->sc_ai_y)) {
 
 		if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS_REL)
 			info->sc_flags |= HMS_FLAG_Y_AXIS;
@@ -304,20 +261,23 @@ hms_hid_parse(struct hms_softc *sc, device_t dev, const uint8_t *buf,
 			info->sc_flags |= HMS_FLAG_Y_AXIS | HMS_FLAG_ABSY;
 	}
 
-	if (hid_locate(buf, len, HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_Z),
-	    hid_input, index, &info->sc_loc_z, &flags, &info->sc_iid_z)) {
+	if (hid_tlc_locate(buf, len, HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_Z),
+	    hid_input, tlc->index, index, &info->sc_loc_z, &flags,
+	    &info->sc_iid_z, NULL)) {
 
 		if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS_REL)
 			info->sc_flags |= HMS_FLAG_Z_AXIS;
 	}
-	if (hid_locate(buf, len, HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_WHEEL),
-	    hid_input, index, &info->sc_loc_wh, &flags, &info->sc_iid_wh)) {
+	if (hid_tlc_locate(buf, len,
+	    HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_WHEEL), hid_input, tlc->index,
+	    index, &info->sc_loc_wh, &flags, &info->sc_iid_wh, NULL)) {
 
 		if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS_REL)
 			info->sc_flags |= HMS_FLAG_WHEEL;
 	}
-	if (hid_locate(buf, len, HID_USAGE2(HUP_CONSUMER, HUC_AC_PAN),
-	    hid_input, index, &info->sc_loc_hwh, &flags, &info->sc_iid_hwh)) {
+	if (hid_tlc_locate(buf, len, HID_USAGE2(HUP_CONSUMER, HUC_AC_PAN),
+	    hid_input, tlc->index, index, &info->sc_loc_hwh, &flags,
+	    &info->sc_iid_hwh, NULL)) {
 
 		if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS_REL)
 			info->sc_flags |= HMS_FLAG_HWHEEL;
@@ -326,9 +286,9 @@ hms_hid_parse(struct hms_softc *sc, device_t dev, const uint8_t *buf,
 	/* figure out the number of buttons */
 
 	for (i = 0; i < HMS_BUTTON_MAX; i++) {
-		if (!hid_locate(buf, len, HID_USAGE2(HUP_BUTTON, (i + 1)),
-		    hid_input, index, &info->sc_loc_btn[i], NULL, 
-		    &info->sc_iid_btn[i])) {
+		if (!hid_tlc_locate(buf, len, HID_USAGE2(HUP_BUTTON, (i + 1)),
+		    hid_input, tlc->index, index, &info->sc_loc_btn[i], NULL,
+		    &info->sc_iid_btn[i], NULL)) {
 			break;
 		}
 	}
@@ -336,9 +296,10 @@ hms_hid_parse(struct hms_softc *sc, device_t dev, const uint8_t *buf,
 	/* detect other buttons */
 
 	for (j = 0; (i < HMS_BUTTON_MAX) && (j < 2); i++, j++) {
-		if (!hid_locate(buf, len, HID_USAGE2(HUP_MICROSOFT, (j + 1)),
-		    hid_input, index, &info->sc_loc_btn[i], NULL, 
-		    &info->sc_iid_btn[i])) {
+		if (!hid_tlc_locate(buf, len,
+		    HID_USAGE2(HUP_MICROSOFT, (j + 1)), hid_input, tlc->index,
+		    index, &info->sc_loc_btn[i], NULL, &info->sc_iid_btn[i],
+		    NULL)) {
 			break;
 		}
 	}
