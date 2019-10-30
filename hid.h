@@ -40,6 +40,26 @@
 SYSCTL_DECL(_hw_hid);
 #endif
 
+/*
+ * Walk through all HID items hi belonging Top Level Collection #tidx
+ */
+#define HID_TLC_FOREACH_ITEM(hd, hi, tidx)				\
+	for (uint8_t _iter_##tidx = 0; hid_get_item((hd), (hi));)	\
+		if (_iter_##tidx +=					\
+		    (((hi)->kind == hid_endcollection &&		\
+		      (hi)->collevel == 0) ? 1 : 0) == (tidx))
+
 typedef usb_size_t hid_size_t;
+
+struct hid_absinfo {
+	int32_t min;
+	int32_t max;
+	int32_t res;
+};
+
+int
+hid_tlc_locate(const void *desc, hid_size_t size, int32_t u, enum hid_kind k,
+    uint8_t tlc_index, uint8_t index, struct hid_location *loc,
+    uint32_t *flags, uint8_t *id, struct hid_absinfo *ai);
 
 #endif					/* _HID_H_ */

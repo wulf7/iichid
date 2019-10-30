@@ -35,5 +35,46 @@
 #include <sys/param.h>
 #include <sys/module.h>
 
+#include "hid.h"
+
+int
+hid_tlc_locate(const void *desc, hid_size_t size, int32_t u, enum hid_kind k,
+    uint8_t tlc_index, uint8_t index, struct hid_location *loc,
+    uint32_t *flags, uint8_t *id, struct hid_absinfo *ai)
+{
+	struct hid_data *d;
+	struct hid_item h;
+
+	d = hid_start_parse(desc, size, 1 << k);
+	HID_TLC_FOREACH_ITEM(d, &h, tlc_index) {
+		if (h.kind == k && !(h.flags & HIO_CONST) && h.usage == u) {
+			if (index--)
+				continue;
+			if (loc != NULL)
+				*loc = h.loc;
+			if (flags != NULL)
+				*flags = h.flags;
+			if (id != NULL)
+				*id = h.report_ID;
+			if (ai != NULL && (h.flags & HIO_RELATIVE) == 0)
+				*ai = (struct hid_absinfo) {
+					.max = h.logical_maximum,
+					.min = h.logical_minimum,
+					.res = hid_item_resolution(&h),
+				};
+			hid_end_parse(d);
+			return (1);
+		}
+	}
+	if (loc != NULL)
+		loc->size = 0;
+	if (flags != NULL)
+		*flags = 0;
+	if (id != NULL)
+		*id = 0;
+	hid_end_parse(d);
+	return (0);
+}
+
 MODULE_DEPEND(hid, usb, 1, 1, 1);
 MODULE_VERSION(hid, 1);
