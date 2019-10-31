@@ -682,7 +682,6 @@ hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, uint16_t d_len,
 	uint8_t btn_type_rid = 0;
 	uint8_t thqa_cert_rid = 0;
 	uint8_t input_mode_rid = 0;
-	bool touch_coll = false;
 	bool finger_coll = false;
 	bool conf_coll = false;
 	bool cont_count_found = false;
@@ -755,23 +754,15 @@ hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, uint16_t d_len,
 	}
 	hid_end_parse(hd);
 
-	touch_coll = false;
 	bzero(caps, bitstr_size(HMT_N_USAGES));
 	bzero(buttons, bitstr_size(HMT_BTN_MAX));
 
 	/* Parse input for other parameters */
 	hd = hid_start_parse(d_ptr, d_len, 1 << hid_input);
-	while (hid_get_item(hd, &hi)) {
+	HID_TLC_FOREACH_ITEM(hd, &hi, tlc_index) {
 		switch (hi.kind) {
 		case hid_collection:
-			if (hi.collevel == 1 && hi.usage ==
-			    HID_USAGE2(HUP_DIGITIZERS, HUD_TOUCHSCREEN))
-				touch_coll = true;
-			if (hi.collevel == 1 && hi.usage ==
-			    HID_USAGE2(HUP_DIGITIZERS, HUD_TOUCHPAD))
-				touch_coll = true;
-			else if (touch_coll && hi.collevel == 2 &&
-			    (report_id == 0 || report_id == hi.report_ID) &&
+			if (hi.collevel == 2 &&
 			    hi.usage == HID_USAGE2(HUP_DIGITIZERS, HUD_FINGER))
 				finger_coll = true;
 			break;
@@ -779,15 +770,13 @@ hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, uint16_t d_len,
 			if (hi.collevel == 1 && finger_coll) {
 				finger_coll = false;
 				cont++;
-			} else if (hi.collevel == 0 && touch_coll)
-				touch_coll = false;
+			}
 			break;
 		case hid_input:
 			/*
-			 * Ensure that all usages are located within the same
-			 * report and proper collection.
+			 * Ensure that all usages belong to the same report
 			 */
-			if (HMT_HI_ABSOLUTE(hi) && touch_coll &&
+			if (HMT_HI_ABSOLUTE(hi) &&
 			    (report_id == 0 || report_id == hi.report_ID))
 				report_id = hi.report_ID;
 			else
