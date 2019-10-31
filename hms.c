@@ -161,8 +161,7 @@ hms_intr(void *context, void *data, uint16_t len)
 		    (id == info->sc_iid_x)) {
 			if (info->sc_flags & HMS_FLAG_ABSX)
 				evdev_push_abs(info->sc_evdev, ABS_X,
-				    hid_get_data_unsigned(buf, len,
-				    &info->sc_loc_x));
+				    hid_get_udata(buf, len, &info->sc_loc_x));
 			else
 				evdev_push_rel(info->sc_evdev, REL_X,
 				    hid_get_data(buf, len, &info->sc_loc_x));
@@ -172,8 +171,7 @@ hms_intr(void *context, void *data, uint16_t len)
 		    (id == info->sc_iid_y)) {
 			if (info->sc_flags & HMS_FLAG_ABSY)
 				evdev_push_abs(info->sc_evdev, ABS_Y,
-				    hid_get_data_unsigned(buf, len,
-				    &info->sc_loc_y));
+				    hid_get_udata(buf, len, &info->sc_loc_y));
 			else
 				evdev_push_rel(info->sc_evdev, REL_Y,
 				    hid_get_data(buf, len, &info->sc_loc_y));

@@ -518,7 +518,7 @@ hmt_intr(void *context, void *buf, uint16_t len)
 	 * report with contactid=0 but contactids are zero-based, find
 	 * contactcount first.
 	 */
-	cont_count = hid_get_data_unsigned(buf, len, &sc->cont_count_loc);
+	cont_count = hid_get_udata(buf, len, &sc->cont_count_loc);
 	/*
 	 * "In Hybrid mode, the number of contacts that can be reported in one
 	 * report is less than the maximum number of contacts that the device
@@ -556,7 +556,7 @@ hmt_intr(void *context, void *buf, uint16_t len)
 		bzero(slot_data, sizeof(sc->slot_data));
 		HMT_FOREACH_USAGE(sc->caps, usage) {
 			if (sc->locs[cont][usage].size > 0)
-				slot_data[usage] = hid_get_data_unsigned(
+				slot_data[usage] = hid_get_udata(
 				    buf, len, &sc->locs[cont][usage]);
 		}
 
@@ -849,14 +849,14 @@ hmt_devcaps_parse(struct hmt_softc *sc, const void *r_ptr, uint16_t r_len)
 	uint16_t len = r_len - 1;
 
 	/* Feature report is a primary source of 'Contact Count Maximum' */
-	cont_count_max = hid_get_data_unsigned(rep, len, &sc->cont_max_loc);
+	cont_count_max = hid_get_udata(rep, len, &sc->cont_max_loc);
 	if (cont_count_max > 0)
 		sc->ai[HMT_SLOT].max = cont_count_max - 1;
 
 	/* Assume that contact count shares the same report */
 	if (sc->btn_type_rid == sc->cont_max_rid)
 		sc->is_clickpad =
-		    hid_get_data_unsigned(rep, len, &sc->btn_type_loc) == 0;
+		    hid_get_udata(rep, len, &sc->btn_type_loc) == 0;
 }
 
 static int

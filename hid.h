@@ -57,6 +57,14 @@ struct hid_absinfo {
 	int32_t res;
 };
 
+
+/* OpenBSD/NetBSD compat shim */
+static __inline uint32_t
+hid_get_udata(const uint8_t *buf, usb_size_t len, struct hid_location *loc)
+{
+	return (hid_get_data_unsigned(buf, len, loc));
+}
+
 /*
  * hid_report_size_1 is a port of userland hid_report_size() from usbhid(3)
  * to kernel. XXX: to be renamed back to hid_report_size()
