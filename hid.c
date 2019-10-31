@@ -38,6 +38,45 @@
 #include "hid.h"
 
 int
+hid_report_size_1(const void *buf, hid_size_t len, enum hid_kind k, uint8_t id)
+{
+	struct hid_data *d;
+	struct hid_item h;
+	uint32_t temp;
+	uint32_t hpos;
+	uint32_t lpos;
+	int report_id = 0;
+
+	hpos = 0;
+	lpos = 0xFFFFFFFF;
+
+	for (d = hid_start_parse(buf, len, 1 << k); hid_get_item(d, &h);) {
+		if (h.kind == k && h.report_ID == id) {
+			/* compute minimum */
+			if (lpos > h.loc.pos)
+				lpos = h.loc.pos;
+			/* compute end position */
+			temp = h.loc.pos + (h.loc.size * h.loc.count);
+			/* compute maximum */
+			if (hpos < temp)
+				hpos = temp;
+			if (h.report_ID != 0)
+				report_id = 1;
+		}
+	}
+	hid_end_parse(d);
+
+	/* safety check - can happen in case of currupt descriptors */
+	if (lpos > hpos)
+		temp = 0;
+	else
+		temp = hpos - lpos;
+
+	/* return length in bytes rounded up */
+	return ((temp + 7) / 8 + report_id);
+}
+
+int
 hid_tlc_locate(const void *desc, hid_size_t size, int32_t u, enum hid_kind k,
     uint8_t tlc_index, uint8_t index, struct hid_location *loc,
     uint32_t *flags, uint8_t *id, struct hid_absinfo *ai)

@@ -617,46 +617,6 @@ hmt_intr(void *context, void *buf, uint16_t len)
 	}
 }
 
-/* Port of userland hid_report_size() from usbhid(3) to kernel */
-static int
-hmt_hid_report_size(const void *buf, uint16_t len, enum hid_kind k, uint8_t id)
-{
-	struct hid_data *d;
-	struct hid_item h;
-	uint32_t temp;
-	uint32_t hpos;
-	uint32_t lpos;
-	int report_id = 0;
-
-	hpos = 0;
-	lpos = 0xFFFFFFFF;
-
-	for (d = hid_start_parse(buf, len, 1 << k); hid_get_item(d, &h);) {
-		if (h.kind == k && h.report_ID == id) {
-			/* compute minimum */
-			if (lpos > h.loc.pos)
-				lpos = h.loc.pos;
-			/* compute end position */
-			temp = h.loc.pos + (h.loc.size * h.loc.count);
-			/* compute maximum */
-			if (hpos < temp)
-				hpos = temp;
-			if (h.report_ID != 0)
-				report_id = 1;
-		}
-	}
-	hid_end_parse(d);
-
-	/* safety check - can happen in case of currupt descriptors */
-	if (lpos > hpos)
-		temp = 0;
-	else
-		temp = hpos - lpos;
-
-	/* return length in bytes rounded up */
-	return ((temp + 7) / 8 + report_id);
-}
-
 static enum hmt_type
 hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, uint16_t d_len,
     uint32_t tlc_usage, uint8_t tlc_index)
@@ -860,17 +820,17 @@ hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, uint16_t d_len,
 		sc->ai[HMT_ORIENTATION].max = 1;
 	}
 
-	sc->isize = hmt_hid_report_size(d_ptr, d_len, hid_input, report_id);
-	sc->cont_max_rlen = hmt_hid_report_size(d_ptr, d_len, hid_feature,
+	sc->isize = hid_report_size_1(d_ptr, d_len, hid_input, report_id);
+	sc->cont_max_rlen = hid_report_size_1(d_ptr, d_len, hid_feature,
 	    sc->cont_max_rid);
 	if (sc->btn_type_rid > 0)
-		sc->btn_type_rlen = hmt_hid_report_size(d_ptr, d_len,
+		sc->btn_type_rlen = hid_report_size_1(d_ptr, d_len,
 		    hid_feature, sc->btn_type_rid);
 	if (sc->thqa_cert_rid > 0)
-		sc->thqa_cert_rlen = hmt_hid_report_size(d_ptr, d_len,
+		sc->thqa_cert_rlen = hid_report_size_1(d_ptr, d_len,
 		    hid_feature, sc->thqa_cert_rid);
 	if (sc->input_mode_rid > 0)
-		sc->input_mode_rlen = hmt_hid_report_size(d_ptr, d_len,
+		sc->input_mode_rlen = hid_report_size_1(d_ptr, d_len,
 		    hid_feature, sc->input_mode_rid);
 
 	sc->report_id = report_id;

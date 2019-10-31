@@ -57,9 +57,15 @@ struct hid_absinfo {
 	int32_t res;
 };
 
-int
-hid_tlc_locate(const void *desc, hid_size_t size, int32_t u, enum hid_kind k,
-    uint8_t tlc_index, uint8_t index, struct hid_location *loc,
-    uint32_t *flags, uint8_t *id, struct hid_absinfo *ai);
+/*
+ * hid_report_size_1 is a port of userland hid_report_size() from usbhid(3)
+ * to kernel. XXX: to be renamed back to hid_report_size()
+ */
+int	hid_report_size_1(const void *buf, hid_size_t len, enum hid_kind k,
+	    uint8_t id);
+int	hid_tlc_locate(const void *desc, hid_size_t size, int32_t u,
+	    enum hid_kind k, uint8_t tlc_index, uint8_t index,
+	    struct hid_location *loc, uint32_t *flags, uint8_t *id,
+	    struct hid_absinfo *ai);
 
 #endif					/* _HID_H_ */
