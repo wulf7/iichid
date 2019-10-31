@@ -227,6 +227,7 @@ struct hmt_softc {
 static enum hmt_type hmt_hid_parse(struct hmt_softc *, const void *, uint16_t,
     uint32_t, uint8_t);
 static void hmt_devcaps_parse(struct hmt_softc *, const void *, uint16_t);
+static void hmt_config_parse(struct hmt_softc *, const void *, uint16_t);
 static int hmt_set_input_mode(struct hmt_softc *, enum hmt_input_mode);
 
 static hid_intr_t		hmt_intr;
@@ -360,11 +361,16 @@ hmt_attach(device_t dev)
 
 	free(fbuf, M_TEMP);
 
-	if (sc->type == HMT_TYPE_TOUCHPAD && sc->input_mode_rlen > 1) {
-		error = hmt_set_input_mode(sc, HMT_INPUT_MODE_MT_TOUCHPAD);
-		if (error) {
-			DPRINTF("Failed to set input mode: %d\n", error);
-			return (ENXIO);
+	if (sc->type == HMT_TYPE_TOUCHPAD) {
+		hmt_config_parse(sc, d_ptr, d_len);
+		if (sc->input_mode_rlen > 1) {
+			error = hmt_set_input_mode(sc,
+			    HMT_INPUT_MODE_MT_TOUCHPAD);
+			if (error) {
+				DPRINTF("Failed to set input mode: %d\n",
+				    error);
+				return (ENXIO);
+			}
 		}
 	}
 
@@ -633,7 +639,6 @@ hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, uint16_t d_len,
 	int32_t cont_count_max = 0;
 	uint8_t report_id = 0;
 	bool finger_coll = false;
-	bool conf_coll = false;
 	bool cont_count_found = false;
 	bool scan_time_found = false;
 
@@ -671,32 +676,6 @@ hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, uint16_t d_len,
 	/* Parse features for THQA certificate report ID */
 	hid_tlc_locate(d_ptr, d_len, HID_USAGE2(HUP_MICROSOFT, HUMS_THQA_CERT),
 	    hid_feature, tlc_index, 0, NULL, NULL, &sc->thqa_cert_rid, NULL);
-
-	/* Parse features for input mode switch */
-	hd = hid_start_parse(d_ptr, d_len, 1 << hid_feature);
-	while (hid_get_item(hd, &hi)) {
-		switch (hi.kind) {
-		case hid_collection:
-			if (hi.collevel == 1 && hi.usage ==
-			    HID_USAGE2(HUP_DIGITIZERS, HUD_CONFIG))
-				conf_coll = true;
-			break;
-		case hid_endcollection:
-			if (hi.collevel == 0 && conf_coll)
-				conf_coll = false;
-			break;
-		case hid_feature:
-			if (conf_coll && HMT_HI_ABSOLUTE(hi) && hi.usage ==
-			      HID_USAGE2(HUP_DIGITIZERS, HUD_INPUT_MODE)) {
-				sc->input_mode_rid = hi.report_ID;
-				sc->input_mode_loc = hi.loc;
-			}
-			break;
-		default:
-			break;
-		}
-	}
-	hid_end_parse(hd);
 
 	/* Parse input for other parameters */
 	hd = hid_start_parse(d_ptr, d_len, 1 << hid_input);
@@ -829,9 +808,6 @@ hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, uint16_t d_len,
 	if (sc->thqa_cert_rid > 0)
 		sc->thqa_cert_rlen = hid_report_size_1(d_ptr, d_len,
 		    hid_feature, sc->thqa_cert_rid);
-	if (sc->input_mode_rid > 0)
-		sc->input_mode_rlen = hid_report_size_1(d_ptr, d_len,
-		    hid_feature, sc->input_mode_rid);
 
 	sc->report_id = report_id;
 	sc->nconts_per_report = cont;
@@ -857,6 +833,44 @@ hmt_devcaps_parse(struct hmt_softc *sc, const void *r_ptr, uint16_t r_len)
 	if (sc->btn_type_rid == sc->cont_max_rid)
 		sc->is_clickpad =
 		    hid_get_udata(rep, len, &sc->btn_type_loc) == 0;
+}
+
+static void
+hmt_config_parse(struct hmt_softc *sc, const void *d_ptr, uint16_t d_len)
+{
+	struct hid_item hi;
+	struct hid_data *hd;
+	bool conf_coll = false;
+
+	/* Parse features for input mode switch */
+	hd = hid_start_parse(d_ptr, d_len, 1 << hid_feature);
+	while (hid_get_item(hd, &hi)) {
+		switch (hi.kind) {
+		case hid_collection:
+			if (hi.collevel == 1 && hi.usage ==
+			    HID_USAGE2(HUP_DIGITIZERS, HUD_CONFIG))
+				conf_coll = true;
+			break;
+		case hid_endcollection:
+			if (hi.collevel == 0 && conf_coll)
+				conf_coll = false;
+			break;
+		case hid_feature:
+			if (conf_coll && HMT_HI_ABSOLUTE(hi) && hi.usage ==
+			      HID_USAGE2(HUP_DIGITIZERS, HUD_INPUT_MODE)) {
+				sc->input_mode_rid = hi.report_ID;
+				sc->input_mode_loc = hi.loc;
+			}
+			break;
+		default:
+			break;
+		}
+	}
+	hid_end_parse(hd);
+
+	if (sc->input_mode_rid > 0)
+		sc->input_mode_rlen = hid_report_size_1(d_ptr, d_len,
+		    hid_feature, sc->input_mode_rid);
 }
 
 static int
