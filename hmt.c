@@ -290,6 +290,7 @@ hmt_ev_open(struct evdev_dev *evdev)
 static int
 hmt_probe(device_t dev)
 {
+	struct hmt_softc *sc = device_get_softc(dev);
 	struct hid_tlc_info *tlc = device_get_ivars(dev);
 	void *d_ptr;
 	uint16_t d_len;
@@ -307,7 +308,10 @@ hmt_probe(device_t dev)
 	}
 
 	/* Check if report descriptor belongs to a HID multitouch device */
-	if (hmt_hid_parse(NULL, d_ptr, d_len, tlc->usage, tlc->index) == 0)
+	if (sc->type == 0)
+		sc->type = hmt_hid_parse(sc, d_ptr, d_len, tlc->usage,
+		    tlc->index);
+	if (sc->type == 0)
 		return (ENXIO);
 
 	return (BUS_PROBE_DEFAULT);
@@ -336,12 +340,6 @@ hmt_attach(device_t dev)
 	}
 
 	sc->dev = dev;
-
-	sc->type = hmt_hid_parse(sc, d_ptr, d_len, tlc->usage, tlc->index);
-	if (sc->type == 0) {
-		DPRINTF("multi-touch HID descriptor not found\n");
-		return (ENXIO);
-	}
 
 	fsize = hid_report_size(d_ptr, d_len, hid_feature, &fid);
 	if (fsize != 0)
@@ -664,7 +662,6 @@ static int
 hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, uint16_t d_len,
     uint32_t tlc_usage, uint8_t tlc_index)
 {
-	struct hid_location loc;
 	struct hid_absinfo ai;
 	struct hid_item hi;
 	struct hid_data *hd;
@@ -673,15 +670,9 @@ hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, uint16_t d_len,
 	size_t cont = 0;
 	int type = 0;
 	int nbuttons = 0;
-	bitstr_t bit_decl(caps, HMT_N_USAGES);
-	bitstr_t bit_decl(buttons, HMT_BTN_MAX);
 	uint32_t btn;
 	int32_t cont_count_max = 0;
 	uint8_t report_id = 0;
-	uint8_t cont_max_rid = 0;
-	uint8_t btn_type_rid = 0;
-	uint8_t thqa_cert_rid = 0;
-	uint8_t input_mode_rid = 0;
 	bool finger_coll = false;
 	bool conf_coll = false;
 	bool cont_count_found = false;
@@ -705,27 +696,22 @@ hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, uint16_t d_len,
 	/* Parse features for mandatory maximum contact count usage */
 	if (!hid_tlc_locate(d_ptr, d_len,
 	    HID_USAGE2(HUP_DIGITIZERS, HUD_CONTACT_MAX), hid_feature,
-	    tlc_index, 0, &loc, &flags, &cont_max_rid, &ai) ||
+	    tlc_index, 0, &sc->cont_max_loc, &flags, &sc->cont_max_rid, &ai) ||
 	    (flags & (HIO_VARIABLE | HIO_RELATIVE)) != HIO_VARIABLE)
 		return (0);
 
 	cont_count_max = ai.max;
-	if (sc != NULL)
-		sc->cont_max_loc = loc;
 
 	/* Parse features for button type usage */
 	if (hid_tlc_locate(d_ptr, d_len,
 	    HID_USAGE2(HUP_DIGITIZERS, HUD_BUTTON_TYPE), hid_feature,
-	    tlc_index, 0, &loc, &flags, &btn_type_rid, NULL)) {
-		if ((flags & (HIO_VARIABLE | HIO_RELATIVE)) != HIO_VARIABLE)
-			btn_type_rid = 0;
-		if (sc != NULL)
-			sc->btn_type_loc = loc;
-	}
+	    tlc_index, 0, &sc->btn_type_loc, &flags, &sc->btn_type_rid, NULL)
+	    && (flags & (HIO_VARIABLE | HIO_RELATIVE)) != HIO_VARIABLE)
+		sc->btn_type_rid = 0;
 
 	/* Parse features for THQA certificate report ID */
 	hid_tlc_locate(d_ptr, d_len, HID_USAGE2(HUP_MICROSOFT, HUMS_THQA_CERT),
-	    hid_feature, tlc_index, 0, NULL, NULL, &thqa_cert_rid, NULL);
+	    hid_feature, tlc_index, 0, NULL, NULL, &sc->thqa_cert_rid, NULL);
 
 	/* Parse features for input mode switch */
 	hd = hid_start_parse(d_ptr, d_len, 1 << hid_feature);
@@ -743,9 +729,8 @@ hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, uint16_t d_len,
 		case hid_feature:
 			if (conf_coll && HMT_HI_ABSOLUTE(hi) && hi.usage ==
 			      HID_USAGE2(HUP_DIGITIZERS, HUD_INPUT_MODE)) {
-				input_mode_rid = hi.report_ID;
-				if (sc != NULL)
-					sc->input_mode_loc = hi.loc;
+				sc->input_mode_rid = hi.report_ID;
+				sc->input_mode_loc = hi.loc;
 			}
 			break;
 		default:
@@ -753,9 +738,6 @@ hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, uint16_t d_len,
 		}
 	}
 	hid_end_parse(hd);
-
-	bzero(caps, bitstr_size(HMT_N_USAGES));
-	bzero(buttons, bitstr_size(HMT_BTN_MAX));
 
 	/* Parse input for other parameters */
 	hd = hid_start_parse(d_ptr, d_len, 1 << hid_input);
@@ -786,16 +768,14 @@ hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, uint16_t d_len,
 			    hi.usage > HID_USAGE2(HUP_BUTTON, 0) &&
 			    hi.usage <= HID_USAGE2(HUP_BUTTON, HMT_BTN_MAX)) {
 				btn = (hi.usage & 0xFFFF) - 1;
-				bit_set(buttons, btn);
-				if (sc != NULL)
-					sc->btn_loc[btn] = hi.loc;
+				bit_set(sc->buttons, btn);
+				sc->btn_loc[btn] = hi.loc;
 				break;
 			}
 			if (hi.collevel == 1 && hi.usage ==
 			    HID_USAGE2(HUP_DIGITIZERS, HUD_CONTACTCOUNT)) {
 				cont_count_found = true;
-				if (sc != NULL)
-					sc->cont_count_loc = hi.loc;
+				sc->cont_count_loc = hi.loc;
 				break;
 			}
 			/* Scan time is required but clobbered by evdev */
@@ -807,8 +787,6 @@ hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, uint16_t d_len,
 
 			if (!finger_coll || hi.collevel != 2)
 				break;
-			if (sc == NULL && cont > 0)
-				break;
 			if (cont >= MAX_MT_SLOTS) {
 				DPRINTF("Finger %zu ignored\n", cont);
 				break;
@@ -816,12 +794,6 @@ hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, uint16_t d_len,
 
 			for (i = 0; i < HMT_N_USAGES; i++) {
 				if (hi.usage == hmt_hid_map[i].usage) {
-					if (sc == NULL) {
-						if (USAGE_SUPPORTED(caps, i))
-							continue;
-						bit_set(caps, i);
-						break;
-					}
 					/*
 					 * HUG_X usage is an array mapped to
 					 * both ABS_MT_POSITION and ABS_MT_TOOL
@@ -838,7 +810,7 @@ hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, uint16_t d_len,
 					 */
 					if (cont > 0)
 						break;
-					bit_set(caps, i);
+					bit_set(sc->caps, i);
 					sc->ai[i] = (struct hmt_absinfo) {
 					    .max = hi.logical_maximum,
 					    .min = hi.logical_minimum,
@@ -858,18 +830,14 @@ hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, uint16_t d_len,
 	if (!cont_count_found || !scan_time_found || cont == 0)
 		return (0);
 	for (i = 0; i < HMT_N_USAGES; i++) {
-		if (hmt_hid_map[i].required && !USAGE_SUPPORTED(caps, i))
+		if (hmt_hid_map[i].required && !USAGE_SUPPORTED(sc->caps, i))
 			return (0);
 	}
 
 	/* Touchpads must have at least one button */
-	bit_count(buttons, 0, HMT_BTN_MAX, &nbuttons);
+	bit_count(sc->buttons, 0, HMT_BTN_MAX, &nbuttons);
 	if (type == HUD_TOUCHPAD && nbuttons == 0)
 		return (0);
-
-	/* Stop probing here */
-	if (sc == NULL)
-		return (type);
 
 	/*
 	 * According to specifications 'Contact Count Maximum' should be read
@@ -887,33 +855,27 @@ hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, uint16_t d_len,
 	};
 
 	/* Report touch orientation if both width and height are supported */
-	if (USAGE_SUPPORTED(caps, HMT_WIDTH) &&
-	    USAGE_SUPPORTED(caps, HMT_HEIGHT)) {
-		bit_set(caps, HMT_ORIENTATION);
+	if (USAGE_SUPPORTED(sc->caps, HMT_WIDTH) &&
+	    USAGE_SUPPORTED(sc->caps, HMT_HEIGHT)) {
+		bit_set(sc->caps, HMT_ORIENTATION);
 		sc->ai[HMT_ORIENTATION].max = 1;
 	}
 
 	sc->isize = hmt_hid_report_size(d_ptr, d_len, hid_input, report_id);
 	sc->cont_max_rlen = hmt_hid_report_size(d_ptr, d_len, hid_feature,
-	    cont_max_rid);
-	if (btn_type_rid > 0)
+	    sc->cont_max_rid);
+	if (sc->btn_type_rid > 0)
 		sc->btn_type_rlen = hmt_hid_report_size(d_ptr, d_len,
-		    hid_feature, btn_type_rid);
-	if (thqa_cert_rid > 0)
+		    hid_feature, sc->btn_type_rid);
+	if (sc->thqa_cert_rid > 0)
 		sc->thqa_cert_rlen = hmt_hid_report_size(d_ptr, d_len,
-		    hid_feature, thqa_cert_rid);
-	if (input_mode_rid > 0)
+		    hid_feature, sc->thqa_cert_rid);
+	if (sc->input_mode_rid > 0)
 		sc->input_mode_rlen = hmt_hid_report_size(d_ptr, d_len,
-		    hid_feature, input_mode_rid);
+		    hid_feature, sc->input_mode_rid);
 
 	sc->report_id = report_id;
-	bcopy(caps, sc->caps, bitstr_size(HMT_N_USAGES));
-	bcopy(buttons, sc->buttons, bitstr_size(HMT_BTN_MAX));
 	sc->nconts_per_report = cont;
-	sc->cont_max_rid = cont_max_rid;
-	sc->btn_type_rid = btn_type_rid;
-	sc->thqa_cert_rid = thqa_cert_rid;
-	sc->input_mode_rid = input_mode_rid;
 	sc->has_buttons = nbuttons != 0;
 
 	return (type);
