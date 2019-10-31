@@ -64,6 +64,13 @@ SYSCTL_INT(_hw_hid_hmt, OID_AUTO, debug, CTLFLAG_RWTUN,
 
 #define	HMT_BTN_MAX	8	/* Number of buttons supported */
 
+enum hmt_type {
+	HMT_TYPE_UNKNOWN = 0,	/* HID report descriptor is not probed */
+	HMT_TYPE_UNSUPPORTED,	/* Repdescr does not belong to MT device */
+	HMT_TYPE_TOUCHPAD,
+	HMT_TYPE_TOUCHSCREEN,
+};
+
 enum hmt_input_mode {
 	HMT_INPUT_MODE_MOUSE =		0x0,
 	HMT_INPUT_MODE_MT_TOUCHSCREEN =	0x2,
@@ -185,7 +192,7 @@ static const struct hmt_hid_map_item hmt_hid_map[HMT_N_USAGES] = {
 
 struct hmt_softc {
 	device_t dev;
-	int			type;
+	enum hmt_type		type;
 
 	struct hid_absinfo      ai[HMT_N_USAGES];
 	struct hid_location     locs[MAX_MT_SLOTS][HMT_N_USAGES];
@@ -217,8 +224,8 @@ struct hmt_softc {
 	uint8_t			input_mode_rid;
 };
 
-static int hmt_hid_parse(struct hmt_softc *, const void *, uint16_t, uint32_t,
-    uint8_t);
+static enum hmt_type hmt_hid_parse(struct hmt_softc *, const void *, uint16_t,
+    uint32_t, uint8_t);
 static void hmt_devcaps_parse(struct hmt_softc *, const void *, uint16_t);
 static int hmt_set_input_mode(struct hmt_softc *, enum hmt_input_mode);
 
@@ -297,10 +304,10 @@ hmt_probe(device_t dev)
 	}
 
 	/* Check if report descriptor belongs to a HID multitouch device */
-	if (sc->type == 0)
+	if (sc->type == HMT_TYPE_UNKNOWN)
 		sc->type = hmt_hid_parse(sc, d_ptr, d_len, tlc->usage,
 		    tlc->index);
-	if (sc->type == 0)
+	if (sc->type == HMT_TYPE_UNSUPPORTED)
 		return (ENXIO);
 
 	return (BUS_PROBE_DEFAULT);
@@ -353,7 +360,7 @@ hmt_attach(device_t dev)
 
 	free(fbuf, M_TEMP);
 
-	if (sc->type == HUD_TOUCHPAD && sc->input_mode_rlen > 1) {
+	if (sc->type == HMT_TYPE_TOUCHPAD && sc->input_mode_rlen > 1) {
 		error = hmt_set_input_mode(sc, HMT_INPUT_MODE_MT_TOUCHPAD);
 		if (error) {
 			DPRINTF("Failed to set input mode: %d\n", error);
@@ -379,13 +386,16 @@ hmt_attach(device_t dev)
 	evdev_set_methods(sc->evdev, dev, &hmt_evdev_methods);
 	evdev_set_flag(sc->evdev, EVDEV_FLAG_MT_STCOMPAT);
 	switch (sc->type) {
-	case HUD_TOUCHSCREEN:
+	case HMT_TYPE_TOUCHSCREEN:
 		evdev_support_prop(sc->evdev, INPUT_PROP_DIRECT);
 		break;
-	case HUD_TOUCHPAD:
+	case HMT_TYPE_TOUCHPAD:
 		evdev_support_prop(sc->evdev, INPUT_PROP_POINTER);
 		if (sc->is_clickpad)
 			evdev_support_prop(sc->evdev, INPUT_PROP_BUTTONPAD);
+		break;
+	default:
+		KASSERT(0, ("hmt_attach: unsupported touch device type"));
 	}
 	evdev_support_event(sc->evdev, EV_SYN);
 	evdev_support_event(sc->evdev, EV_ABS);
@@ -409,7 +419,7 @@ hmt_attach(device_t dev)
 	/* Announce information about the touch device */
 	bit_count(sc->buttons, 0, HMT_BTN_MAX, &nbuttons);
 	device_printf(sc->dev, "Multitouch %s with %d button%s%s\n",
-	    sc->type == HUD_TOUCHSCREEN ? "touchscreen" : "touchpad",
+	    sc->type == HMT_TYPE_TOUCHSCREEN ? "touchscreen" : "touchpad",
 	    nbuttons, nbuttons != 1 ? "s" : "",
 	    sc->is_clickpad ? ", click-pad" : "");
 	device_printf(sc->dev,
@@ -442,7 +452,7 @@ hmt_resume(device_t dev)
 	struct hmt_softc *sc = device_get_softc(dev);
 	int error;
 
-	if (sc->type == HUD_TOUCHPAD && sc->input_mode_rlen > 1) {
+	if (sc->type == HMT_TYPE_TOUCHPAD && sc->input_mode_rlen > 1) {
 		error = hmt_set_input_mode(sc, HMT_INPUT_MODE_MT_TOUCHPAD);
 		if (error)
 			DPRINTF("Failed to set input mode: %d\n", error);
@@ -647,7 +657,7 @@ hmt_hid_report_size(const void *buf, uint16_t len, enum hid_kind k, uint8_t id)
 	return ((temp + 7) / 8 + report_id);
 }
 
-static int
+static enum hmt_type
 hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, uint16_t d_len,
     uint32_t tlc_usage, uint8_t tlc_index)
 {
@@ -657,7 +667,7 @@ hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, uint16_t d_len,
 	uint32_t flags;
 	size_t i;
 	size_t cont = 0;
-	int type = 0;
+	enum hmt_type type;
 	int nbuttons = 0;
 	uint32_t btn;
 	int32_t cont_count_max = 0;
@@ -673,13 +683,13 @@ hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, uint16_t d_len,
 
 	switch (tlc_usage) {
 	case HID_USAGE2(HUP_DIGITIZERS, HUD_TOUCHSCREEN):
-		type = HUD_TOUCHSCREEN;
+		type = HMT_TYPE_TOUCHSCREEN;
 		break;
 	case HID_USAGE2(HUP_DIGITIZERS, HUD_TOUCHPAD):
-		type = HUD_TOUCHPAD;
+		type = HMT_TYPE_TOUCHPAD;
 		break;
 	default:
-		return (0);
+		return (HMT_TYPE_UNSUPPORTED);
 	}
 
 	/* Parse features for mandatory maximum contact count usage */
@@ -687,7 +697,7 @@ hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, uint16_t d_len,
 	    HID_USAGE2(HUP_DIGITIZERS, HUD_CONTACT_MAX), hid_feature,
 	    tlc_index, 0, &sc->cont_max_loc, &flags, &sc->cont_max_rid, &ai) ||
 	    (flags & (HIO_VARIABLE | HIO_RELATIVE)) != HIO_VARIABLE)
-		return (0);
+		return (HMT_TYPE_UNSUPPORTED);
 
 	cont_count_max = ai.max;
 
@@ -817,16 +827,16 @@ hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, uint16_t d_len,
 
 	/* Check for required HID Usages */
 	if (!cont_count_found || !scan_time_found || cont == 0)
-		return (0);
+		return (HMT_TYPE_UNSUPPORTED);
 	for (i = 0; i < HMT_N_USAGES; i++) {
 		if (hmt_hid_map[i].required && !USAGE_SUPPORTED(sc->caps, i))
-			return (0);
+			return (HMT_TYPE_UNSUPPORTED);
 	}
 
 	/* Touchpads must have at least one button */
 	bit_count(sc->buttons, 0, HMT_BTN_MAX, &nbuttons);
-	if (type == HUD_TOUCHPAD && nbuttons == 0)
-		return (0);
+	if (type == HMT_TYPE_TOUCHPAD && nbuttons == 0)
+		return (HMT_TYPE_UNSUPPORTED);
 
 	/*
 	 * According to specifications 'Contact Count Maximum' should be read
