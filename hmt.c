@@ -27,7 +27,7 @@
 __FBSDID("$FreeBSD$");
 
 /*
- * MS Windows 7/8/10 compatible I2C HID Multi-touch Device driver.
+ * MS Windows 7/8/10 compatible HID Multi-touch Device driver.
  * https://msdn.microsoft.com/en-us/library/windows/hardware/jj151569(v=vs.85).aspx
  * http://download.microsoft.com/download/7/d/d/7dd44bb7-2a7a-4505-ac1c-7227d3d96d5b/hid-over-i2c-protocol-spec-v1-0.docx
  * https://www.kernel.org/doc/Documentation/input/multi-touch-protocol.txt
@@ -63,11 +63,6 @@ SYSCTL_INT(_hw_hid_hmt, OID_AUTO, debug, CTLFLAG_RWTUN,
 #endif
 
 #define	HMT_BTN_MAX	8	/* Number of buttons supported */
-
-enum {
-	HMT_INTR_DT,
-	HMT_N_TRANSFER,
-};
 
 enum hmt_input_mode {
 	HMT_INPUT_MODE_MOUSE =		0x0,
