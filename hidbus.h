@@ -118,6 +118,8 @@ const struct hid_device_id *hid_lookup_id(const struct hid_device_id *id,
 int hid_lookup_driver_info(const struct hid_device_id *id, size_t sizeof_id,
     struct hid_tlc_info *tlc);
 
+device_t	hidbus_find_child(device_t, uint32_t);
+
 /* hidbus child interrupt interface */
 struct mtx *	hid_get_lock(device_t);
 void		hid_set_intr(device_t, hid_intr_t);

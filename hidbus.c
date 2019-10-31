@@ -183,6 +183,20 @@ hidbus_detach(device_t dev)
 	return (0);
 }
 
+device_t
+hidbus_find_child(device_t bus, uint32_t usage)
+{
+	struct hidbus_softc *sc = device_get_softc(bus);
+	struct hidbus_tlc *tlc;
+
+	STAILQ_FOREACH(tlc, &sc->tlcs, link) {
+		if (tlc->ivars.usage == usage)
+			return (tlc->child);
+	}
+
+	return (NULL);
+}
+
 struct mtx *
 hid_get_lock(device_t child)
 {
