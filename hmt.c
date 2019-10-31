@@ -180,12 +180,6 @@ static const struct hmt_hid_map_item hmt_hid_map[HMT_N_USAGES] = {
 	},
 };
 
-struct hmt_absinfo {
-	int32_t			min;
-	int32_t			max;
-	int32_t			res;
-};
-
 #define	USAGE_SUPPORTED(caps, usage)	bit_test(caps, usage)
 #define	HMT_FOREACH_USAGE(caps, usage)			\
 	for ((usage) = 0; (usage) < HMT_N_USAGES; ++(usage))	\
@@ -198,7 +192,7 @@ struct hmt_softc {
 	device_t dev;
 	int			type;
 
-	struct hmt_absinfo      ai[HMT_N_USAGES];
+	struct hid_absinfo      ai[HMT_N_USAGES];
 	struct hid_location     locs[MAX_MT_SLOTS][HMT_N_USAGES];
 	struct hid_location     cont_count_loc;
 	struct hid_location	btn_loc[HMT_BTN_MAX];
@@ -811,7 +805,7 @@ hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, uint16_t d_len,
 					if (cont > 0)
 						break;
 					bit_set(sc->caps, i);
-					sc->ai[i] = (struct hmt_absinfo) {
+					sc->ai[i] = (struct hid_absinfo) {
 					    .max = hi.logical_maximum,
 					    .min = hi.logical_minimum,
 					    .res = hid_item_resolution(&hi),
@@ -848,7 +842,7 @@ hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, uint16_t d_len,
 		cont_count_max = cont;
 
 	/* Set number of MT protocol type B slots */
-	sc->ai[HMT_SLOT] = (struct hmt_absinfo) {
+	sc->ai[HMT_SLOT] = (struct hid_absinfo) {
 		.min = 0,
 		.max = cont_count_max - 1,
 		.res = 0,
