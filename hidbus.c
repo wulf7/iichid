@@ -183,6 +183,32 @@ hidbus_detach(device_t dev)
 	return (0);
 }
 
+/* Location hint for devctl(8) */
+static int
+hidbus_child_location_str(device_t bus, device_t child, char *buf,
+    size_t buflen)
+{
+	struct hid_tlc_info *info = device_get_ivars(child);
+
+	snprintf(buf, buflen, "index=%hhu", info->index);
+        return (0);
+}
+
+/* PnP information for devctl(8) */
+static int
+hidbus_child_pnpinfo_str(device_t bus, device_t child, char *buf,
+    size_t buflen)
+{
+	struct hid_tlc_info *devinfo = device_get_ivars(child);
+	struct hid_device_info *businfo = device_get_ivars(bus);
+
+	snprintf(buf, buflen, "page=0x%04x usage=0x%04x bus=0x%02hx "
+	    "vendor=0x%04hx product=0x%04hx version=0x%04hx",
+	    devinfo->usage >> 16, devinfo->usage & 0xFFFF, businfo->idBus,
+	    businfo->idVendor, businfo->idProduct, businfo->idVersion);
+	return (0);
+}
+
 device_t
 hidbus_find_child(device_t bus, uint32_t usage)
 {
@@ -344,6 +370,10 @@ static device_method_t hidbus_methods[] = {
 	DEVMETHOD(device_detach,        hidbus_detach),
 	DEVMETHOD(device_suspend,       bus_generic_suspend),
 	DEVMETHOD(device_resume,        bus_generic_resume),
+
+	/* bus interface */
+	DEVMETHOD(bus_child_pnpinfo_str,hidbus_child_pnpinfo_str),
+	DEVMETHOD(bus_child_location_str,hidbus_child_location_str),
 
 	/* hid interface */
 	DEVMETHOD(hid_get_report_descr,	hid_get_report_descr),
