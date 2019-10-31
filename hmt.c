@@ -698,16 +698,10 @@ hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, uint16_t d_len)
 			if (hi.collevel == 1 && hi.usage ==
 			    HID_USAGE2(HUP_DIGITIZERS, HUD_TOUCHPAD))
 				touch_coll = true;
-			if (hi.collevel == 1 && hi.usage ==
-			    HID_USAGE2(HUP_DIGITIZERS, HUD_CONFIG))
-				conf_coll = true;
 			break;
 		case hid_endcollection:
 			if (hi.collevel == 0 && touch_coll)
 				touch_coll = false;
-			break;
-			if (hi.collevel == 0 && conf_coll)
-				conf_coll = false;
 			break;
 		case hid_feature:
 			if (hi.collevel == 1 && touch_coll && hi.usage ==
@@ -730,6 +724,27 @@ hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, uint16_t d_len)
 				if (sc != NULL)
 					sc->btn_type_loc = hi.loc;
 			}
+			break;
+		default:
+			break;
+		}
+	}
+	hid_end_parse(hd);
+
+	/* Parse features for input mode switch */
+	hd = hid_start_parse(d_ptr, d_len, 1 << hid_feature);
+	while (hid_get_item(hd, &hi)) {
+		switch (hi.kind) {
+		case hid_collection:
+			if (hi.collevel == 1 && hi.usage ==
+			    HID_USAGE2(HUP_DIGITIZERS, HUD_CONFIG))
+				conf_coll = true;
+			break;
+		case hid_endcollection:
+			if (hi.collevel == 0 && conf_coll)
+				conf_coll = false;
+			break;
+		case hid_feature:
 			if (conf_coll && HMT_HI_ABSOLUTE(hi) && hi.usage ==
 			      HID_USAGE2(HUP_DIGITIZERS, HUD_INPUT_MODE)) {
 				input_mode_rid = hi.report_ID;
