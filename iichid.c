@@ -686,10 +686,14 @@ iichid_teardown_interrupt(struct iichid_softc *sc)
 static int
 iichid_sysctl_sampling_rate_handler(SYSCTL_HANDLER_ARGS)
 {
-	int error, value, oldval;
 	struct iichid_softc *sc;
+	int error, oldval, value;
 
-	sc = arg1;      
+	sc = arg1;
+
+	error = sysctl_wire_old_buffer(req, sizeof(int));
+	if (error != 0)
+		return (error);
 
 	mtx_lock(sc->intr_mtx);
 
