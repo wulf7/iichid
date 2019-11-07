@@ -126,10 +126,9 @@ struct hid_device_id {
 #define HID_GET_DRIVER_INFO(did)		\
   (did)->driver_info
 
-const struct hid_device_id *hid_lookup_id(const struct hid_device_id *id,
-    size_t sizeof_id, const struct hid_tlc_info *tlc);
-int hid_lookup_driver_info(const struct hid_device_id *id, size_t sizeof_id,
-    struct hid_tlc_info *tlc);
+const struct hid_device_id *hid_lookup_id(device_t,
+    const struct hid_device_id *, size_t);
+int hid_lookup_driver_info(device_t, const struct hid_device_id *, size_t);
 
 device_t	hidbus_find_child(device_t, uint32_t);
 

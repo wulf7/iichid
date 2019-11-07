@@ -49,9 +49,9 @@
  * Else: Pointer to matching entry.
  *------------------------------------------------------------------------*/
 const struct hid_device_id *
-hid_lookup_id(const struct hid_device_id *id, size_t sizeof_id,
-    const struct hid_tlc_info *tlc)
+hid_lookup_id(device_t child, const struct hid_device_id *id, size_t sizeof_id)
 {
+	struct hid_tlc_info *tlc = device_get_ivars(child);
 	const struct hid_device_id *id_end;
 	const struct hid_device_info *info = tlc->device_info;
 
@@ -106,10 +106,12 @@ done:
  * Else: Failure
  *------------------------------------------------------------------------*/
 int
-hid_lookup_driver_info(const struct hid_device_id *id, size_t sizeof_id,
-    struct hid_tlc_info *tlc)
+hid_lookup_driver_info(device_t child, const struct hid_device_id *id,
+    size_t sizeof_id)
 {
-	id = hid_lookup_id(id, sizeof_id, tlc);
+	struct hid_tlc_info *tlc = device_get_ivars(child);
+
+	id = hid_lookup_id(child, id, sizeof_id);
 	if (id) {
 		/* copy driver info */
 		tlc->driver_info = id->driver_info;

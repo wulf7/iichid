@@ -288,12 +288,11 @@ static int
 hmt_probe(device_t dev)
 {
 	struct hmt_softc *sc = device_get_softc(dev);
-	struct hid_tlc_info *tlc = device_get_ivars(dev);
 	void *d_ptr;
 	uint16_t d_len;
 	int error;
 
-	error = hid_lookup_driver_info(hmt_devs, sizeof(hmt_devs), tlc);
+	error = hid_lookup_driver_info(dev, hmt_devs, sizeof(hmt_devs));
 	if (error != 0)
 		return (error);
 

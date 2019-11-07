@@ -217,12 +217,11 @@ static const struct hid_device_id hms_devs[] = {
 static int
 hms_probe(device_t dev)
 {
-	struct hid_tlc_info *tlc = device_get_ivars(dev);
 	int error;
 
 	DPRINTFN(11, "\n");
 
-	error = hid_lookup_driver_info(hms_devs, sizeof(hms_devs), tlc);
+	error = hid_lookup_driver_info(dev, hms_devs, sizeof(hms_devs));
 	if (error != 0)
 		return (error);
 
