@@ -51,37 +51,29 @@ static device_probe_t	hidbus_probe;
 static device_attach_t	hidbus_attach;
 static device_detach_t	hidbus_detach;
 
-struct hidbus_tlc {
-	device_t			child;
-	hid_intr_t			*intr;
-	bool				open;
-	struct hid_tlc_info		ivars;
-	STAILQ_ENTRY(hidbus_tlc)	link;
-};
-
 struct hidbus_softc {
 	device_t			dev;
 	struct mtx			lock;
 
-	STAILQ_HEAD(, hidbus_tlc)	tlcs;
+	STAILQ_HEAD(, hidbus_ivar)	tlcs;
 };
 
 static device_t
 hidbus_add_child(struct hidbus_softc *sc, uint8_t index, uint32_t usage)
 {
-	struct hidbus_tlc *tlc;
+	struct hidbus_ivar *tlc;
 	device_t child;
 
 	child = device_add_child(sc->dev, NULL, -1);
 	if (child == NULL)
 			return (child);
 
-	tlc = malloc(sizeof(struct hidbus_tlc), M_DEVBUF, M_WAITOK | M_ZERO);
-	tlc->ivars.usage = usage;
-	tlc->ivars.index = index;
+	tlc = malloc(sizeof(struct hidbus_ivar), M_DEVBUF, M_WAITOK | M_ZERO);
+	tlc->usage = usage;
+	tlc->index = index;
 	tlc->child = child;
 	STAILQ_INSERT_TAIL(&sc->tlcs, tlc, link);
-	device_set_ivars(child, &tlc->ivars);
+	device_set_ivars(child, tlc);
 
 	return (child);
 }
@@ -164,7 +156,7 @@ static int
 hidbus_detach(device_t dev)
 {
 	struct hidbus_softc *sc = device_get_softc(dev);
-	struct hidbus_tlc *tlc;
+	struct hidbus_ivar *tlc;
 
 	bus_generic_detach(dev);
 	device_delete_children(dev);
@@ -184,7 +176,7 @@ hidbus_detach(device_t dev)
 static int
 hidbus_read_ivar(device_t bus, device_t child, int which, uintptr_t *result)
 {
-	struct hid_tlc_info *info = device_get_ivars(child);
+	struct hidbus_ivar *info = device_get_ivars(child);
 
 	switch (which) {
 	case HIDBUS_IVAR_INDEX:
@@ -207,7 +199,7 @@ static int
 hidbus_child_location_str(device_t bus, device_t child, char *buf,
     size_t buflen)
 {
-	struct hid_tlc_info *info = device_get_ivars(child);
+	struct hidbus_ivar *info = device_get_ivars(child);
 
 	snprintf(buf, buflen, "index=%hhu", info->index);
         return (0);
@@ -218,7 +210,7 @@ static int
 hidbus_child_pnpinfo_str(device_t bus, device_t child, char *buf,
     size_t buflen)
 {
-	struct hid_tlc_info *devinfo = device_get_ivars(child);
+	struct hidbus_ivar *devinfo = device_get_ivars(child);
 	struct hid_device_info *businfo = device_get_ivars(bus);
 
 	snprintf(buf, buflen, "page=0x%04x usage=0x%04x bus=0x%02hx "
@@ -232,10 +224,10 @@ device_t
 hidbus_find_child(device_t bus, uint32_t usage)
 {
 	struct hidbus_softc *sc = device_get_softc(bus);
-	struct hidbus_tlc *tlc;
+	struct hidbus_ivar *tlc;
 
 	STAILQ_FOREACH(tlc, &sc->tlcs, link) {
-		if (tlc->ivars.usage == usage)
+		if (tlc->usage == usage)
 			return (tlc->child);
 	}
 
@@ -255,7 +247,7 @@ hid_set_intr(device_t child, hid_intr_t intr)
 {
 	device_t bus = device_get_parent(child);
 	struct hidbus_softc *sc = device_get_softc(bus);
-	struct hidbus_tlc *tlc;
+	struct hidbus_ivar *tlc;
 
 	STAILQ_FOREACH(tlc, &sc->tlcs, link) {
 		if (tlc->child == child)
@@ -267,7 +259,7 @@ void
 hidbus_intr(void *context, void *buf, uint16_t len)
 {
 	struct hidbus_softc *sc = context;
-	struct hidbus_tlc *tlc;
+	struct hidbus_ivar *tlc;
 
 	mtx_assert(&sc->lock, MA_OWNED);
 
@@ -289,7 +281,7 @@ hid_start(device_t child)
 {
 	device_t bus = device_get_parent(child);
 	struct hidbus_softc *sc = device_get_softc(bus);
-	struct hidbus_tlc *tlc;
+	struct hidbus_ivar *tlc;
 	bool open = false;
 
 	mtx_assert(&sc->lock, MA_OWNED);
@@ -311,7 +303,7 @@ hid_stop(device_t child)
 {
 	device_t bus = device_get_parent(child);
 	struct hidbus_softc *sc = device_get_softc(bus);
-	struct hidbus_tlc *tlc;
+	struct hidbus_ivar *tlc;
 	bool open = false;
 
 	mtx_assert(&sc->lock, MA_OWNED);

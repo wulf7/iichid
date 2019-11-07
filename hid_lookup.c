@@ -51,7 +51,7 @@
 const struct hid_device_id *
 hid_lookup_id(device_t child, const struct hid_device_id *id, size_t sizeof_id)
 {
-	struct hid_tlc_info *tlc = device_get_ivars(child);
+	struct hidbus_ivar *tlc = device_get_ivars(child);
 	const struct hid_device_id *id_end;
 	const struct hid_device_info *info;
 
@@ -111,7 +111,7 @@ int
 hid_lookup_driver_info(device_t child, const struct hid_device_id *id,
     size_t sizeof_id)
 {
-	struct hid_tlc_info *tlc = device_get_ivars(child);
+	struct hidbus_ivar *tlc = device_get_ivars(child);
 
 	id = hid_lookup_id(child, id, sizeof_id);
 	if (id) {
