@@ -25,9 +25,7 @@
 # $FreeBSD$
 #
 
-#include <sys/types.h>
-#include <sys/lock.h>
-#include <sys/mutex.h>
+#include <sys/bus.h>
 #include "hidbus.h"
 
 INTERFACE hid;

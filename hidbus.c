@@ -183,6 +183,27 @@ hidbus_detach(device_t dev)
 	return (0);
 }
 
+static int
+hidbus_read_ivar(device_t bus, device_t child, int which, uintptr_t *result)
+{
+	struct hid_tlc_info *info = device_get_ivars(child);
+
+	switch (which) {
+	case HIDBUS_IVAR_INDEX:
+		*result = info->index;
+		break;
+	case HIDBUS_IVAR_USAGE:
+		*result = info->usage;
+		break;
+	case HIDBUS_IVAR_DEVINFO:
+		*result = (uintptr_t)info->device_info;
+		break;
+	default:
+		return (EINVAL);
+	}
+        return (0);
+}
+
 /* Location hint for devctl(8) */
 static int
 hidbus_child_location_str(device_t bus, device_t child, char *buf,
@@ -372,6 +393,7 @@ static device_method_t hidbus_methods[] = {
 	DEVMETHOD(device_resume,        bus_generic_resume),
 
 	/* bus interface */
+	DEVMETHOD(bus_read_ivar,	hidbus_read_ivar),
 	DEVMETHOD(bus_child_pnpinfo_str,hidbus_child_pnpinfo_str),
 	DEVMETHOD(bus_child_location_str,hidbus_child_location_str),
 

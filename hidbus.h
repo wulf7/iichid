@@ -49,6 +49,19 @@ struct hid_tlc_info {
 	unsigned long		driver_info;	/* for internal use */
 };
 
+enum {
+	HIDBUS_IVAR_USAGE,
+	HIDBUS_IVAR_INDEX,
+	HIDBUS_IVAR_DEVINFO,
+};
+
+#define HIDBUS_ACCESSOR(A, B, T)					\
+	__BUS_ACCESSOR(hidbus, A, HIDBUS, B, T)
+
+HIDBUS_ACCESSOR(usage,		USAGE,		uint32_t)
+HIDBUS_ACCESSOR(index,		INDEX,		uint8_t)
+HIDBUS_ACCESSOR(devinfo,	DEVINFO,	struct hid_device_info *)
+
 /*
  * The following structure is used when looking up an HID driver for
  * an HID device. It is inspired by the structure called "usb_device_id".

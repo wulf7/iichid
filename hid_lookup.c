@@ -29,6 +29,7 @@
  */
 
 #include <sys/types.h>
+#include <sys/bus.h>
 
 #include "hid.h"
 #include "hidbus.h"
