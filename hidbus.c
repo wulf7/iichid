@@ -59,18 +59,17 @@ struct hidbus_softc {
 };
 
 static device_t
-hidbus_add_child(struct hidbus_softc *sc, uint8_t index, uint32_t usage)
+hidbus_add_child(device_t dev, u_int order, const char *name, int unit)
 {
+	struct hidbus_softc *sc = device_get_softc(dev);
 	struct hidbus_ivar *tlc;
 	device_t child;
 
-	child = device_add_child(sc->dev, NULL, -1);
+	child = device_add_child_ordered(dev, order, name, unit);
 	if (child == NULL)
 			return (child);
 
 	tlc = malloc(sizeof(struct hidbus_ivar), M_DEVBUF, M_WAITOK | M_ZERO);
-	tlc->usage = usage;
-	tlc->index = index;
 	tlc->child = child;
 	STAILQ_INSERT_TAIL(&sc->tlcs, tlc, link);
 	device_set_ivars(child, tlc);
@@ -79,7 +78,7 @@ hidbus_add_child(struct hidbus_softc *sc, uint8_t index, uint32_t usage)
 }
 
 static int
-hidbus_add_children(struct hidbus_softc *sc)
+hidbus_enumerate_children(device_t dev)
 {
 	struct hid_data *hd;
 	struct hid_item hi;
@@ -87,34 +86,32 @@ hidbus_add_children(struct hidbus_softc *sc)
 	void *data;
 	uint16_t len;
 	uint8_t index = 0;
-	int error;
 
-	error = HID_GET_REPORT_DESCR(device_get_parent(sc->dev), &data, &len);
-	if (error != 0) {
+	if (HID_GET_REPORT_DESCR(device_get_parent(dev), &data, &len) != 0)
 		return (ENXIO);
-	}
 
-	/* Count the number of top level collections */
+	/* Add a child for each top level collection */
 	hd = hid_start_parse(data, len, 1 << hid_input);
-	while ((error = hid_get_item(hd, &hi))) {
+	while (hid_get_item(hd, &hi)) {
 		if (hi.kind != hid_collection || hi.collevel != 1)
 			continue;
-		child = hidbus_add_child(sc, index, hi.usage);
+		child = BUS_ADD_CHILD(dev, 0, NULL, -1);
 		if (child == NULL) {
-			device_printf(sc->dev, "Could not add HID device\n");
+			device_printf(dev, "Could not add HID device\n");
 			continue;
 		}
+		hidbus_set_index(child, index);
+		hidbus_set_usage(child, hi.usage);
 		index++;
 		DPRINTF("Add child TLC: 0x%04hx:0x%04hx\n",
 		    (uint16_t)(hi.usage >> 16), (uint16_t)(hi.usage & 0xFFFF));
 	}
 	hid_end_parse(hd);
 
-	if (index == 0) {
+	if (index == 0)
 		return (ENXIO);
-	}
 
-	return (error);
+	return (0);
 }
 
 static int
@@ -139,7 +136,7 @@ hidbus_attach(device_t dev)
 	mtx_init(&sc->lock, "hidbus lock", NULL, MTX_DEF);
 	HID_INTR_SETUP(device_get_parent(dev), &sc->lock, hidbus_intr, sc);
 
-	error = hidbus_add_children(sc);
+	error = hidbus_enumerate_children(dev);
 	if (error != 0) {
 		hidbus_detach(dev);
 		return (ENXIO);
@@ -188,6 +185,25 @@ hidbus_read_ivar(device_t bus, device_t child, int which, uintptr_t *result)
 	case HIDBUS_IVAR_DEVINFO:
 		*result = (uintptr_t)device_get_ivars(bus);
 		break;
+	default:
+		return (EINVAL);
+	}
+        return (0);
+}
+
+static int
+hidbus_write_ivar(device_t bus, device_t child, int which, uintptr_t value)
+{
+	struct hidbus_ivar *info = device_get_ivars(child);
+
+	switch (which) {
+	case HIDBUS_IVAR_INDEX:
+		info->index = value;
+		break;
+	case HIDBUS_IVAR_USAGE:
+		info->usage = value;
+		break;
+	case HIDBUS_IVAR_DEVINFO:
 	default:
 		return (EINVAL);
 	}
@@ -383,7 +399,9 @@ static device_method_t hidbus_methods[] = {
 	DEVMETHOD(device_resume,        bus_generic_resume),
 
 	/* bus interface */
+	DEVMETHOD(bus_add_child,	hidbus_add_child),
 	DEVMETHOD(bus_read_ivar,	hidbus_read_ivar),
+	DEVMETHOD(bus_write_ivar,	hidbus_write_ivar),
 	DEVMETHOD(bus_child_pnpinfo_str,hidbus_child_pnpinfo_str),
 	DEVMETHOD(bus_child_location_str,hidbus_child_location_str),
 
