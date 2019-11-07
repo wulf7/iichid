@@ -45,7 +45,6 @@ struct hid_device_info {
 struct hid_tlc_info {
 	uint32_t		usage;
 	uint8_t			index;
-	struct hid_device_info	*device_info;
 	unsigned long		driver_info;	/* for internal use */
 };
 

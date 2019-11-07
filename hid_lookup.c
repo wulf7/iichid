@@ -53,12 +53,14 @@ hid_lookup_id(device_t child, const struct hid_device_id *id, size_t sizeof_id)
 {
 	struct hid_tlc_info *tlc = device_get_ivars(child);
 	const struct hid_device_id *id_end;
-	const struct hid_device_info *info = tlc->device_info;
+	const struct hid_device_info *info;
 
 	if (id == NULL) {
 		goto done;
 	}
+
 	id_end = (const void *)(((const uint8_t *)id) + sizeof_id);
+	info = device_get_ivars(device_get_parent(child));
 
 	/*
 	 * Keep on matching array entries until we find a match or

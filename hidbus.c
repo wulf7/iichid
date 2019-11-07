@@ -69,7 +69,6 @@ struct hidbus_softc {
 static device_t
 hidbus_add_child(struct hidbus_softc *sc, uint8_t index, uint32_t usage)
 {
-	struct hid_device_info *device_info = device_get_ivars(sc->dev);
 	struct hidbus_tlc *tlc;
 	device_t child;
 
@@ -80,7 +79,6 @@ hidbus_add_child(struct hidbus_softc *sc, uint8_t index, uint32_t usage)
 	tlc = malloc(sizeof(struct hidbus_tlc), M_DEVBUF, M_WAITOK | M_ZERO);
 	tlc->ivars.usage = usage;
 	tlc->ivars.index = index;
-	tlc->ivars.device_info = device_info;
 	tlc->child = child;
 	STAILQ_INSERT_TAIL(&sc->tlcs, tlc, link);
 	device_set_ivars(child, &tlc->ivars);
@@ -196,7 +194,7 @@ hidbus_read_ivar(device_t bus, device_t child, int which, uintptr_t *result)
 		*result = info->usage;
 		break;
 	case HIDBUS_IVAR_DEVINFO:
-		*result = (uintptr_t)info->device_info;
+		*result = (uintptr_t)device_get_ivars(bus);
 		break;
 	default:
 		return (EINVAL);
