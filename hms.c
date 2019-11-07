@@ -234,13 +234,13 @@ hms_hid_parse(struct hms_softc *sc, device_t dev, const uint8_t *buf,
     uint16_t len, uint8_t index)
 {
 	struct hms_info *info = &sc->sc_info[index];
-	struct hid_tlc_info *tlc = device_get_ivars(dev);
+	uint8_t tlc_index = hidbus_get_index(dev);
 	uint32_t flags;
 	uint8_t i;
 	uint8_t j;
 
 	if (hid_tlc_locate(buf, len, HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_X),
-	    hid_input, tlc->index, index, &info->sc_loc_x, &flags,
+	    hid_input, tlc_index, index, &info->sc_loc_x, &flags,
 	    &info->sc_iid_x, &info->sc_ai_x)) {
 
 		if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS_REL)
@@ -250,7 +250,7 @@ hms_hid_parse(struct hms_softc *sc, device_t dev, const uint8_t *buf,
 	}
 
 	if (hid_tlc_locate(buf, len, HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_Y),
-	    hid_input, tlc->index, index, &info->sc_loc_y, &flags,
+	    hid_input, tlc_index, index, &info->sc_loc_y, &flags,
 	    &info->sc_iid_y, &info->sc_ai_y)) {
 
 		if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS_REL)
@@ -260,21 +260,21 @@ hms_hid_parse(struct hms_softc *sc, device_t dev, const uint8_t *buf,
 	}
 
 	if (hid_tlc_locate(buf, len, HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_Z),
-	    hid_input, tlc->index, index, &info->sc_loc_z, &flags,
+	    hid_input, tlc_index, index, &info->sc_loc_z, &flags,
 	    &info->sc_iid_z, NULL)) {
 
 		if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS_REL)
 			info->sc_flags |= HMS_FLAG_Z_AXIS;
 	}
 	if (hid_tlc_locate(buf, len,
-	    HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_WHEEL), hid_input, tlc->index,
+	    HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_WHEEL), hid_input, tlc_index,
 	    index, &info->sc_loc_wh, &flags, &info->sc_iid_wh, NULL)) {
 
 		if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS_REL)
 			info->sc_flags |= HMS_FLAG_WHEEL;
 	}
 	if (hid_tlc_locate(buf, len, HID_USAGE2(HUP_CONSUMER, HUC_AC_PAN),
-	    hid_input, tlc->index, index, &info->sc_loc_hwh, &flags,
+	    hid_input, tlc_index, index, &info->sc_loc_hwh, &flags,
 	    &info->sc_iid_hwh, NULL)) {
 
 		if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS_REL)
@@ -285,7 +285,7 @@ hms_hid_parse(struct hms_softc *sc, device_t dev, const uint8_t *buf,
 
 	for (i = 0; i < HMS_BUTTON_MAX; i++) {
 		if (!hid_tlc_locate(buf, len, HID_USAGE2(HUP_BUTTON, (i + 1)),
-		    hid_input, tlc->index, index, &info->sc_loc_btn[i], NULL,
+		    hid_input, tlc_index, index, &info->sc_loc_btn[i], NULL,
 		    &info->sc_iid_btn[i], NULL)) {
 			break;
 		}
@@ -295,7 +295,7 @@ hms_hid_parse(struct hms_softc *sc, device_t dev, const uint8_t *buf,
 
 	for (j = 0; (i < HMS_BUTTON_MAX) && (j < 2); i++, j++) {
 		if (!hid_tlc_locate(buf, len,
-		    HID_USAGE2(HUP_MICROSOFT, (j + 1)), hid_input, tlc->index,
+		    HID_USAGE2(HUP_MICROSOFT, (j + 1)), hid_input, tlc_index,
 		    index, &info->sc_loc_btn[i], NULL, &info->sc_iid_btn[i],
 		    NULL)) {
 			break;
@@ -325,8 +325,7 @@ static int
 hms_attach(device_t dev)
 {
 	struct hms_softc *sc = device_get_softc(dev);
-	struct hid_tlc_info *tlc = device_get_ivars(dev);
-	struct hid_device_info *hw = tlc->device_info;
+	struct hid_device_info *hw = hidbus_get_devinfo(dev);
 	struct hms_info *info;
 	void *d_ptr = NULL;
 	int isize;
