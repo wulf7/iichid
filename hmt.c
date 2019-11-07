@@ -306,8 +306,8 @@ hmt_probe(device_t dev)
 
 	/* Check if report descriptor belongs to a HID multitouch device */
 	if (sc->type == HMT_TYPE_UNKNOWN)
-		sc->type = hmt_hid_parse(sc, d_ptr, d_len, tlc->usage,
-		    tlc->index);
+		sc->type = hmt_hid_parse(sc, d_ptr, d_len,
+		    hidbus_get_usage(dev), hidbus_get_index(dev));
 	if (sc->type == HMT_TYPE_UNSUPPORTED)
 		return (ENXIO);
 
@@ -318,8 +318,7 @@ static int
 hmt_attach(device_t dev)
 {
 	struct hmt_softc *sc = device_get_softc(dev);
-	struct hid_tlc_info *tlc = device_get_ivars(dev);
-	struct hid_device_info *hw = tlc->device_info;
+	struct hid_device_info *hw = hidbus_get_devinfo(dev);
 	void *d_ptr, *fbuf = NULL;
 	uint16_t d_len, fsize;
 	int nbuttons;
