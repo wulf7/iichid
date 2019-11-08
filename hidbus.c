@@ -153,7 +153,6 @@ static int
 hidbus_detach(device_t dev)
 {
 	struct hidbus_softc *sc = device_get_softc(dev);
-	struct hidbus_ivar *tlc;
 
 	bus_generic_detach(dev);
 	device_delete_children(dev);
@@ -161,13 +160,21 @@ hidbus_detach(device_t dev)
 	HID_INTR_UNSETUP(device_get_parent(dev));
 	mtx_destroy(&sc->lock);
 
-	while (!STAILQ_EMPTY(&sc->tlcs)) {
-		tlc = STAILQ_FIRST(&sc->tlcs);
-		STAILQ_REMOVE_HEAD(&sc->tlcs, link);
-                free(tlc, M_DEVBUF);
-        }
-
 	return (0);
+}
+
+static void
+hidbus_child_deleted(device_t bus, device_t child)
+{
+	struct hidbus_softc *sc = device_get_softc(bus);
+	struct hidbus_ivar *tlc = device_get_ivars(child);
+
+	KASSERT(!sc->open, ("Child device is running"));
+
+	mtx_lock(&sc->lock);
+	STAILQ_REMOVE(&sc->tlcs, tlc, hidbus_ivar, link);
+	mtx_unlock(&sc->lock);
+	free(tlc, M_DEVBUF);
 }
 
 static int
@@ -400,6 +407,7 @@ static device_method_t hidbus_methods[] = {
 
 	/* bus interface */
 	DEVMETHOD(bus_add_child,	hidbus_add_child),
+	DEVMETHOD(bus_child_deleted,	hidbus_child_deleted),
 	DEVMETHOD(bus_read_ivar,	hidbus_read_ivar),
 	DEVMETHOD(bus_write_ivar,	hidbus_write_ivar),
 	DEVMETHOD(bus_child_pnpinfo_str,hidbus_child_pnpinfo_str),
