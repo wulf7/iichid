@@ -55,6 +55,7 @@ struct hidbus_ivar {
 enum {
 	HIDBUS_IVAR_USAGE,
 	HIDBUS_IVAR_INDEX,
+	HIDBUS_IVAR_INTR,
 	HIDBUS_IVAR_DEVINFO,
 };
 
@@ -63,6 +64,7 @@ enum {
 
 HIDBUS_ACCESSOR(usage,		USAGE,		uint32_t)
 HIDBUS_ACCESSOR(index,		INDEX,		uint8_t)
+HIDBUS_ACCESSOR(intr,		INTR,		hid_intr_t *)
 HIDBUS_ACCESSOR(devinfo,	DEVINFO,	struct hid_device_info *)
 
 /*
@@ -137,7 +139,6 @@ device_t	hidbus_find_child(device_t, uint32_t);
 
 /* hidbus child interrupt interface */
 struct mtx *	hid_get_lock(device_t);
-void		hid_set_intr(device_t, hid_intr_t);
 int		hid_start(device_t);
 int		hid_stop(device_t);
 

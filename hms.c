@@ -394,7 +394,7 @@ hms_attach(device_t dev)
 	DPRINTF("size=%d, id=%d\n", isize, sc->sc_iid);
 #endif
 
-	hid_set_intr(dev, hms_intr);
+	hidbus_set_intr(dev, hms_intr);
 
 	for (info = sc->sc_info; info != &sc->sc_info[HMS_INFO_MAX]; info++) {
 

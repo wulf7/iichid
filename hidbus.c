@@ -189,6 +189,9 @@ hidbus_read_ivar(device_t bus, device_t child, int which, uintptr_t *result)
 	case HIDBUS_IVAR_USAGE:
 		*result = info->usage;
 		break;
+	case HIDBUS_IVAR_INTR:
+		*result = (uintptr_t)info->intr;
+		break;
 	case HIDBUS_IVAR_DEVINFO:
 		*result = (uintptr_t)device_get_ivars(bus);
 		break;
@@ -209,6 +212,9 @@ hidbus_write_ivar(device_t bus, device_t child, int which, uintptr_t value)
 		break;
 	case HIDBUS_IVAR_USAGE:
 		info->usage = value;
+		break;
+	case HIDBUS_IVAR_INTR:
+		info->intr = (hid_intr_t *)value;
 		break;
 	case HIDBUS_IVAR_DEVINFO:
 	default:
@@ -263,19 +269,6 @@ hid_get_lock(device_t child)
 	struct hidbus_softc *sc = device_get_softc(device_get_parent(child));
 
 	return (&sc->lock);
-}
-
-void
-hid_set_intr(device_t child, hid_intr_t intr)
-{
-	device_t bus = device_get_parent(child);
-	struct hidbus_softc *sc = device_get_softc(bus);
-	struct hidbus_ivar *tlc;
-
-	STAILQ_FOREACH(tlc, &sc->tlcs, link) {
-		if (tlc->child == child)
-			tlc->intr = intr;
-	}
 }
 
 void

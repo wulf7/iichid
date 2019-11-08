@@ -379,7 +379,7 @@ hmt_attach(device_t dev)
 		sc->ai[HMT_SLOT].max = MAX_MT_SLOTS - 1;
 	}
 
-	hid_set_intr(dev, hmt_intr);
+	hidbus_set_intr(dev, hmt_intr);
 
 	sc->evdev = evdev_alloc();
 	evdev_set_name(sc->evdev, device_get_desc(dev));
