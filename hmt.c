@@ -322,7 +322,6 @@ hmt_attach(device_t dev)
 	uint16_t d_len, fsize;
 	int nbuttons;
 	size_t i;
-	uint8_t fid;
 	int error;
 
 	device_set_desc(dev, hw->name);
@@ -336,7 +335,7 @@ hmt_attach(device_t dev)
 
 	sc->dev = dev;
 
-	fsize = hid_report_size(d_ptr, d_len, hid_feature, &fid);
+	fsize = hid_report_size(d_ptr, d_len, hid_feature, NULL);
 	if (fsize != 0)
 		fbuf = malloc(fsize, M_TEMP, M_WAITOK | M_ZERO);
 
