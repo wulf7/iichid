@@ -227,7 +227,8 @@ struct hmt_softc {
 static enum hmt_type hmt_hid_parse(struct hmt_softc *, const void *, uint16_t,
     uint32_t, uint8_t);
 static void hmt_devcaps_parse(struct hmt_softc *, const void *, uint16_t);
-static void hmt_config_parse(struct hmt_softc *, const void *, uint16_t);
+static void hmt_config_parse(struct hmt_softc *, const void *, uint16_t,
+    uint8_t);
 static int hmt_set_input_mode(struct hmt_softc *, enum hmt_input_mode);
 
 static hid_intr_t		hmt_intr;
@@ -318,6 +319,7 @@ hmt_attach(device_t dev)
 {
 	struct hmt_softc *sc = device_get_softc(dev);
 	struct hid_device_info *hw = hidbus_get_devinfo(dev);
+	device_t config;
 	void *d_ptr, *fbuf = NULL;
 	uint16_t d_len, fsize;
 	int nbuttons;
@@ -359,7 +361,11 @@ hmt_attach(device_t dev)
 	free(fbuf, M_TEMP);
 
 	if (sc->type == HMT_TYPE_TOUCHPAD) {
-		hmt_config_parse(sc, d_ptr, d_len);
+		config = hidbus_find_child(device_get_parent(dev),
+		    HID_USAGE2(HUP_DIGITIZERS, HUD_CONFIG));
+		if (config != NULL)
+			hmt_config_parse(sc, d_ptr, d_len,
+			    hidbus_get_index(config));
 		if (sc->input_mode_rlen > 1) {
 			error = hmt_set_input_mode(sc,
 			    HMT_INPUT_MODE_MT_TOUCHPAD);
@@ -833,39 +839,16 @@ hmt_devcaps_parse(struct hmt_softc *sc, const void *r_ptr, uint16_t r_len)
 }
 
 static void
-hmt_config_parse(struct hmt_softc *sc, const void *d_ptr, uint16_t d_len)
+hmt_config_parse(struct hmt_softc *sc, const void *d_ptr, uint16_t d_len,
+    uint8_t tlc_index)
 {
-	struct hid_item hi;
-	struct hid_data *hd;
-	bool conf_coll = false;
+	uint32_t flags;
 
 	/* Parse features for input mode switch */
-	hd = hid_start_parse(d_ptr, d_len, 1 << hid_feature);
-	while (hid_get_item(hd, &hi)) {
-		switch (hi.kind) {
-		case hid_collection:
-			if (hi.collevel == 1 && hi.usage ==
-			    HID_USAGE2(HUP_DIGITIZERS, HUD_CONFIG))
-				conf_coll = true;
-			break;
-		case hid_endcollection:
-			if (hi.collevel == 0 && conf_coll)
-				conf_coll = false;
-			break;
-		case hid_feature:
-			if (conf_coll && HMT_HI_ABSOLUTE(hi) && hi.usage ==
-			      HID_USAGE2(HUP_DIGITIZERS, HUD_INPUT_MODE)) {
-				sc->input_mode_rid = hi.report_ID;
-				sc->input_mode_loc = hi.loc;
-			}
-			break;
-		default:
-			break;
-		}
-	}
-	hid_end_parse(hd);
-
-	if (sc->input_mode_rid > 0)
+	if (hid_tlc_locate(d_ptr, d_len,
+	    HID_USAGE2(HUP_DIGITIZERS, HUD_CONFIG), hid_feature, tlc_index,
+	    0, &sc->input_mode_loc, &flags, &sc->input_mode_rid, NULL) &&
+	    (flags & (HIO_VARIABLE | HIO_RELATIVE)) == HIO_VARIABLE)
 		sc->input_mode_rlen = hid_report_size_1(d_ptr, d_len,
 		    hid_feature, sc->input_mode_rid);
 }
