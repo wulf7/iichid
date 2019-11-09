@@ -30,6 +30,14 @@
 #define	HID_OUTPUT_REPORT	0x2
 #define	HID_FEATURE_REPORT	0x3
 
+#define	HID_XFER_READ		0x01
+#define	HID_XFER_WRITE		0x02
+#define	HID_XFER_GET_REPORT	0x04
+#define	HID_XFER_SET_REPORT	0x08
+
+#define	HID_XFER_ALL		(HID_XFER_READ | HID_XFER_WRITE | \
+				    HID_XFER_GET_REPORT | HID_XFER_SET_REPORT)
+
 typedef void hid_intr_t(void *context, void *data, uint16_t len);
 
 struct hid_device_info {
@@ -48,7 +56,7 @@ struct hidbus_ivar {
 	uint8_t				index;
 	unsigned long			driver_info;	/* for internal use */
 	hid_intr_t			*intr;
-	bool				open;
+	uint8_t				xfer;
 	STAILQ_ENTRY(hidbus_ivar)	link;
 };
 
@@ -132,15 +140,12 @@ struct hid_device_id {
   (did)->driver_info
 
 const struct hid_device_id *hid_lookup_id(device_t,
-    const struct hid_device_id *, size_t);
-int hid_lookup_driver_info(device_t, const struct hid_device_id *, size_t);
-
+		    const struct hid_device_id *, size_t);
+int 		hid_lookup_driver_info(device_t, const struct hid_device_id *,
+		    size_t);
 device_t	hidbus_find_child(device_t, uint32_t);
-
-/* hidbus child interrupt interface */
 struct mtx *	hid_get_lock(device_t);
-int		hid_start(device_t);
-int		hid_stop(device_t);
+int		hidbus_set_xfer(device_t, uint8_t);
 
 /* hidbus HID interface */
 int	hid_get_report_descr(device_t, void **, uint16_t *);

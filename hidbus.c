@@ -284,7 +284,7 @@ hidbus_intr(void *context, void *buf, uint16_t len)
 	 * TODO: Add check for input report ID.
 	 */
 	 STAILQ_FOREACH(tlc, &sc->tlcs, link) {
-		if (tlc->open) {
+		if (tlc->xfer != 0) {
 			KASSERT(tlc->intr != NULL,
 			    ("hidbus: interrupt handler is NULL"));
 			tlc->intr(tlc->child, buf, len);
@@ -293,47 +293,32 @@ hidbus_intr(void *context, void *buf, uint16_t len)
 }
 
 int
-hid_start(device_t child)
+hidbus_set_xfer(device_t child, uint8_t xfer)
 {
 	device_t bus = device_get_parent(child);
 	struct hidbus_softc *sc = device_get_softc(bus);
 	struct hidbus_ivar *tlc;
-	bool open = false;
+	uint8_t dev_xfer = 0, old_dev_xfer = 0;
 
 	mtx_assert(&sc->lock, MA_OWNED);
+	KASSERT((xfer & ~HID_XFER_ALL) == 0, ("Bad xfer mask"));
 
-	STAILQ_FOREACH(tlc, &sc->tlcs, link) {
-		open = open || tlc->open;
-		if (tlc->child == child)
-			tlc->open = true;
-	}
+	STAILQ_FOREACH(tlc, &sc->tlcs, link)
+		old_dev_xfer |= tlc->xfer;
 
-	if (open)
+	tlc = device_get_ivars(child);
+	tlc->xfer = xfer;
+
+	STAILQ_FOREACH(tlc, &sc->tlcs, link)
+		dev_xfer |= tlc->xfer;
+
+	if (old_dev_xfer == dev_xfer)
 		return (0);
 
-	return (HID_INTR_START(device_get_parent(bus)));
-}
-
-int
-hid_stop(device_t child)
-{
-	device_t bus = device_get_parent(child);
-	struct hidbus_softc *sc = device_get_softc(bus);
-	struct hidbus_ivar *tlc;
-	bool open = false;
-
-	mtx_assert(&sc->lock, MA_OWNED);
-
-	STAILQ_FOREACH(tlc, &sc->tlcs, link) {
-		if (tlc->child == child)
-			tlc->open = false;
-		open = open || tlc->open;
-	}
-
-	if (open)
-		return (0);
-
-	return (HID_INTR_STOP(device_get_parent(bus)));
+	if (dev_xfer != 0)
+		return (HID_INTR_START(device_get_parent(bus)));
+	else
+		return (HID_INTR_STOP(device_get_parent(bus)));
 }
 
 /*

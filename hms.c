@@ -498,7 +498,7 @@ hms_ev_open(struct evdev_dev *evdev)
 
 	info->sc_flags |= HMS_FLAG_OPEN;
 
-	return (flags == 0 ? hid_start(info->sc_dev) : 0);
+	return (flags == 0 ? hidbus_set_xfer(info->sc_dev, HID_XFER_READ) : 0);
 }
 
 static int
@@ -514,7 +514,7 @@ hms_ev_close(struct evdev_dev *evdev)
 	for (i = 0; i < HMS_INFO_MAX; i++)
 		flags |= (sc->sc_info[i].sc_flags & HMS_FLAG_OPEN);
 
-	return (flags == 0 ? hid_stop(info->sc_dev) : 0);
+	return (flags == 0 ? hidbus_set_xfer(info->sc_dev, 0) : 0);
 }
 
 static int

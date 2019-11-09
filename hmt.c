@@ -274,7 +274,7 @@ hmt_ev_close(struct evdev_dev *evdev)
 {
 	device_t dev = evdev_get_softc(evdev);
 
-	return (hid_stop(dev));
+	return (hidbus_set_xfer(dev, 0));
 }
 
 static int
@@ -282,7 +282,7 @@ hmt_ev_open(struct evdev_dev *evdev)
 {
 	device_t dev = evdev_get_softc(evdev);
 
-	return (hid_start(dev));
+	return (hidbus_set_xfer(dev, HID_XFER_READ));
 }
 
 static int
