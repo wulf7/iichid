@@ -111,12 +111,11 @@ int
 hid_lookup_driver_info(device_t child, const struct hid_device_id *id,
     size_t sizeof_id)
 {
-	struct hidbus_ivar *tlc = device_get_ivars(child);
 
 	id = hid_lookup_id(child, id, sizeof_id);
 	if (id) {
 		/* copy driver info */
-		tlc->driver_info = id->driver_info;
+		hidbus_set_driver_info(child, id->driver_info);
 		return (0);
 	}
 	return (ENXIO);

@@ -54,7 +54,7 @@ struct hidbus_ivar {
 	device_t			child;
 	uint32_t			usage;
 	uint8_t				index;
-	unsigned long			driver_info;	/* for internal use */
+	uintptr_t			driver_info;	/* for internal use */
 	hid_intr_t			*intr;
 	uint8_t				xfer;
 	STAILQ_ENTRY(hidbus_ivar)	link;
@@ -64,6 +64,7 @@ enum {
 	HIDBUS_IVAR_USAGE,
 	HIDBUS_IVAR_INDEX,
 	HIDBUS_IVAR_INTR,
+	HIDBUS_IVAR_DRIVER_INFO,
 	HIDBUS_IVAR_DEVINFO,
 };
 
@@ -73,6 +74,7 @@ enum {
 HIDBUS_ACCESSOR(usage,		USAGE,		uint32_t)
 HIDBUS_ACCESSOR(index,		INDEX,		uint8_t)
 HIDBUS_ACCESSOR(intr,		INTR,		hid_intr_t *)
+HIDBUS_ACCESSOR(driver_info,	DRIVER_INFO,	uintptr_t)
 HIDBUS_ACCESSOR(devinfo,	DEVINFO,	struct hid_device_info *)
 
 /*
@@ -103,7 +105,7 @@ struct hid_device_id {
 	uint16_t idVersion_hi;
 
 	/* Hook for driver specific information */
-	unsigned long driver_info;
+	uintptr_t driver_info;
 };
 
 #define HID_TLC(page,usg)			\

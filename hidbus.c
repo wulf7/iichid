@@ -194,6 +194,9 @@ hidbus_read_ivar(device_t bus, device_t child, int which, uintptr_t *result)
 	case HIDBUS_IVAR_INTR:
 		*result = (uintptr_t)info->intr;
 		break;
+	case HIDBUS_IVAR_DRIVER_INFO:
+		*result = info->driver_info;
+		break;
 	case HIDBUS_IVAR_DEVINFO:
 		*result = (uintptr_t)device_get_ivars(bus);
 		break;
@@ -217,6 +220,9 @@ hidbus_write_ivar(device_t bus, device_t child, int which, uintptr_t value)
 		break;
 	case HIDBUS_IVAR_INTR:
 		info->intr = (hid_intr_t *)value;
+		break;
+	case HIDBUS_IVAR_DRIVER_INFO:
+		info->driver_info = value;
 		break;
 	case HIDBUS_IVAR_DEVINFO:
 	default:
