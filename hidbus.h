@@ -144,7 +144,7 @@ const struct hid_device_id *hid_lookup_id(device_t,
 int 		hid_lookup_driver_info(device_t, const struct hid_device_id *,
 		    size_t);
 device_t	hidbus_find_child(device_t, uint32_t);
-struct mtx *	hid_get_lock(device_t);
+struct mtx *	hidbus_get_lock(device_t);
 int		hidbus_set_xfer(device_t, uint8_t);
 
 /* hidbus HID interface */

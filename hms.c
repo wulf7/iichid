@@ -453,7 +453,7 @@ hms_attach(device_t dev)
 		for (i = 0; i < info->sc_buttons; i++)
 			evdev_support_key(info->sc_evdev, HMS_BUT(i));
 
-		err = evdev_register_mtx(info->sc_evdev, hid_get_lock(dev));
+		err = evdev_register_mtx(info->sc_evdev, hidbus_get_lock(dev));
 		if (err)
 			goto detach;
 	}

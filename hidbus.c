@@ -71,8 +71,10 @@ hidbus_add_child(device_t dev, u_int order, const char *name, int unit)
 
 	tlc = malloc(sizeof(struct hidbus_ivar), M_DEVBUF, M_WAITOK | M_ZERO);
 	tlc->child = child;
-	STAILQ_INSERT_TAIL(&sc->tlcs, tlc, link);
 	device_set_ivars(child, tlc);
+	mtx_lock(&sc->lock);
+	STAILQ_INSERT_TAIL(&sc->tlcs, tlc, link);
+	mtx_unlock(&sc->lock);
 
 	return (child);
 }
@@ -255,16 +257,20 @@ hidbus_find_child(device_t bus, uint32_t usage)
 	struct hidbus_softc *sc = device_get_softc(bus);
 	struct hidbus_ivar *tlc;
 
+	mtx_lock(&sc->lock);
 	STAILQ_FOREACH(tlc, &sc->tlcs, link) {
-		if (tlc->usage == usage)
+		if (tlc->usage == usage) {
+			mtx_unlock(&sc->lock);
 			return (tlc->child);
+		}
 	}
+	mtx_unlock(&sc->lock);
 
 	return (NULL);
 }
 
 struct mtx *
-hid_get_lock(device_t child)
+hidbus_get_lock(device_t child)
 {
 	struct hidbus_softc *sc = device_get_softc(device_get_parent(child));
 
