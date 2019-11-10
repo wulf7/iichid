@@ -55,21 +55,21 @@ struct hidbus_softc {
 	device_t			dev;
 	struct mtx			lock;
 
-	STAILQ_HEAD(, hidbus_ivar)	tlcs;
+	STAILQ_HEAD(, hidbus_ivars)	tlcs;
 };
 
 static device_t
 hidbus_add_child(device_t dev, u_int order, const char *name, int unit)
 {
 	struct hidbus_softc *sc = device_get_softc(dev);
-	struct hidbus_ivar *tlc;
+	struct hidbus_ivars *tlc;
 	device_t child;
 
 	child = device_add_child_ordered(dev, order, name, unit);
 	if (child == NULL)
 			return (child);
 
-	tlc = malloc(sizeof(struct hidbus_ivar), M_DEVBUF, M_WAITOK | M_ZERO);
+	tlc = malloc(sizeof(struct hidbus_ivars), M_DEVBUF, M_WAITOK | M_ZERO);
 	tlc->child = child;
 	device_set_ivars(child, tlc);
 	mtx_lock(&sc->lock);
@@ -169,12 +169,12 @@ static void
 hidbus_child_deleted(device_t bus, device_t child)
 {
 	struct hidbus_softc *sc = device_get_softc(bus);
-	struct hidbus_ivar *tlc = device_get_ivars(child);
+	struct hidbus_ivars *tlc = device_get_ivars(child);
 
 	KASSERT(!sc->open, ("Child device is running"));
 
 	mtx_lock(&sc->lock);
-	STAILQ_REMOVE(&sc->tlcs, tlc, hidbus_ivar, link);
+	STAILQ_REMOVE(&sc->tlcs, tlc, hidbus_ivars, link);
 	mtx_unlock(&sc->lock);
 	free(tlc, M_DEVBUF);
 }
@@ -182,20 +182,20 @@ hidbus_child_deleted(device_t bus, device_t child)
 static int
 hidbus_read_ivar(device_t bus, device_t child, int which, uintptr_t *result)
 {
-	struct hidbus_ivar *info = device_get_ivars(child);
+	struct hidbus_ivars *tlc = device_get_ivars(child);
 
 	switch (which) {
 	case HIDBUS_IVAR_INDEX:
-		*result = info->index;
+		*result = tlc->index;
 		break;
 	case HIDBUS_IVAR_USAGE:
-		*result = info->usage;
+		*result = tlc->usage;
 		break;
 	case HIDBUS_IVAR_INTR:
-		*result = (uintptr_t)info->intr;
+		*result = (uintptr_t)tlc->intr;
 		break;
 	case HIDBUS_IVAR_DRIVER_INFO:
-		*result = info->driver_info;
+		*result = tlc->driver_info;
 		break;
 	case HIDBUS_IVAR_DEVINFO:
 		*result = (uintptr_t)device_get_ivars(bus);
@@ -209,20 +209,20 @@ hidbus_read_ivar(device_t bus, device_t child, int which, uintptr_t *result)
 static int
 hidbus_write_ivar(device_t bus, device_t child, int which, uintptr_t value)
 {
-	struct hidbus_ivar *info = device_get_ivars(child);
+	struct hidbus_ivars *tlc = device_get_ivars(child);
 
 	switch (which) {
 	case HIDBUS_IVAR_INDEX:
-		info->index = value;
+		tlc->index = value;
 		break;
 	case HIDBUS_IVAR_USAGE:
-		info->usage = value;
+		tlc->usage = value;
 		break;
 	case HIDBUS_IVAR_INTR:
-		info->intr = (hid_intr_t *)value;
+		tlc->intr = (hid_intr_t *)value;
 		break;
 	case HIDBUS_IVAR_DRIVER_INFO:
-		info->driver_info = value;
+		tlc->driver_info = value;
 		break;
 	case HIDBUS_IVAR_DEVINFO:
 	default:
@@ -236,9 +236,9 @@ static int
 hidbus_child_location_str(device_t bus, device_t child, char *buf,
     size_t buflen)
 {
-	struct hidbus_ivar *info = device_get_ivars(child);
+	struct hidbus_ivars *tlc = device_get_ivars(child);
 
-	snprintf(buf, buflen, "index=%hhu", info->index);
+	snprintf(buf, buflen, "index=%hhu", tlc->index);
         return (0);
 }
 
@@ -247,13 +247,13 @@ static int
 hidbus_child_pnpinfo_str(device_t bus, device_t child, char *buf,
     size_t buflen)
 {
-	struct hidbus_ivar *devinfo = device_get_ivars(child);
-	struct hid_device_info *businfo = device_get_ivars(bus);
+	struct hidbus_ivars *tlc = device_get_ivars(child);
+	struct hid_device_info *devinfo = device_get_ivars(bus);
 
 	snprintf(buf, buflen, "page=0x%04x usage=0x%04x bus=0x%02hx "
 	    "vendor=0x%04hx product=0x%04hx version=0x%04hx",
-	    devinfo->usage >> 16, devinfo->usage & 0xFFFF, businfo->idBus,
-	    businfo->idVendor, businfo->idProduct, businfo->idVersion);
+	    tlc->usage >> 16, tlc->usage & 0xFFFF, devinfo->idBus,
+	    devinfo->idVendor, devinfo->idProduct, devinfo->idVersion);
 	return (0);
 }
 
@@ -261,7 +261,7 @@ device_t
 hidbus_find_child(device_t bus, uint32_t usage)
 {
 	struct hidbus_softc *sc = device_get_softc(bus);
-	struct hidbus_ivar *tlc;
+	struct hidbus_ivars *tlc;
 
 	mtx_lock(&sc->lock);
 	STAILQ_FOREACH(tlc, &sc->tlcs, link) {
@@ -287,7 +287,7 @@ void
 hidbus_intr(void *context, void *buf, uint16_t len)
 {
 	struct hidbus_softc *sc = context;
-	struct hidbus_ivar *tlc;
+	struct hidbus_ivars *tlc;
 
 	mtx_assert(&sc->lock, MA_OWNED);
 
@@ -309,7 +309,7 @@ hidbus_set_xfer(device_t child, uint8_t xfer)
 {
 	device_t bus = device_get_parent(child);
 	struct hidbus_softc *sc = device_get_softc(bus);
-	struct hidbus_ivar *tlc;
+	struct hidbus_ivars *tlc;
 	uint8_t dev_xfer = 0, old_dev_xfer = 0;
 
 	mtx_assert(&sc->lock, MA_OWNED);

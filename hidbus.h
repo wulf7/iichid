@@ -50,14 +50,14 @@ struct hid_device_info {
 	uint16_t	idVersion;
 };
 
-struct hidbus_ivar {
+struct hidbus_ivars {
 	device_t			child;
 	uint32_t			usage;
 	uint8_t				index;
 	uintptr_t			driver_info;	/* for internal use */
 	hid_intr_t			*intr;
 	uint8_t				xfer;
-	STAILQ_ENTRY(hidbus_ivar)	link;
+	STAILQ_ENTRY(hidbus_ivars)	link;
 };
 
 enum {
