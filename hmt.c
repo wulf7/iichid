@@ -71,10 +71,10 @@ enum hmt_type {
 	HMT_TYPE_TOUCHSCREEN,
 };
 
-enum hmt_input_mode {
-	HMT_INPUT_MODE_MOUSE =		0x0,
-	HMT_INPUT_MODE_MT_TOUCHSCREEN =	0x2,
-	HMT_INPUT_MODE_MT_TOUCHPAD =	0x3,
+enum hconf_input_mode {
+	HCONF_INPUT_MODE_MOUSE =		0x0,
+	HCONF_INPUT_MODE_MT_TOUCHSCREEN =	0x2,
+	HCONF_INPUT_MODE_MT_TOUCHPAD =		0x3,
 };
 
 enum {
@@ -190,6 +190,13 @@ static const struct hmt_hid_map_item hmt_hid_map[HMT_N_USAGES] = {
 	for ((button) = 0; (button) < HMT_BTN_MAX; ++(button))	\
 		if (bit_test(buttons, button))
 
+struct hconf_softc {
+	device_t		dev;
+	struct hid_location	input_mode_loc;
+	uint32_t		input_mode_rlen;
+	uint8_t			input_mode_rid;
+};
+
 struct hmt_softc {
 	device_t dev;
 	enum hmt_type		type;
@@ -219,17 +226,16 @@ struct hmt_softc {
 	uint8_t			btn_type_rid;
 	uint32_t                thqa_cert_rlen;
 	uint8_t                 thqa_cert_rid;
-	struct hid_location	input_mode_loc;
-	uint32_t		input_mode_rlen;
-	uint8_t			input_mode_rid;
+
+	struct hconf_softc	hconf;
 };
 
 static enum hmt_type hmt_hid_parse(struct hmt_softc *, const void *, uint16_t,
     uint32_t, uint8_t);
 static void hmt_devcaps_parse(struct hmt_softc *, const void *, uint16_t);
-static void hmt_config_parse(struct hmt_softc *, const void *, uint16_t,
+static void hconf_config_parse(struct hconf_softc *, const void *, uint16_t,
     uint8_t);
-static int hmt_set_input_mode(struct hmt_softc *, enum hmt_input_mode);
+static int hconf_set_input_mode(struct hconf_softc *, enum hconf_input_mode);
 
 static hid_intr_t		hmt_intr;
 
@@ -323,7 +329,7 @@ hmt_attach(device_t dev)
 {
 	struct hmt_softc *sc = device_get_softc(dev);
 	struct hid_device_info *hw = hidbus_get_devinfo(dev);
-	device_t config;
+	device_t hconf;
 	void *d_ptr, *fbuf = NULL;
 	uint16_t d_len, fsize;
 	int nbuttons;
@@ -365,14 +371,15 @@ hmt_attach(device_t dev)
 	free(fbuf, M_TEMP);
 
 	if (sc->type == HMT_TYPE_TOUCHPAD) {
-		config = hidbus_find_child(device_get_parent(dev),
+		sc->hconf.dev = dev;
+		hconf = hidbus_find_child(device_get_parent(dev),
 		    HID_USAGE2(HUP_DIGITIZERS, HUD_CONFIG));
-		if (config != NULL)
-			hmt_config_parse(sc, d_ptr, d_len,
-			    hidbus_get_index(config));
-		if (sc->input_mode_rlen > 1) {
-			error = hmt_set_input_mode(sc,
-			    HMT_INPUT_MODE_MT_TOUCHPAD);
+		if (hconf != NULL)
+			hconf_config_parse(&sc->hconf, d_ptr, d_len,
+			    hidbus_get_index(hconf));
+		if (sc->hconf.input_mode_rlen > 1) {
+			error = hconf_set_input_mode(&sc->hconf,
+			    HCONF_INPUT_MODE_MT_TOUCHPAD);
 			if (error) {
 				DPRINTF("Failed to set input mode: %d\n",
 				    error);
@@ -465,8 +472,9 @@ hmt_resume(device_t dev)
 	struct hmt_softc *sc = device_get_softc(dev);
 	int error;
 
-	if (sc->type == HMT_TYPE_TOUCHPAD && sc->input_mode_rlen > 1) {
-		error = hmt_set_input_mode(sc, HMT_INPUT_MODE_MT_TOUCHPAD);
+	if (sc->type == HMT_TYPE_TOUCHPAD && sc->hconf.input_mode_rlen > 1) {
+		error = hconf_set_input_mode(&sc->hconf,
+		    HCONF_INPUT_MODE_MT_TOUCHPAD);
 		if (error)
 			DPRINTF("Failed to set input mode: %d\n", error);
 	}
@@ -843,7 +851,7 @@ hmt_devcaps_parse(struct hmt_softc *sc, const void *r_ptr, uint16_t r_len)
 }
 
 static void
-hmt_config_parse(struct hmt_softc *sc, const void *d_ptr, uint16_t d_len,
+hconf_config_parse(struct hconf_softc *sc, const void *d_ptr, uint16_t d_len,
     uint8_t tlc_index)
 {
 	uint32_t flags;
@@ -858,7 +866,7 @@ hmt_config_parse(struct hmt_softc *sc, const void *d_ptr, uint16_t d_len,
 }
 
 static int
-hmt_set_input_mode(struct hmt_softc *sc, enum hmt_input_mode mode)
+hconf_set_input_mode(struct hconf_softc *sc, enum hconf_input_mode mode)
 {
 	uint8_t *fbuf;
 	int error;
