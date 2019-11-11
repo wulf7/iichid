@@ -64,6 +64,11 @@ SYSCTL_INT(_hw_hid_hmt, OID_AUTO, debug, CTLFLAG_RWTUN,
 
 #define	HMT_BTN_MAX	8	/* Number of buttons supported */
 
+enum {
+	HMT_DRV,
+	HCONF_DRV,
+};
+
 enum hmt_type {
 	HMT_TYPE_UNKNOWN = 0,	/* HID report descriptor is not probed */
 	HMT_TYPE_UNSUPPORTED,	/* Repdescr does not belong to MT device */
@@ -192,6 +197,7 @@ static const struct hmt_hid_map_item hmt_hid_map[HMT_N_USAGES] = {
 
 struct hconf_softc {
 	device_t		dev;
+	uint32_t		input_mode;
 	struct hid_location	input_mode_loc;
 	uint32_t		input_mode_rlen;
 	uint8_t			input_mode_rid;
@@ -226,15 +232,12 @@ struct hmt_softc {
 	uint8_t			btn_type_rid;
 	uint32_t                thqa_cert_rlen;
 	uint8_t                 thqa_cert_rid;
-
-	struct hconf_softc	hconf;
 };
 
 static enum hmt_type hmt_hid_parse(struct hmt_softc *, const void *, uint16_t,
     uint32_t, uint8_t);
 static void hmt_devcaps_parse(struct hmt_softc *, const void *, uint16_t);
-static void hconf_config_parse(struct hconf_softc *, const void *, uint16_t,
-    uint8_t);
+static int hmt_set_input_mode(struct hmt_softc *, enum hconf_input_mode);
 static int hconf_set_input_mode(struct hconf_softc *, enum hconf_input_mode);
 
 static hid_intr_t		hmt_intr;
@@ -242,19 +245,33 @@ static hid_intr_t		hmt_intr;
 static device_probe_t		hmt_probe;
 static device_attach_t		hmt_attach;
 static device_detach_t		hmt_detach;
-static device_resume_t		hmt_resume;
+
+static device_probe_t		hconf_probe;
+static device_attach_t		hconf_attach;
+static device_detach_t		hconf_detach;
+static device_resume_t		hconf_resume;
 
 static evdev_open_t	hmt_ev_open;
 static evdev_close_t	hmt_ev_close;
 
 static devclass_t hmt_devclass;
+static devclass_t hconf_devclass;
 
 static device_method_t hmt_methods[] = {
 
 	DEVMETHOD(device_probe,		hmt_probe),
 	DEVMETHOD(device_attach,	hmt_attach),
 	DEVMETHOD(device_detach,	hmt_detach),
-	DEVMETHOD(device_resume,	hmt_resume),
+
+	DEVMETHOD_END
+};
+
+static device_method_t hconf_methods[] = {
+
+	DEVMETHOD(device_probe,		hconf_probe),
+	DEVMETHOD(device_attach,	hconf_attach),
+	DEVMETHOD(device_detach,	hconf_detach),
+	DEVMETHOD(device_resume,	hconf_resume),
 
 	DEVMETHOD_END
 };
@@ -265,14 +282,21 @@ static driver_t hmt_driver = {
 	.size = sizeof(struct hmt_softc),
 };
 
+static driver_t hconf_driver = {
+	.name = "hconf",
+	.methods = hconf_methods,
+	.size = sizeof(struct hconf_softc),
+};
+
 static const struct evdev_methods hmt_evdev_methods = {
 	.ev_open = &hmt_ev_open,
 	.ev_close = &hmt_ev_close,
 };
 
-static const struct hid_device_id hmt_devs[] = {
-	{ HID_TLC(HUP_DIGITIZERS, HUD_TOUCHSCREEN) },
-	{ HID_TLC(HUP_DIGITIZERS, HUD_TOUCHPAD) },
+static const struct hid_device_id hid_devs[] = {
+	{ HID_TLC(HUP_DIGITIZERS, HUD_TOUCHSCREEN), HID_DRIVER_INFO(HMT_DRV) },
+	{ HID_TLC(HUP_DIGITIZERS, HUD_TOUCHPAD), HID_DRIVER_INFO(HMT_DRV) },
+	{ HID_TLC(HUP_DIGITIZERS, HUD_CONFIG), HID_DRIVER_INFO(HCONF_DRV) },
 };
 
 static int
@@ -303,9 +327,12 @@ hmt_probe(device_t dev)
 	uint16_t d_len;
 	int error;
 
-	error = hid_lookup_driver_info(dev, hmt_devs, sizeof(hmt_devs));
+	error = hid_lookup_driver_info(dev, hid_devs, sizeof(hid_devs));
 	if (error != 0)
 		return (error);
+
+	if (hidbus_get_driver_info(dev) != HMT_DRV)
+		return (ENXIO);
 
 	error = hid_get_report_descr(dev, &d_ptr, &d_len);
 	if (error != 0) {
@@ -329,7 +356,6 @@ hmt_attach(device_t dev)
 {
 	struct hmt_softc *sc = device_get_softc(dev);
 	struct hid_device_info *hw = hidbus_get_devinfo(dev);
-	device_t hconf;
 	void *d_ptr, *fbuf = NULL;
 	uint16_t d_len, fsize;
 	int nbuttons;
@@ -370,22 +396,11 @@ hmt_attach(device_t dev)
 
 	free(fbuf, M_TEMP);
 
+	/* Switch touchpad in to absolute multitouch mode */
 	if (sc->type == HMT_TYPE_TOUCHPAD) {
-		sc->hconf.dev = dev;
-		hconf = hidbus_find_child(device_get_parent(dev),
-		    HID_USAGE2(HUP_DIGITIZERS, HUD_CONFIG));
-		if (hconf != NULL)
-			hconf_config_parse(&sc->hconf, d_ptr, d_len,
-			    hidbus_get_index(hconf));
-		if (sc->hconf.input_mode_rlen > 1) {
-			error = hconf_set_input_mode(&sc->hconf,
-			    HCONF_INPUT_MODE_MT_TOUCHPAD);
-			if (error) {
-				DPRINTF("Failed to set input mode: %d\n",
-				    error);
-				return (ENXIO);
-			}
-		}
+		error = hmt_set_input_mode(sc, HCONF_INPUT_MODE_MT_TOUCHPAD);
+		if (error != 0)
+			DPRINTF("Failed to set input mode: %d\n", error);
 	}
 
 	/* Cap contact count maximum to MAX_MT_SLOTS */
@@ -462,22 +477,6 @@ hmt_detach(device_t dev)
 	struct hmt_softc *sc = device_get_softc(dev);
 
 	evdev_free(sc->evdev);
-
-	return (0);
-}
-
-static int
-hmt_resume(device_t dev)
-{
-	struct hmt_softc *sc = device_get_softc(dev);
-	int error;
-
-	if (sc->type == HMT_TYPE_TOUCHPAD && sc->hconf.input_mode_rlen > 1) {
-		error = hconf_set_input_mode(&sc->hconf,
-		    HCONF_INPUT_MODE_MT_TOUCHPAD);
-		if (error)
-			DPRINTF("Failed to set input mode: %d\n", error);
-	}
 
 	return (0);
 }
@@ -850,11 +849,76 @@ hmt_devcaps_parse(struct hmt_softc *sc, const void *r_ptr, uint16_t r_len)
 		    hid_get_udata(rep, len, &sc->btn_type_loc) == 0;
 }
 
-static void
-hconf_config_parse(struct hconf_softc *sc, const void *d_ptr, uint16_t d_len,
-    uint8_t tlc_index)
+static int
+hmt_set_input_mode(struct hmt_softc *sc, enum hconf_input_mode mode)
 {
+	device_t hconf;
+	struct hconf_softc *hconf_sc;
+	int error;
+
+	/* Find configuration TLC */
+	hconf = hidbus_find_child(device_get_parent(sc->dev),
+	    HID_USAGE2(HUP_DIGITIZERS, HUD_CONFIG));
+	if (hconf == NULL)
+		return (ENXIO);
+
+	/* Ensure that hconf driver is attached to configuration TLC */
+	if (device_is_alive(hconf) == 0)
+		device_probe_and_attach(hconf);
+	if (device_is_attached(hconf) == 0)
+		return (ENXIO);
+	device_busy(hconf);
+	if (device_get_devclass(hconf) != hconf_devclass) {
+		device_unbusy(hconf);
+		return (ENXIO);
+	}
+
+	hconf_sc = device_get_softc(hconf);
+	error = hconf_set_input_mode(hconf_sc, mode);
+	device_unbusy(hconf);
+
+	return (error);
+}
+
+static int
+hconf_probe(device_t dev)
+{
+	int error;
+
+	error = hid_lookup_driver_info(dev, hid_devs, sizeof(hid_devs));
+	if (error != 0)
+		return (error);
+
+	if (hidbus_get_driver_info(dev) != HCONF_DRV)
+		return (ENXIO);
+
+	return (BUS_PROBE_DEFAULT);
+}
+
+static int
+hconf_attach(device_t dev)
+{
+	struct hconf_softc *sc = device_get_softc(dev);
+	struct hid_device_info *hw;
 	uint32_t flags;
+	void *d_ptr;
+	uint16_t d_len;
+	uint8_t tlc_index;
+	int error;
+
+	hw = hidbus_get_devinfo(dev);
+	device_set_desc(dev, hw->name);
+
+	error = hid_get_report_descr(dev, &d_ptr, &d_len);
+	if (error) {
+		device_printf(dev, "could not retrieve report descriptor from "
+		    "device: %d\n", error);
+		return (ENXIO);
+	}
+
+	sc->dev = dev;
+
+	tlc_index = hidbus_get_index(dev);
 
 	/* Parse features for input mode switch */
 	if (hid_tlc_locate(d_ptr, d_len,
@@ -863,6 +927,30 @@ hconf_config_parse(struct hconf_softc *sc, const void *d_ptr, uint16_t d_len,
 	    (flags & (HIO_VARIABLE | HIO_RELATIVE)) == HIO_VARIABLE)
 		sc->input_mode_rlen = hid_report_size_1(d_ptr, d_len,
 		    hid_feature, sc->input_mode_rid);
+
+	return (0);
+}
+
+static int
+hconf_detach(device_t dev)
+{
+
+	return (0);
+}
+
+static int
+hconf_resume(device_t dev)
+{
+	struct hconf_softc *sc = device_get_softc(dev);
+	int error;
+
+	if (sc->input_mode_rlen > 1) {
+		error = hconf_set_input_mode(sc, sc->input_mode);
+		if (error)
+			DPRINTF("Failed to set input mode: %d\n", error);
+	}
+
+	return (0);
 }
 
 static int
@@ -870,6 +958,9 @@ hconf_set_input_mode(struct hconf_softc *sc, enum hconf_input_mode mode)
 {
 	uint8_t *fbuf;
 	int error;
+
+	if (sc->input_mode_rlen <= 1)
+		return (ENXIO);
 
 	fbuf = malloc(sc->input_mode_rlen, M_TEMP, M_WAITOK | M_ZERO);
 
@@ -888,11 +979,20 @@ hconf_set_input_mode(struct hconf_softc *sc, enum hconf_input_mode mode)
 
 	free(fbuf, M_TEMP);
 
+	if (error == 0)
+		sc->input_mode = mode;
+
 	return (error);
 }
 
 DRIVER_MODULE(hmt, hidbus, hmt_driver, hmt_devclass, NULL, 0);
 MODULE_DEPEND(hmt, hidbus, 1, 1, 1);
 MODULE_DEPEND(hmt, hid, 1, 1, 1);
+MODULE_DEPEND(hmt, hconf, 1, 1, 1);
 MODULE_DEPEND(hmt, evdev, 1, 1, 1);
 MODULE_VERSION(hmt, 1);
+
+DRIVER_MODULE(hconf, hidbus, hconf_driver, hconf_devclass, NULL, 0);
+MODULE_DEPEND(hconf, hidbus, 1, 1, 1);
+MODULE_DEPEND(hconf, hid, 1, 1, 1);
+MODULE_VERSION(hconf, 1);
