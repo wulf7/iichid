@@ -327,7 +327,7 @@ hmt_probe(device_t dev)
 	uint16_t d_len;
 	int error;
 
-	error = hid_lookup_driver_info(dev, hid_devs, sizeof(hid_devs));
+	error = hidbus_lookup_driver_info(dev, hid_devs, sizeof(hid_devs));
 	if (error != 0)
 		return (error);
 
@@ -885,7 +885,7 @@ hconf_probe(device_t dev)
 {
 	int error;
 
-	error = hid_lookup_driver_info(dev, hid_devs, sizeof(hid_devs));
+	error = hidbus_lookup_driver_info(dev, hid_devs, sizeof(hid_devs));
 	if (error != 0)
 		return (error);
 

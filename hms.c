@@ -221,7 +221,7 @@ hms_probe(device_t dev)
 
 	DPRINTFN(11, "\n");
 
-	error = hid_lookup_driver_info(dev, hms_devs, sizeof(hms_devs));
+	error = hidbus_lookup_driver_info(dev, hms_devs, sizeof(hms_devs));
 	if (error != 0)
 		return (error);
 

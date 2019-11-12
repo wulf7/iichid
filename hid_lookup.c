@@ -35,10 +35,10 @@
 #include "hidbus.h"
 
 /*------------------------------------------------------------------------*
- *	hid_lookup_id
+ *	hidbus_lookup_id
  *
  * This functions takes an array of "struct hid_device_id" and tries
- * to match the entries with the information in "struct hid_tlc_info".
+ * to match the entries with the information in "struct hid_device_info".
  *
  * NOTE: The "sizeof_id" parameter must be a multiple of the
  * hid_device_id structure size. Else the behaviour of this function
@@ -49,7 +49,8 @@
  * Else: Pointer to matching entry.
  *------------------------------------------------------------------------*/
 const struct hid_device_id *
-hid_lookup_id(device_t child, const struct hid_device_id *id, size_t sizeof_id)
+hidbus_lookup_id(device_t child, const struct hid_device_id *id,
+    size_t sizeof_id)
 {
 	struct hidbus_ivars *tlc = device_get_ivars(child);
 	const struct hid_device_id *id_end;
@@ -101,18 +102,18 @@ done:
 }
 
 /*------------------------------------------------------------------------*
- *	hid_lookup_driver_info - factored out code
+ *	hidbus_lookup_driver_info - factored out code
  *
  * Return values:
  *    0: Success
  * Else: Failure
  *------------------------------------------------------------------------*/
 int
-hid_lookup_driver_info(device_t child, const struct hid_device_id *id,
+hidbus_lookup_driver_info(device_t child, const struct hid_device_id *id,
     size_t sizeof_id)
 {
 
-	id = hid_lookup_id(child, id, sizeof_id);
+	id = hidbus_lookup_id(child, id, sizeof_id);
 	if (id) {
 		/* copy driver info */
 		hidbus_set_driver_info(child, id->driver_info);
