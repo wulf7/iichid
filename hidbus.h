@@ -65,7 +65,6 @@ enum {
 	HIDBUS_IVAR_INDEX,
 	HIDBUS_IVAR_INTR,
 	HIDBUS_IVAR_DRIVER_INFO,
-	HIDBUS_IVAR_DEVINFO,
 };
 
 #define HIDBUS_ACCESSOR(A, B, T)					\
@@ -75,7 +74,6 @@ HIDBUS_ACCESSOR(usage,		USAGE,		uint32_t)
 HIDBUS_ACCESSOR(index,		INDEX,		uint8_t)
 HIDBUS_ACCESSOR(intr,		INTR,		hid_intr_t *)
 HIDBUS_ACCESSOR(driver_info,	DRIVER_INFO,	uintptr_t)
-HIDBUS_ACCESSOR(devinfo,	DEVINFO,	struct hid_device_info *)
 
 /*
  * The following structure is used when looking up an HID driver for
@@ -157,5 +155,11 @@ int	hid_get_report(device_t, void *, uint16_t, uint8_t, uint8_t);
 int	hid_set_report(device_t, void *, uint16_t, uint8_t, uint8_t);
 int	hid_set_idle(device_t, uint16_t, uint8_t);
 int	hid_set_protocol(device_t, uint16_t);
+
+static inline const struct hid_device_info *
+hid_get_device_info(device_t child)
+{
+	return (device_get_ivars(device_get_parent(child)));
+}
 
 #endif	/* _HIDBUS_H_ */

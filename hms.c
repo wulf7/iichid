@@ -324,7 +324,7 @@ static int
 hms_attach(device_t dev)
 {
 	struct hms_softc *sc = device_get_softc(dev);
-	struct hid_device_info *hw = hidbus_get_devinfo(dev);
+	const struct hid_device_info *hw = hid_get_device_info(dev);
 	struct hms_info *info;
 	void *d_ptr = NULL;
 	int isize;

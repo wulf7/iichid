@@ -61,7 +61,7 @@ hidbus_lookup_id(device_t child, const struct hid_device_id *id,
 	}
 
 	id_end = (const void *)(((const uint8_t *)id) + sizeof_id);
-	info = device_get_ivars(device_get_parent(child));
+	info = hid_get_device_info(child);
 
 	/*
 	 * Keep on matching array entries until we find a match or

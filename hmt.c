@@ -355,7 +355,7 @@ static int
 hmt_attach(device_t dev)
 {
 	struct hmt_softc *sc = device_get_softc(dev);
-	struct hid_device_info *hw = hidbus_get_devinfo(dev);
+	const struct hid_device_info *hw = hid_get_device_info(dev);
 	void *d_ptr, *fbuf = NULL;
 	uint16_t d_len, fsize;
 	int nbuttons;
@@ -899,14 +899,13 @@ static int
 hconf_attach(device_t dev)
 {
 	struct hconf_softc *sc = device_get_softc(dev);
-	struct hid_device_info *hw;
+	const struct hid_device_info *hw = hid_get_device_info(dev);
 	uint32_t flags;
 	void *d_ptr;
 	uint16_t d_len;
 	uint8_t tlc_index;
 	int error;
 
-	hw = hidbus_get_devinfo(dev);
 	device_set_desc(dev, hw->name);
 
 	error = hid_get_report_descr(dev, &d_ptr, &d_len);
