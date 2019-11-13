@@ -50,6 +50,8 @@ __FBSDID("$FreeBSD$");
 #include "hid.h"
 #include "hidbus.h"
 
+#include "hconf.h"
+
 #define	HID_DEBUG_VAR	hmt_debug
 #include "hid_debug.h"
 
@@ -64,22 +66,11 @@ SYSCTL_INT(_hw_hid_hmt, OID_AUTO, debug, CTLFLAG_RWTUN,
 
 #define	HMT_BTN_MAX	8	/* Number of buttons supported */
 
-enum {
-	HMT_DRV,
-	HCONF_DRV,
-};
-
 enum hmt_type {
 	HMT_TYPE_UNKNOWN = 0,	/* HID report descriptor is not probed */
 	HMT_TYPE_UNSUPPORTED,	/* Repdescr does not belong to MT device */
 	HMT_TYPE_TOUCHPAD,
 	HMT_TYPE_TOUCHSCREEN,
-};
-
-enum hconf_input_mode {
-	HCONF_INPUT_MODE_MOUSE =		0x0,
-	HCONF_INPUT_MODE_MT_TOUCHSCREEN =	0x2,
-	HCONF_INPUT_MODE_MT_TOUCHPAD =		0x3,
 };
 
 enum {
@@ -195,14 +186,6 @@ static const struct hmt_hid_map_item hmt_hid_map[HMT_N_USAGES] = {
 	for ((button) = 0; (button) < HMT_BTN_MAX; ++(button))	\
 		if (bit_test(buttons, button))
 
-struct hconf_softc {
-	device_t		dev;
-	uint32_t		input_mode;
-	struct hid_location	input_mode_loc;
-	uint32_t		input_mode_rlen;
-	uint8_t			input_mode_rid;
-};
-
 struct hmt_softc {
 	device_t dev;
 	enum hmt_type		type;
@@ -238,7 +221,6 @@ static enum hmt_type hmt_hid_parse(struct hmt_softc *, const void *, uint16_t,
     uint32_t, uint8_t);
 static void hmt_devcaps_parse(struct hmt_softc *, const void *, uint16_t);
 static int hmt_set_input_mode(struct hmt_softc *, enum hconf_input_mode);
-static int hconf_set_input_mode(struct hconf_softc *, enum hconf_input_mode);
 
 static hid_intr_t		hmt_intr;
 
@@ -246,16 +228,10 @@ static device_probe_t		hmt_probe;
 static device_attach_t		hmt_attach;
 static device_detach_t		hmt_detach;
 
-static device_probe_t		hconf_probe;
-static device_attach_t		hconf_attach;
-static device_detach_t		hconf_detach;
-static device_resume_t		hconf_resume;
-
 static evdev_open_t	hmt_ev_open;
 static evdev_close_t	hmt_ev_close;
 
 static devclass_t hmt_devclass;
-static devclass_t hconf_devclass;
 
 static device_method_t hmt_methods[] = {
 
@@ -266,26 +242,10 @@ static device_method_t hmt_methods[] = {
 	DEVMETHOD_END
 };
 
-static device_method_t hconf_methods[] = {
-
-	DEVMETHOD(device_probe,		hconf_probe),
-	DEVMETHOD(device_attach,	hconf_attach),
-	DEVMETHOD(device_detach,	hconf_detach),
-	DEVMETHOD(device_resume,	hconf_resume),
-
-	DEVMETHOD_END
-};
-
 static driver_t hmt_driver = {
 	.name = "hmt",
 	.methods = hmt_methods,
 	.size = sizeof(struct hmt_softc),
-};
-
-static driver_t hconf_driver = {
-	.name = "hconf",
-	.methods = hconf_methods,
-	.size = sizeof(struct hconf_softc),
 };
 
 static const struct evdev_methods hmt_evdev_methods = {
@@ -293,10 +253,9 @@ static const struct evdev_methods hmt_evdev_methods = {
 	.ev_close = &hmt_ev_close,
 };
 
-static const struct hid_device_id hid_devs[] = {
-	{ HID_TLC(HUP_DIGITIZERS, HUD_TOUCHSCREEN), HID_DRIVER_INFO(HMT_DRV) },
-	{ HID_TLC(HUP_DIGITIZERS, HUD_TOUCHPAD), HID_DRIVER_INFO(HMT_DRV) },
-	{ HID_TLC(HUP_DIGITIZERS, HUD_CONFIG), HID_DRIVER_INFO(HCONF_DRV) },
+static const struct hid_device_id hmt_devs[] = {
+	{ HID_TLC(HUP_DIGITIZERS, HUD_TOUCHSCREEN) },
+	{ HID_TLC(HUP_DIGITIZERS, HUD_TOUCHPAD) },
 };
 
 static int
@@ -327,12 +286,9 @@ hmt_probe(device_t dev)
 	uint16_t d_len;
 	int error;
 
-	error = hidbus_lookup_driver_info(dev, hid_devs, sizeof(hid_devs));
+	error = hidbus_lookup_driver_info(dev, hmt_devs, sizeof(hmt_devs));
 	if (error != 0)
 		return (error);
-
-	if (hidbus_get_driver_info(dev) != HMT_DRV)
-		return (ENXIO);
 
 	error = hid_get_report_descr(dev, &d_ptr, &d_len);
 	if (error != 0) {
@@ -852,6 +808,7 @@ hmt_devcaps_parse(struct hmt_softc *sc, const void *r_ptr, uint16_t r_len)
 static int
 hmt_set_input_mode(struct hmt_softc *sc, enum hconf_input_mode mode)
 {
+	devclass_t hconf_devclass;
 	device_t hconf;
 	struct hconf_softc *hconf_sc;
 	int error;
@@ -868,6 +825,7 @@ hmt_set_input_mode(struct hmt_softc *sc, enum hconf_input_mode mode)
 	if (device_is_attached(hconf) == 0)
 		return (ENXIO);
 	device_busy(hconf);
+	hconf_devclass = devclass_find("hconf_devclass");
 	if (device_get_devclass(hconf) != hconf_devclass) {
 		device_unbusy(hconf);
 		return (ENXIO);
@@ -880,118 +838,9 @@ hmt_set_input_mode(struct hmt_softc *sc, enum hconf_input_mode mode)
 	return (error);
 }
 
-static int
-hconf_probe(device_t dev)
-{
-	int error;
-
-	error = hidbus_lookup_driver_info(dev, hid_devs, sizeof(hid_devs));
-	if (error != 0)
-		return (error);
-
-	if (hidbus_get_driver_info(dev) != HCONF_DRV)
-		return (ENXIO);
-
-	return (BUS_PROBE_DEFAULT);
-}
-
-static int
-hconf_attach(device_t dev)
-{
-	struct hconf_softc *sc = device_get_softc(dev);
-	const struct hid_device_info *hw = hid_get_device_info(dev);
-	uint32_t flags;
-	void *d_ptr;
-	uint16_t d_len;
-	uint8_t tlc_index;
-	int error;
-
-	device_set_desc(dev, hw->name);
-
-	error = hid_get_report_descr(dev, &d_ptr, &d_len);
-	if (error) {
-		device_printf(dev, "could not retrieve report descriptor from "
-		    "device: %d\n", error);
-		return (ENXIO);
-	}
-
-	sc->dev = dev;
-
-	tlc_index = hidbus_get_index(dev);
-
-	/* Parse features for input mode switch */
-	if (hid_tlc_locate(d_ptr, d_len,
-	    HID_USAGE2(HUP_DIGITIZERS, HUD_CONFIG), hid_feature, tlc_index,
-	    0, &sc->input_mode_loc, &flags, &sc->input_mode_rid, NULL) &&
-	    (flags & (HIO_VARIABLE | HIO_RELATIVE)) == HIO_VARIABLE)
-		sc->input_mode_rlen = hid_report_size_1(d_ptr, d_len,
-		    hid_feature, sc->input_mode_rid);
-
-	return (0);
-}
-
-static int
-hconf_detach(device_t dev)
-{
-
-	return (0);
-}
-
-static int
-hconf_resume(device_t dev)
-{
-	struct hconf_softc *sc = device_get_softc(dev);
-	int error;
-
-	if (sc->input_mode_rlen > 1) {
-		error = hconf_set_input_mode(sc, sc->input_mode);
-		if (error)
-			DPRINTF("Failed to set input mode: %d\n", error);
-	}
-
-	return (0);
-}
-
-static int
-hconf_set_input_mode(struct hconf_softc *sc, enum hconf_input_mode mode)
-{
-	uint8_t *fbuf;
-	int error;
-
-	if (sc->input_mode_rlen <= 1)
-		return (ENXIO);
-
-	fbuf = malloc(sc->input_mode_rlen, M_TEMP, M_WAITOK | M_ZERO);
-
-	/* Input Mode report is not strictly required to be readable */
-	error = hid_get_report(sc->dev, fbuf, sc->input_mode_rlen,
-	    HID_FEATURE_REPORT, sc->input_mode_rid);
-	if (error)
-		bzero(fbuf + 1, sc->input_mode_rlen - 1);
-
-	fbuf[0] = sc->input_mode_rid;
-	hid_put_data_unsigned(fbuf + 1, sc->input_mode_rlen - 1,
-	    &sc->input_mode_loc, mode);
-
-	error = hid_set_report(sc->dev, fbuf, sc->input_mode_rlen,
-	    HID_FEATURE_REPORT, sc->input_mode_rid);
-
-	free(fbuf, M_TEMP);
-
-	if (error == 0)
-		sc->input_mode = mode;
-
-	return (error);
-}
-
 DRIVER_MODULE(hmt, hidbus, hmt_driver, hmt_devclass, NULL, 0);
 MODULE_DEPEND(hmt, hidbus, 1, 1, 1);
 MODULE_DEPEND(hmt, hid, 1, 1, 1);
 MODULE_DEPEND(hmt, hconf, 1, 1, 1);
 MODULE_DEPEND(hmt, evdev, 1, 1, 1);
 MODULE_VERSION(hmt, 1);
-
-DRIVER_MODULE(hconf, hidbus, hconf_driver, hconf_devclass, NULL, 0);
-MODULE_DEPEND(hconf, hidbus, 1, 1, 1);
-MODULE_DEPEND(hconf, hid, 1, 1, 1);
-MODULE_VERSION(hconf, 1);
