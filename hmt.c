@@ -809,13 +809,26 @@ static int
 hmt_set_input_mode(struct hmt_softc *sc, enum hconf_input_mode mode)
 {
 	devclass_t hconf_devclass;
-	device_t hconf;
+	device_t *children, hidbus, hconf = NULL;
 	struct hconf_softc *hconf_sc;
-	int error;
+	int ccount, i, error;
 
-	/* Find configuration TLC */
-	hconf = hidbus_find_child(device_get_parent(sc->dev),
-	    HID_USAGE2(HUP_DIGITIZERS, HUD_CONFIG));
+	GIANT_REQUIRED;
+
+	/* Get a list of all hidbus children */
+	hidbus = device_get_parent(sc->dev);
+	if (device_get_children(hidbus, &children, &ccount) != 0)
+		return (ENXIO);
+
+	/* Scan through to find configutarion TLC */
+	for (i = 0; i < ccount; i++) {
+		if (hidbus_get_usage(children[i]) ==
+		    HID_USAGE2(HUP_DIGITIZERS, HUD_CONFIG)) {
+			hconf = children[i];
+			break;
+		}
+	}
+	free(children, M_TEMP);
 	if (hconf == NULL)
 		return (ENXIO);
 
@@ -824,13 +837,11 @@ hmt_set_input_mode(struct hmt_softc *sc, enum hconf_input_mode mode)
 		device_probe_and_attach(hconf);
 	if (device_is_attached(hconf) == 0)
 		return (ENXIO);
-	device_busy(hconf);
-	hconf_devclass = devclass_find("hconf_devclass");
-	if (device_get_devclass(hconf) != hconf_devclass) {
-		device_unbusy(hconf);
+	hconf_devclass = devclass_find("hconf");
+	if (device_get_devclass(hconf) != hconf_devclass)
 		return (ENXIO);
-	}
 
+	device_busy(hconf);
 	hconf_sc = device_get_softc(hconf);
 	error = hconf_set_input_mode(hconf_sc, mode);
 	device_unbusy(hconf);

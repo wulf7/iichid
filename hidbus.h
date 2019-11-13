@@ -143,7 +143,6 @@ const struct hid_device_id *hidbus_lookup_id(device_t,
 		    const struct hid_device_id *, size_t);
 int 		hidbus_lookup_driver_info(device_t,
 		    const struct hid_device_id *, size_t);
-device_t	hidbus_find_child(device_t, uint32_t);
 struct mtx *	hidbus_get_lock(device_t);
 int		hidbus_set_xfer(device_t, uint8_t);
 

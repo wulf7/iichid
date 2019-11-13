@@ -253,24 +253,6 @@ hidbus_child_pnpinfo_str(device_t bus, device_t child, char *buf,
 	return (0);
 }
 
-device_t
-hidbus_find_child(device_t bus, uint32_t usage)
-{
-	struct hidbus_softc *sc = device_get_softc(bus);
-	struct hidbus_ivars *tlc;
-
-	mtx_lock(&sc->lock);
-	STAILQ_FOREACH(tlc, &sc->tlcs, link) {
-		if (tlc->usage == usage) {
-			mtx_unlock(&sc->lock);
-			return (tlc->child);
-		}
-	}
-	mtx_unlock(&sc->lock);
-
-	return (NULL);
-}
-
 struct mtx *
 hidbus_get_lock(device_t child)
 {
