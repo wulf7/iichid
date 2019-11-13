@@ -149,9 +149,10 @@ int		hidbus_set_xfer(device_t, uint8_t);
 
 /* hidbus HID interface */
 int	hid_get_report_descr(device_t, void **, uint16_t *);
-int	hid_read(device_t, void *, uint16_t);
+int	hid_read(device_t, void *, uint16_t, uint16_t *);
 int	hid_write(device_t, void *, uint16_t);
-int	hid_get_report(device_t, void *, uint16_t, uint8_t, uint8_t);
+int	hid_get_report(device_t, void *, uint16_t, uint16_t *, uint8_t,
+	    uint8_t);
 int	hid_set_report(device_t, void *, uint16_t, uint8_t, uint8_t);
 int	hid_set_idle(device_t, uint16_t, uint8_t);
 int	hid_set_protocol(device_t, uint16_t);

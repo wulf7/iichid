@@ -340,10 +340,10 @@ hid_get_report_descr(device_t bus, void **data, uint16_t *len)
 }
 
 int
-hid_read(device_t bus, void *data, uint16_t len)
+hid_read(device_t bus, void *data, uint16_t maxlen, uint16_t *actlen)
 {
 
-	return (HID_READ(device_get_parent(bus), data, len));
+	return (HID_READ(device_get_parent(bus), data, maxlen, actlen));
 }
 
 int
@@ -354,11 +354,12 @@ hid_write(device_t bus, void *data, uint16_t len)
 }
 
 int
-hid_get_report(device_t bus, void *data, uint16_t len, uint8_t type,
-    uint8_t id)
+hid_get_report(device_t bus, void *data, uint16_t maxlen, uint16_t *actlen,
+    uint8_t type, uint8_t id)
 {
 
-	return (HID_GET_REPORT(device_get_parent(bus), data, len, type, id));
+	return (HID_GET_REPORT(device_get_parent(bus),
+	    data, maxlen, actlen, type, id));
 }
 
 int

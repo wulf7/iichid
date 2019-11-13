@@ -253,8 +253,8 @@ iichid_get_handle(device_t dev)
 #endif /* HAVE_ACPI_IICBUS */
 
 static int
-iichid_cmd_read(struct iichid_softc* sc, void *buf, int len, int *actual_len,
-    bool do_poll)
+iichid_cmd_read(struct iichid_softc* sc, void *buf, uint16_t maxlen,
+    uint16_t *actual_len, bool do_poll)
 {
 	/*
 	 * 6.1.3 - Retrieval of Input Reports
@@ -266,6 +266,7 @@ iichid_cmd_read(struct iichid_softc* sc, void *buf, int len, int *actual_len,
 	    { sc->addr, IIC_M_RD | IIC_M_NOSTOP, sizeof(actbuf), actbuf },
 	};
 	device_t parent = device_get_parent(sc->dev);
+	uint16_t actlen;
 	/*
 	 * Designware(IG4) driver-specific hack.
 	 * Requesting of an I2C bus with IIC_DONTWAIT parameter enables polled
@@ -273,7 +274,7 @@ iichid_cmd_read(struct iichid_softc* sc, void *buf, int len, int *actual_len,
 	 * interrupt handlers and callouts.
 	 */
 	int how = do_poll ? IIC_DONTWAIT : IIC_WAIT;
-	int error, actlen;
+	int error;
 
 	if (iicbus_request_bus(parent, sc->dev, how) != 0)
 		return (IIC_EBUSBSY);
@@ -290,10 +291,10 @@ iichid_cmd_read(struct iichid_softc* sc, void *buf, int len, int *actual_len,
 		actlen = 0;
 	} else {
 		actlen -= 2;
-		if (actlen > len) {
+		if (actlen > maxlen) {
 			DPRINTF(sc, "input report too big. requested=%d "
-			    "received=%d\n", len, actlen);
-			actlen = len;
+			    "received=%d\n", maxlen, actlen);
+			actlen = maxlen;
 		}
 		/* Read input report itself */
 		msgs[0] = (struct iic_msg)
@@ -301,7 +302,7 @@ iichid_cmd_read(struct iichid_softc* sc, void *buf, int len, int *actual_len,
 	}
 
 	error = iicbus_transfer(sc->dev, msgs, 1);
-	if (error == 0)
+	if (error == 0 && actual_len != NULL)
 		*actual_len = actlen;
 
 	/* DPRINTF(sc, "%*D - %*D\n", 2, actbuf, " ", actlen, buf, " "); */
@@ -411,8 +412,8 @@ iichid_cmd_get_report_desc(struct iichid_softc* sc, void *buf, int len)
 }
 
 static int
-iichid_cmd_get_report(struct iichid_softc* sc, void *buf, int len,
-    uint8_t type, uint8_t id)
+iichid_cmd_get_report(struct iichid_softc* sc, void *buf, uint16_t maxlen,
+    uint16_t *actual_len, uint8_t type, uint8_t id)
 {
 	/*
 	 * 7.2.2.4 - "The protocol is optimized for Report < 15.  If a
@@ -432,19 +433,20 @@ iichid_cmd_get_report(struct iichid_softc* sc, void *buf, int len,
 			    (id >= 15 ?    dtareg[1]	:	0	  ),
 			};
 	int cmdlen    =	    (id >= 15 ?		7	:	6	  );
-	uint8_t actlen[2] = { 0, 0 };
+	uint8_t actbuf[2] = { 0, 0 };
+	uint16_t actlen;
 	int d, error;
 	struct iic_msg msgs[] = {
 	    { sc->addr, IIC_M_WR | IIC_M_NOSTOP, cmdlen, cmd },
-	    { sc->addr, IIC_M_RD | IIC_M_NOSTOP, 2, actlen },
-	    { sc->addr, IIC_M_RD | IIC_M_NOSTART, len, buf },
+	    { sc->addr, IIC_M_RD | IIC_M_NOSTOP, 2, actbuf },
+	    { sc->addr, IIC_M_RD | IIC_M_NOSTART, maxlen, buf },
 	};
 
-	if (len < 1)
+	if (maxlen == 0)
 		return (EINVAL);
 
 	DPRINTF(sc, "HID command I2C_HID_CMD_GET_REPORT %d "
-	    "(type %d, len %d)\n", id, type, len);
+	    "(type %d, len %d)\n", id, type, maxlen);
 
 	/*
 	 * 7.2.2.2 - Response will be a 2-byte length value, the report
@@ -454,10 +456,13 @@ iichid_cmd_get_report(struct iichid_softc* sc, void *buf, int len,
 	if (error != 0)
 		return (error);
 
-	d = actlen[0] | actlen[1] << 8;
-	if (d != len + 2)
+	actlen = actbuf[0] | actbuf[1] << 8;
+	if (actlen != maxlen + 2)
 		DPRINTF(sc, "response size %d != expected length %d\n",
-		    d, len + 2);
+		    actlen, maxlen + 2);
+
+	if (actlen <= 2 || actlen == 0xFFFF)
+		return (ENOMSG);
 
 	d = id != 0 ? *(uint8_t *)buf : 0;
 	if (d != id) {
@@ -465,7 +470,13 @@ iichid_cmd_get_report(struct iichid_softc* sc, void *buf, int len,
 		return (EBADMSG);
 	}
 
-	DPRINTF(sc, "response: %*D %*D\n", 2, actlen, " ", len, buf, " ");
+	actlen -= 2;
+	if (actlen > maxlen)
+		actlen = maxlen;
+	if (actual_len != NULL)
+		*actual_len = actlen;
+
+	DPRINTF(sc, "response: %*D %*D\n", 2, actbuf, " ", actlen, buf, " ");
 
 	return (0);
 }
@@ -510,7 +521,7 @@ static void
 iichid_event_task(void *context, int pending)
 {
 	struct iichid_softc *sc = context;
-	int actual = 0;
+	uint16_t actual = 0;
 	int error;
 
 	error = iichid_cmd_read(sc, sc->ibuf, sc->isize, &actual, false);
@@ -807,12 +818,11 @@ iichid_get_report_desc(device_t dev, void **buf, uint16_t *len)
 }
 
 static int
-iichid_read(device_t dev, void *buf, uint16_t len)
+iichid_read(device_t dev, void *buf, uint16_t maxlen, uint16_t *actlen)
 {
 	struct iichid_softc* sc = device_get_softc(dev);
-	int actlen;
 
-	return (iic2errno(iichid_cmd_read(sc, buf, len, &actlen, false)));
+	return (iic2errno(iichid_cmd_read(sc, buf, maxlen, actlen, false)));
 }
 
 static int
@@ -824,12 +834,13 @@ iichid_write(device_t dev, void *buf, uint16_t len)
 }
 
 static int
-iichid_get_report(device_t dev, void *buf, uint16_t len, uint8_t type,
-    uint8_t id)
+iichid_get_report(device_t dev, void *buf, uint16_t maxlen, uint16_t *actlen,
+    uint8_t type, uint8_t id)
 {
 	struct iichid_softc* sc = device_get_softc(dev);
 
-	return (iic2errno(iichid_cmd_get_report(sc, buf, len, type, id)));
+	return (iic2errno(
+	    iichid_cmd_get_report(sc, buf, maxlen, actlen, type, id)));
 }
 
 static int

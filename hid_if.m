@@ -92,6 +92,7 @@ METHOD int read {
 	device_t dev;
 	void *data;
 	uint16_t maxlen;
+	uint16_t *actlen;
 };
 
 #
@@ -116,6 +117,7 @@ METHOD int get_report {
 	device_t dev;
 	void *data;
 	uint16_t maxlen;
+	uint16_t *actlen;
 	uint8_t type;
 	uint8_t id;
 };

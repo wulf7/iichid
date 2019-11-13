@@ -176,7 +176,7 @@ hconf_set_input_mode(struct hconf_softc *sc, enum hconf_input_mode mode)
 	fbuf = malloc(sc->input_mode_rlen, M_TEMP, M_WAITOK | M_ZERO);
 
 	/* Input Mode report is not strictly required to be readable */
-	error = hid_get_report(sc->dev, fbuf, sc->input_mode_rlen,
+	error = hid_get_report(sc->dev, fbuf, sc->input_mode_rlen, NULL,
 	    HID_FEATURE_REPORT, sc->input_mode_rid);
 	if (error)
 		bzero(fbuf + 1, sc->input_mode_rlen - 1);

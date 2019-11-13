@@ -335,7 +335,7 @@ hmt_attach(device_t dev)
 
 	/* Fetch and parse "Contact count maximum" feature report */
 	if (sc->cont_max_rlen > 1) {
-		error = hid_get_report(dev, fbuf, sc->cont_max_rlen,
+		error = hid_get_report(dev, fbuf, sc->cont_max_rlen, NULL,
 		    HID_FEATURE_REPORT, sc->cont_max_rid);
 		if (error == 0)
 			hmt_devcaps_parse(sc, fbuf, sc->cont_max_rlen);
@@ -347,7 +347,7 @@ hmt_attach(device_t dev)
 
 	/* Fetch THQA certificate to enable some devices like WaveShare */
 	if (sc->thqa_cert_rlen > 1 && sc->thqa_cert_rid != sc->cont_max_rid)
-		(void)hid_get_report(dev, fbuf, sc->thqa_cert_rlen,
+		(void)hid_get_report(dev, fbuf, sc->thqa_cert_rlen, NULL,
 		    HID_FEATURE_REPORT, sc->thqa_cert_rid);
 
 	free(fbuf, M_TEMP);

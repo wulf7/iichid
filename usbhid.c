@@ -461,7 +461,7 @@ usbhid_get_report_desc(device_t dev, void **buf, uint16_t *len)
 }
 
 static int
-usbhid_read(device_t dev, void *buf, uint16_t len)
+usbhid_read(device_t dev, void *buf, uint16_t maxlen, uint16_t *actlen)
 {
 
 	return (ENOTSUP);
@@ -475,16 +475,19 @@ usbhid_write(device_t dev, void *buf, uint16_t len)
 }
 
 static int
-usbhid_get_report(device_t dev, void *buf, uint16_t len, uint8_t type,
-    uint8_t id)
+usbhid_get_report(device_t dev, void *buf, uint16_t maxlen, uint16_t *actlen,
+    uint8_t type, uint8_t id)
 {
 	struct uhid_softc* sc = device_get_softc(dev);
 	int err;
 
 	err = usbd_req_get_report(sc->sc_udev, NULL, buf,
-	    len, sc->sc_iface_index, type, id);
+	    maxlen, sc->sc_iface_index, type, id);
 	if (err)
                 err = ENXIO;
+	else
+		if (actlen != NULL)
+			*actlen = maxlen;
 
 	return (err);
 }
