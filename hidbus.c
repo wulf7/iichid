@@ -340,17 +340,17 @@ hid_get_report_descr(device_t bus, void **data, uint16_t *len)
 }
 
 int
-hid_get_input_report(device_t bus, void *data, uint16_t len)
+hid_read(device_t bus, void *data, uint16_t len)
 {
 
-	return (HID_GET_INPUT_REPORT(device_get_parent(bus), data, len));
+	return (HID_READ(device_get_parent(bus), data, len));
 }
 
 int
-hid_set_output_report(device_t bus, void *data, uint16_t len)
+hid_write(device_t bus, void *data, uint16_t len)
 {
 
-	return (HID_SET_OUTPUT_REPORT(device_get_parent(bus), data, len));
+	return (HID_WRITE(device_get_parent(bus), data, len));
 }
 
 int
@@ -401,8 +401,8 @@ static device_method_t hidbus_methods[] = {
 
 	/* hid interface */
 	DEVMETHOD(hid_get_report_descr,	hid_get_report_descr),
-	DEVMETHOD(hid_get_input_report,	hid_get_input_report),
-	DEVMETHOD(hid_set_output_report,hid_set_output_report),
+	DEVMETHOD(hid_read,		hid_read),
+	DEVMETHOD(hid_write,		hid_write),
 	DEVMETHOD(hid_get_report,       hid_get_report),
 	DEVMETHOD(hid_set_report,       hid_set_report),
 	DEVMETHOD(hid_set_idle,		hid_set_idle),

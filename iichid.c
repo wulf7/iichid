@@ -253,8 +253,8 @@ iichid_get_handle(device_t dev)
 #endif /* HAVE_ACPI_IICBUS */
 
 static int
-iichid_cmd_get_input_report(struct iichid_softc* sc, void *buf, int len,
-    int *actual_len, bool do_poll)
+iichid_cmd_read(struct iichid_softc* sc, void *buf, int len, int *actual_len,
+    bool do_poll)
 {
 	/*
 	 * 6.1.3 - Retrieval of Input Reports
@@ -268,7 +268,7 @@ iichid_cmd_get_input_report(struct iichid_softc* sc, void *buf, int len,
 	device_t parent = device_get_parent(sc->dev);
 	/*
 	 * Designware(IG4) driver-specific hack.
-	 * Requesting of an I2C bus with IIC_DONTWAIT parameter enables polling
+	 * Requesting of an I2C bus with IIC_DONTWAIT parameter enables polled
 	 * mode in the driver, making possible iicbus_transfer execution from
 	 * interrupt handlers and callouts.
 	 */
@@ -311,7 +311,7 @@ out:
 }
 
 static int
-iichid_cmd_set_output_report(struct iichid_softc *sc, void *buf, int len)
+iichid_cmd_write(struct iichid_softc *sc, void *buf, int len)
 {
 	/* 6.2.3 - Sending Output Reports */
 	uint8_t *cmdreg = (uint8_t *)&sc->desc.wOutputRegister;
@@ -513,8 +513,7 @@ iichid_event_task(void *context, int pending)
 	int actual = 0;
 	int error;
 
-	error = iichid_cmd_get_input_report(
-	    sc, sc->ibuf, sc->isize, &actual, false);
+	error = iichid_cmd_read(sc, sc->ibuf, sc->isize, &actual, false);
 	if (error != 0) {
 		device_printf(sc->dev, "an error occured\n");
 		return;
@@ -543,7 +542,7 @@ iichid_intr(void *context)
 	int error;
 
 	if (taskqueue_poll_is_busy(sc->taskqueue, &sc->event_task) == 0 &&
-	    (error = iichid_cmd_get_input_report(
+	    (error = iichid_cmd_read(
 	      sc, sc->ibuf, sc->isize, &actual, true)) != IIC_EBUSBSY) {
 		if (error != 0) {
 			device_printf(sc->dev, "an error occured\n");
@@ -808,21 +807,20 @@ iichid_get_report_desc(device_t dev, void **buf, uint16_t *len)
 }
 
 static int
-iichid_get_input_report(device_t dev, void *buf, uint16_t len)
+iichid_read(device_t dev, void *buf, uint16_t len)
 {
 	struct iichid_softc* sc = device_get_softc(dev);
 	int actlen;
 
-	return (iic2errno(iichid_cmd_get_input_report(sc,
-	    buf, len, &actlen, false)));
+	return (iic2errno(iichid_cmd_read(sc, buf, len, &actlen, false)));
 }
 
 static int
-iichid_set_output_report(device_t dev, void *buf, uint16_t len)
+iichid_write(device_t dev, void *buf, uint16_t len)
 {
 	struct iichid_softc* sc = device_get_softc(dev);
 
-	return (iic2errno(iichid_cmd_set_output_report(sc, buf, len)));
+	return (iic2errno(iichid_cmd_write(sc, buf, len)));
 }
 
 static int
@@ -1238,8 +1236,8 @@ static device_method_t iichid_methods[] = {
 
 	/* HID interface */
 	DEVMETHOD(hid_get_report_descr,	iichid_get_report_desc),
-	DEVMETHOD(hid_get_input_report,	iichid_get_input_report),
-	DEVMETHOD(hid_set_output_report,iichid_set_output_report),
+	DEVMETHOD(hid_read,		iichid_read),
+	DEVMETHOD(hid_write,		iichid_write),
 	DEVMETHOD(hid_get_report,	iichid_get_report),
 	DEVMETHOD(hid_set_report,	iichid_set_report),
 	DEVMETHOD(hid_set_idle,		iichid_set_idle),

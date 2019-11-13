@@ -461,14 +461,14 @@ usbhid_get_report_desc(device_t dev, void **buf, uint16_t *len)
 }
 
 static int
-usbhid_get_input_report(device_t dev, void *buf, uint16_t len)
+usbhid_read(device_t dev, void *buf, uint16_t len)
 {
 
 	return (ENOTSUP);
 }
 
 static int
-usbhid_set_output_report(device_t dev, void *buf, uint16_t len)
+usbhid_write(device_t dev, void *buf, uint16_t len)
 {
 
 	return (ENOTSUP);
@@ -750,8 +750,8 @@ static device_method_t usbhid_methods[] = {
 
 	/* HID interface */
 	DEVMETHOD(hid_get_report_descr,	usbhid_get_report_desc),
-	DEVMETHOD(hid_get_input_report,	usbhid_get_input_report),
-	DEVMETHOD(hid_set_output_report,usbhid_set_output_report),
+	DEVMETHOD(hid_read,		usbhid_read),
+	DEVMETHOD(hid_write,		usbhid_write),
 	DEVMETHOD(hid_get_report,	usbhid_get_report),
 	DEVMETHOD(hid_set_report,	usbhid_set_report),
 	DEVMETHOD(hid_set_idle,		usbhid_set_idle),

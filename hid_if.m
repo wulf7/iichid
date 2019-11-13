@@ -88,7 +88,7 @@ METHOD int get_report_descr {
 # Get input data from the device. Data should be read in chunks
 # of the size prescribed by the report descriptor.
 #
-METHOD int get_input_report {
+METHOD int read {
 	device_t dev;
 	void *data;
 	uint16_t maxlen;
@@ -98,7 +98,7 @@ METHOD int get_input_report {
 # Send data to the device. Data should be written in
 # chunks of the size prescribed by the report descriptor.
 #
-METHOD int set_output_report {
+METHOD int write {
 	device_t dev;
 	void *data;
 	uint16_t len;
