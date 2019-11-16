@@ -45,9 +45,9 @@ SYSCTL_DECL(_hw_hid);
  */
 #define HID_TLC_FOREACH_ITEM(hd, hi, tidx)				\
 	for (uint8_t _iter_##tidx = 0; hid_get_item((hd), (hi));)	\
-		if (_iter_##tidx +=					\
+		if ((_iter_##tidx +=					\
 		    (((hi)->kind == hid_endcollection &&		\
-		      (hi)->collevel == 0) ? 1 : 0) == (tidx))
+		      (hi)->collevel == 0) ? 1 : 0)) == (tidx))
 
 typedef usb_size_t hid_size_t;
 
