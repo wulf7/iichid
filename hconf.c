@@ -133,7 +133,7 @@ hconf_attach(device_t dev)
 
 	/* Parse features for input mode switch */
 	if (hid_tlc_locate(d_ptr, d_len,
-	    HID_USAGE2(HUP_DIGITIZERS, HUD_CONFIG), hid_feature, tlc_index,
+	    HID_USAGE2(HUP_DIGITIZERS, HUD_INPUT_MODE), hid_feature, tlc_index,
 	    0, &sc->input_mode_loc, &flags, &sc->input_mode_rid, NULL) &&
 	    (flags & (HIO_VARIABLE | HIO_RELATIVE)) == HIO_VARIABLE)
 		sc->input_mode_rlen = hid_report_size_1(d_ptr, d_len,
