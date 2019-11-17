@@ -412,7 +412,6 @@ hpen_detach(device_t self)
 {
 	struct hpen_softc *sc = device_get_softc(self);
 
-	if (sc->sc_evdev)
 	evdev_free(sc->sc_evdev);
 
 	return (0);
