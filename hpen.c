@@ -353,7 +353,6 @@ hpen_probe(device_t dev)
 		return (ENXIO);
 	}
 
-	sc->sc_dev = dev;
 	/* Check if report descriptor belongs to a HID tablet device */
 	if (hpen_hid_parse(sc, d_ptr, d_len, hidbus_get_index(dev)) != 0)
 		return (ENXIO);
@@ -368,6 +367,8 @@ hpen_attach(device_t dev)
 	struct hid_device_info *hw = device_get_ivars(dev);
 	int err;
 	size_t i;
+
+	sc->sc_dev = dev;
 
 	device_set_desc(dev, hw->name);
 
