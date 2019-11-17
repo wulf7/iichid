@@ -59,30 +59,15 @@ __FBSDID("$FreeBSD$");
 #include "hid.h"
 #include "hidbus.h"
 
-#define	HPEN_DEBUG
-#define	HPEN_DEBUG_VAR	hpen_debug
+#define	HID_DEBUG_VAR	hpen_debug
+#include "hid_debug.h"
 
-/* Check if debugging is enabled. */
-#ifdef HPEN_DEBUG_VAR
-#ifdef HPEN_DEBUG
-#define	DPRINTFN(n,fmt,...) do {					\
-	if ((HPEN_DEBUG_VAR) >= (n)) {					\
-		printf("%s: " fmt, __FUNCTION__ ,##__VA_ARGS__);	\
-	}								\
-} while (0)
-#define DPRINTF(...)    DPRINTFN(1, __VA_ARGS__)
-#else
-#define DPRINTF(...) do { } while (0)
-#define DPRINTFN(...) do { } while (0)
-#endif
-#endif
-
-#ifdef HPEN_DEBUG
+#ifdef HID_DEBUG
 static int hpen_debug = 1;
 
-static SYSCTL_NODE(_hw_usb, OID_AUTO, hpen, CTLFLAG_RW, 0,
+static SYSCTL_NODE(_hw_hid, OID_AUTO, hpen, CTLFLAG_RW, 0,
 		"Generic HID tablet");
-SYSCTL_INT(_hw_usb_hpen, OID_AUTO, debug, CTLFLAG_RWTUN,
+SYSCTL_INT(_hw_hid_hpen, OID_AUTO, debug, CTLFLAG_RWTUN,
 		&hpen_debug, 0, "Debug level");
 #endif
 
@@ -332,8 +317,7 @@ hpen_hid_parse(struct hpen_softc *sc, const void *d_ptr, uint16_t d_len,
 	for (i = 0; i < HPEN_N_USAGES_ABS; i++) {
 		if (hpen_hid_map_abs[i].required &&
 		    !USAGE_SUPPORTED(sc->abs_caps, i)) {
-			device_printf(sc->sc_dev,
-			    "required report %s not found\n",
+			DPRINTF("required report %s not found\n",
 			    hpen_hid_map_abs[i].name);
 			return (ENXIO);
 		}
@@ -342,8 +326,7 @@ hpen_hid_parse(struct hpen_softc *sc, const void *d_ptr, uint16_t d_len,
 	for (i = 0; i < HPEN_N_USAGES_KEY; i++) {
 		if (hpen_hid_map_key[i].required &&
 		    !USAGE_SUPPORTED(sc->key_caps, i)) {
-			device_printf(sc->sc_dev,
-			    "required report %s not found\n",
+			DPRINTF("required report %s not found\n",
 			    hpen_hid_map_abs[i].name);
 			return (ENXIO);
 		}
@@ -368,7 +351,7 @@ hpen_probe(device_t dev)
 
 	error = hid_get_report_descr(dev, &d_ptr, &d_len);
 	if (error != 0) {
-		device_printf(dev, "could not retrieve report descriptor from "
+		DPRINTF("could not retrieve report descriptor from "
 		     "device: %d\n", error);
 		return (ENXIO);
 	}
