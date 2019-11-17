@@ -278,7 +278,7 @@ hpen_intr(void *context, void *buf, uint16_t len)
 	HPEN_FOREACH_USAGE_ABS(sc->abs_caps, usage) {
 		if (sc->locs_abs[usage].size > 0 && hpen_hid_map_abs[usage].code != HPEN_NO_CODE)
 			evdev_push_abs(sc->sc_evdev, hpen_hid_map_abs[usage].code,
-					hid_get_data(buf, len, &sc->locs_abs[usage]));
+					hid_get_udata(buf, len, &sc->locs_abs[usage]));
 	}
 
 	HPEN_FOREACH_USAGE_KEY(sc->key_caps, usage) {
