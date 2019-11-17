@@ -188,12 +188,6 @@ static const struct hpen_hid_map_item hpen_hid_map_key[HPEN_N_USAGES_KEY] = {
 };
 
 
-struct hpen_absinfo {
-	int32_t min;
-	int32_t max;
-	int32_t res;
-};
-
 #define	USAGE_SUPPORTED(caps, usage)	bit_test(caps, usage)
 #define	HPEN_FOREACH_USAGE_ABS(caps, usage)			\
 	for ((usage) = 0; (usage) < HPEN_N_USAGES_ABS; ++(usage))	\
@@ -212,7 +206,7 @@ struct hpen_softc {
 	bitstr_t                bit_decl(abs_caps, HPEN_N_USAGES_ABS);
 	bitstr_t                bit_decl(key_caps, HPEN_N_USAGES_KEY);
 	uint32_t                isize;
-	struct hpen_absinfo     ai[HPEN_N_USAGES_ABS];
+	struct hid_absinfo	ai[HPEN_N_USAGES_ABS];
 	struct hid_location     locs_abs[HPEN_N_USAGES_ABS];
 	struct hid_location     locs_key[HPEN_N_USAGES_KEY];
 };
@@ -317,7 +311,7 @@ hpen_hid_parse(struct hpen_softc *sc, const void *d_ptr, uint16_t d_len,
 			if (hi.usage == hpen_hid_map_abs[i].usage) {
 				bit_set(sc->abs_caps, i);
 				sc->locs_abs[i] = hi.loc;
-				sc->ai[i] = (struct hpen_absinfo) {
+				sc->ai[i] = (struct hid_absinfo) {
 				    .max = hi.logical_maximum,
 				    .min = hi.logical_minimum,
 				    .res = hid_item_resolution(&hi),
