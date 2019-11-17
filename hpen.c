@@ -202,13 +202,13 @@ struct hpen_softc {
 
 	struct evdev_dev *sc_evdev;
 
-	uint8_t                 report_id;
-	bitstr_t                bit_decl(abs_caps, HPEN_N_USAGES_ABS);
-	bitstr_t                bit_decl(key_caps, HPEN_N_USAGES_KEY);
-	uint32_t                isize;
+	uint8_t			report_id;
+	bitstr_t		bit_decl(abs_caps, HPEN_N_USAGES_ABS);
+	bitstr_t		bit_decl(key_caps, HPEN_N_USAGES_KEY);
+	uint32_t		isize;
 	struct hid_absinfo	ai[HPEN_N_USAGES_ABS];
-	struct hid_location     locs_abs[HPEN_N_USAGES_ABS];
-	struct hid_location     locs_key[HPEN_N_USAGES_KEY];
+	struct hid_location	locs_abs[HPEN_N_USAGES_ABS];
+	struct hid_location	locs_key[HPEN_N_USAGES_KEY];
 };
 
 
@@ -276,15 +276,17 @@ hpen_intr(void *context, void *buf, uint16_t len)
 	}
 
 	HPEN_FOREACH_USAGE_ABS(sc->abs_caps, usage) {
-		if (sc->locs_abs[usage].size > 0 && hpen_hid_map_abs[usage].code != HPEN_NO_CODE)
-			evdev_push_abs(sc->sc_evdev, hpen_hid_map_abs[usage].code,
-					hid_get_udata(buf, len, &sc->locs_abs[usage]));
+		if (hpen_hid_map_abs[usage].code != HPEN_NO_CODE)
+			evdev_push_abs(sc->sc_evdev,
+			    hpen_hid_map_abs[usage].code,
+			    hid_get_udata(buf, len, &sc->locs_abs[usage]));
 	}
 
 	HPEN_FOREACH_USAGE_KEY(sc->key_caps, usage) {
-		if (sc->locs_key[usage].size > 0 && hpen_hid_map_key[usage].code != HPEN_NO_CODE)
-			evdev_push_key(sc->sc_evdev, hpen_hid_map_key[usage].code,
-					hid_get_data(buf, len, &sc->locs_key[usage]));
+		if (hpen_hid_map_key[usage].code != HPEN_NO_CODE)
+			evdev_push_key(sc->sc_evdev,
+			    hpen_hid_map_key[usage].code,
+			    hid_get_data(buf, len, &sc->locs_key[usage]));
 	}
 
 	evdev_sync(sc->sc_evdev);
@@ -328,15 +330,21 @@ hpen_hid_parse(struct hpen_softc *sc, const void *d_ptr, uint16_t d_len,
 	hid_end_parse(hd);
 
 	for (i = 0; i < HPEN_N_USAGES_ABS; i++) {
-		if (hpen_hid_map_abs[i].required && !USAGE_SUPPORTED(sc->abs_caps, i)) {
-			device_printf(sc->sc_dev, "required report %s not found\n", hpen_hid_map_abs[i].name);
+		if (hpen_hid_map_abs[i].required &&
+		    !USAGE_SUPPORTED(sc->abs_caps, i)) {
+			device_printf(sc->sc_dev,
+			    "required report %s not found\n",
+			    hpen_hid_map_abs[i].name);
 			return (ENXIO);
 		}
 	}
 
 	for (i = 0; i < HPEN_N_USAGES_KEY; i++) {
-		if (hpen_hid_map_key[i].required && !USAGE_SUPPORTED(sc->key_caps, i)) {
-			device_printf(sc->sc_dev, "required report %s not found\n", hpen_hid_map_abs[i].name);
+		if (hpen_hid_map_key[i].required &&
+		    !USAGE_SUPPORTED(sc->key_caps, i)) {
+			device_printf(sc->sc_dev,
+			    "required report %s not found\n",
+			    hpen_hid_map_abs[i].name);
 			return (ENXIO);
 		}
 	}
@@ -400,12 +408,14 @@ hpen_attach(device_t dev)
 	evdev_support_event(sc->sc_evdev, EV_PWR);
 	HPEN_FOREACH_USAGE_ABS(sc->abs_caps, i) {
 		if (hpen_hid_map_abs[i].code != HPEN_NO_CODE)
-			evdev_support_abs(sc->sc_evdev, hpen_hid_map_abs[i].code, 0,
+			evdev_support_abs(
+			    sc->sc_evdev, hpen_hid_map_abs[i].code, 0,
 			    sc->ai[i].min, sc->ai[i].max, 0, 0, sc->ai[i].res);
 	}
 	HPEN_FOREACH_USAGE_KEY(sc->key_caps, i) {
 		if (hpen_hid_map_key[i].code != HPEN_NO_CODE)
-			evdev_support_key(sc->sc_evdev, hpen_hid_map_key[i].code);
+			evdev_support_key(
+			    sc->sc_evdev, hpen_hid_map_key[i].code);
 	}
 
 	err = evdev_register_mtx(sc->sc_evdev, hidbus_get_lock(dev));
