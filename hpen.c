@@ -285,9 +285,6 @@ hpen_hid_parse(struct hpen_softc *sc, const void *d_ptr, uint16_t d_len,
 	struct hid_data *hd;
 	size_t i;
 
-	bzero(sc->abs_caps, bitstr_size(HPEN_N_USAGES_ABS));
-	bzero(sc->key_caps, bitstr_size(HPEN_N_USAGES_KEY));
-
 	/* Parse inputs */
 	hd = hid_start_parse(d_ptr, d_len, 1 << hid_input);
 	HID_TLC_FOREACH_ITEM(hd, &hi, tlc_index) {
