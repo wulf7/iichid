@@ -279,7 +279,7 @@ hpen_intr(void *context, void *buf, uint16_t len)
 
 static int
 hpen_hid_parse(struct hpen_softc *sc, const void *d_ptr, uint16_t d_len,
-    uint32_t tlc_usage, uint8_t tlc_index)
+    uint8_t tlc_index)
 {
 	struct hid_item hi;
 	struct hid_data *hd;
@@ -358,8 +358,7 @@ hpen_probe(device_t dev)
 
 	sc->sc_dev = dev;
 	/* Check if report descriptor belongs to a HID tablet device */
-	if (hpen_hid_parse(sc, d_ptr, d_len,
-		    hidbus_get_usage(dev), hidbus_get_index(dev)) != 0)
+	if (hpen_hid_parse(sc, d_ptr, d_len, hidbus_get_index(dev)) != 0)
 		return (ENXIO);
 
 	return (BUS_PROBE_DEFAULT);
