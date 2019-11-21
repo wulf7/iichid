@@ -364,7 +364,7 @@ static int
 hpen_attach(device_t dev)
 {
 	struct hpen_softc *sc = device_get_softc(dev);
-	struct hid_device_info *hw = device_get_ivars(dev);
+	const struct hid_device_info *hw = hid_get_device_info(dev);
 	int err;
 	size_t i;
 
