@@ -633,14 +633,13 @@ iichid_setup_interrupt(struct iichid_softc *sc)
 	sc->irq_cookie = 0;
 
 	int error = bus_setup_intr(sc->dev, sc->irq_res,
-	    INTR_TYPE_TTY | INTR_MPSAFE, NULL, iichid_intr, sc, &sc->irq_cookie);
-	if (error != 0) {
+	    INTR_TYPE_TTY|INTR_MPSAFE, NULL, iichid_intr, sc, &sc->irq_cookie);
+	if (error != 0)
 		DPRINTF(sc, "Could not setup interrupt handler\n");
-		return error;
-	} else
+	else
 		DPRINTF(sc, "successfully setup interrupt\n");
 
-	return (0);
+	return (error);
 }
 
 static void
