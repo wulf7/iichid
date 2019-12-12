@@ -68,6 +68,8 @@ __FBSDID("$FreeBSD$");
 #define	DPRINTF(sc, ...)
 #endif
 
+#define	IICHID_SAMPLING
+
 static char *iichid_ids[] = {
 	"PNP0C50",
 	"ACPI0C50",
@@ -100,12 +102,14 @@ struct iichid_softc {
 	struct resource		*irq_res;
 	void			*irq_cookie;
 
+#ifdef IICHID_SAMPLING
 	int			sampling_rate_slow;
 	int			sampling_rate_fast;
 	int			sampling_hysteresis;
 	int			missing_samples;
 	struct timeout_task	periodic_task;
 	bool			callout_setup;
+#endif
 
 	struct taskqueue	*taskqueue;
 	struct task		event_task;
@@ -117,9 +121,11 @@ struct iichid_softc {
 	bool			power_on;
 };
 
+#ifdef IICHID_SAMPLING
 static int	iichid_setup_callout(struct iichid_softc *);
 static int	iichid_reset_callout(struct iichid_softc *);
 static void	iichid_teardown_callout(struct iichid_softc *);
+#endif
 
 static __inline bool
 acpi_is_iichid(ACPI_HANDLE handle)
@@ -532,13 +538,19 @@ iichid_event_task(void *context, int pending)
 
 	mtx_lock(sc->intr_mtx);
 	if (actual > (sc->iid != 0 ? 1 : 0)) {
-		if (sc->open) {
-			sc->missing_samples = 0;
+		if (sc->open)
 			sc->intr_handler(sc->intr_context, sc->ibuf, actual);
-		}
-	} else
+#ifdef IICHID_SAMPLING
+		sc->missing_samples = 0;
+#endif
+	} else {
+//		device_printf(sc->dev, "no data received\n");
+#ifdef IICHID_SAMPLING
 		++sc->missing_samples;
+#endif
+	}
 
+#ifdef IICHID_SAMPLING
 	if (sc->callout_setup && sc->sampling_rate_slow > 0 && sc->open) {
 		if (sc->missing_samples == sc->sampling_hysteresis)
 			sc->intr_handler(sc->intr_context, sc->ibuf, 0);
@@ -546,6 +558,7 @@ iichid_event_task(void *context, int pending)
 		    hz / MAX(sc->missing_samples >= sc->sampling_hysteresis ?
 		      sc->sampling_rate_slow : sc->sampling_rate_fast, 1));
 	}
+#endif
 	mtx_unlock(sc->intr_mtx);
 }
 
@@ -588,6 +601,7 @@ iichid_set_power_state(struct iichid_softc *sc)
 	if (power_on != sc->power_on) {
 		error = iichid_set_power(sc,
 		    power_on ? I2C_HID_POWER_ON : I2C_HID_POWER_OFF);
+#ifdef IICHID_SAMPLING
 		mtx_lock(sc->intr_mtx);
 		if (sc->sampling_rate_slow >= 0 && sc->intr_handler != NULL) {
 			if (power_on) {
@@ -597,6 +611,7 @@ iichid_set_power_state(struct iichid_softc *sc)
 				iichid_teardown_callout(sc);
 		}
 		mtx_unlock(sc->intr_mtx);
+#endif
 		sc->power_on = power_on;
 	}
 
@@ -613,6 +628,7 @@ iichid_power_task(void *context, int pending)
 	sx_unlock(&sc->lock);
 }
 
+#ifdef IICHID_SAMPLING
 static int
 iichid_setup_callout(struct iichid_softc *sc)
 {
@@ -661,6 +677,7 @@ iichid_teardown_callout(struct iichid_softc *sc)
 	taskqueue_cancel_timeout(sc->taskqueue, &sc->periodic_task, NULL);
 	DPRINTF(sc, "tore callout down\n");
 }
+#endif /* IICHID_SAMPLING */
 
 static int
 iichid_setup_interrupt(struct iichid_softc *sc)
@@ -687,6 +704,7 @@ iichid_teardown_interrupt(struct iichid_softc *sc)
 	sc->irq_cookie = 0;
 }
 
+#ifdef IICHID_SAMPLING
 static int
 iichid_sysctl_sampling_rate_handler(SYSCTL_HANDLER_ARGS)
 {
@@ -738,6 +756,7 @@ iichid_sysctl_sampling_rate_handler(SYSCTL_HANDLER_ARGS)
 
 	return (0);
 }
+#endif /* IICHID_SAMPLING */
 
 static void
 iichid_intr_setup(device_t dev, struct mtx *mtx, hid_intr_t intr,
@@ -953,33 +972,38 @@ iichid_attach(device_t dev)
 	/* taskqueue_create can't fail with M_WAITOK mflag passed */
 	sc->taskqueue = taskqueue_create("imt_tq", M_WAITOK | M_ZERO,
 	    taskqueue_thread_enqueue, &sc->taskqueue);
+#ifdef IICHID_SAMPLING
 	TIMEOUT_TASK_INIT(sc->taskqueue, &sc->periodic_task, 0,
 	    iichid_event_task, sc);
 
-	sc->irq_rid = 0;
 	sc->sampling_rate_slow = -1;
 	sc->sampling_rate_fast = IICHID_SAMPLING_RATE_FAST;
 	sc->sampling_hysteresis = IICHID_SAMPLING_HYSTERESIS;
+#endif
+
+	sc->irq_rid = 0;
 	sc->irq_res = bus_alloc_resource_any(sc->dev, SYS_RES_IRQ,
 	    &sc->irq_rid, RF_ACTIVE);
 
 	if (sc->irq_res != NULL) {
 		DPRINTF(sc, "allocated irq at 0x%lx and rid %d\n",
 		    (uint64_t)sc->irq_res, sc->irq_rid);
-	} else {
-		DPRINTF(sc, "IRQ allocation failed. Fallback to sampling.\n");
-		sc->sampling_rate_slow = IICHID_SAMPLING_RATE_SLOW;
-	}
-
-	if (sc->sampling_rate_slow < 0) {
 		error = iichid_setup_interrupt(sc);
-		if (error != 0) {
-			device_printf(sc->dev,
-			    "Interrupt setup failed. Fallback to sampling.\n");
-			sc->sampling_rate_slow = IICHID_SAMPLING_RATE_SLOW;
-		}
 	}
 
+	if (sc->irq_res == NULL || error != 0) {
+#ifdef IICHID_SAMPLING
+		device_printf(sc->dev,
+		    "Interrupt setup failed. Fallback to sampling\n");
+		sc->sampling_rate_slow = IICHID_SAMPLING_RATE_SLOW;
+#else
+		device_printf(sc->dev, "Interrupt setup failed\n");
+		error = ENXIO;
+		goto done;
+#endif
+	}
+
+#ifdef IICHID_SAMPLING
 	SYSCTL_ADD_PROC(device_get_sysctl_ctx(sc->dev),
 		SYSCTL_CHILDREN(device_get_sysctl_tree(sc->dev)),
 		OID_AUTO, "sampling_rate_slow", CTLTYPE_INT | CTLFLAG_RWTUN,
@@ -995,6 +1019,7 @@ iichid_attach(device_t dev)
 		OID_AUTO, "sampling_hysteresis", CTLTYPE_INT | CTLFLAG_RWTUN,
 		&sc->sampling_hysteresis, 0,
 		"number of missing samples before enabling of slow mode");
+#endif /* IICHID_SAMPLING */
 
 	sc->child = device_add_child(dev, "hidbus", -1);
 	if (sc->child == NULL) {
@@ -1028,7 +1053,7 @@ iichid_probe(device_t dev)
 	sc->probe_result = ENXIO;
 
 	if (acpi_disabled("iichid"))
-		 return (ENXIO);
+		return (ENXIO);
 	if (addr == 0)
 		return (ENXIO);
 
