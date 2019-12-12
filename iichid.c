@@ -151,36 +151,6 @@ acpi_is_iichid(ACPI_HANDLE handle)
 	return (false);
 }
 
-#ifndef HAVE_ACPI_IICBUS
-static ACPI_STATUS
-iichid_addr_cb(ACPI_RESOURCE *res, void *context)
-{
-	uint16_t *device_addr = context;
-
-	if (res->Type == ACPI_RESOURCE_TYPE_SERIAL_BUS &&
-	    res->Data.CommonSerialBus.Type == ACPI_RESOURCE_SERIAL_TYPE_I2C) {
-		*device_addr = le16toh(res->Data.I2cSerialBus.SlaveAddress);
-		return (AE_CTRL_TERMINATE);
-	}
-
-	return (AE_OK);
-}
-
-static uint16_t
-acpi_get_iichid_addr(ACPI_HANDLE handle)
-{
-	ACPI_STATUS status;
-	uint16_t addr = 0;
-
-	/* _CRS holds device addr and needs a callback to evaluate */
-	status = AcpiWalkResources(handle, "_CRS", iichid_addr_cb, &addr);
-	if (ACPI_FAILURE(status))
-		return (0);
-
-	return (addr);
-}
-#endif /* HAVE_ACPI_IICBUS */
-
 static ACPI_STATUS
 iichid_get_config_reg(ACPI_HANDLE handle, uint16_t *config_reg)
 {
@@ -220,6 +190,34 @@ iichid_get_config_reg(ACPI_HANDLE handle, uint16_t *config_reg)
 }
 
 #ifndef HAVE_ACPI_IICBUS
+static ACPI_STATUS
+iichid_addr_cb(ACPI_RESOURCE *res, void *context)
+{
+	uint16_t *device_addr = context;
+
+	if (res->Type == ACPI_RESOURCE_TYPE_SERIAL_BUS &&
+	    res->Data.CommonSerialBus.Type == ACPI_RESOURCE_SERIAL_TYPE_I2C) {
+		*device_addr = le16toh(res->Data.I2cSerialBus.SlaveAddress);
+		return (AE_CTRL_TERMINATE);
+	}
+
+	return (AE_OK);
+}
+
+static uint16_t
+acpi_get_iichid_addr(ACPI_HANDLE handle)
+{
+	ACPI_STATUS status;
+	uint16_t addr = 0;
+
+	/* _CRS holds device addr and needs a callback to evaluate */
+	status = AcpiWalkResources(handle, "_CRS", iichid_addr_cb, &addr);
+	if (ACPI_FAILURE(status))
+		return (0);
+
+	return (addr);
+}
+
 static ACPI_STATUS
 iichid_get_handle_cb(ACPI_HANDLE handle, UINT32 level, void *context,
     void **retval)
@@ -628,6 +626,31 @@ iichid_power_task(void *context, int pending)
 	sx_unlock(&sc->lock);
 }
 
+static int
+iichid_setup_interrupt(struct iichid_softc *sc)
+{
+	sc->irq_cookie = 0;
+
+	int error = bus_setup_intr(sc->dev, sc->irq_res,
+	    INTR_TYPE_TTY | INTR_MPSAFE, NULL, iichid_intr, sc, &sc->irq_cookie);
+	if (error != 0) {
+		DPRINTF(sc, "Could not setup interrupt handler\n");
+		return error;
+	} else
+		DPRINTF(sc, "successfully setup interrupt\n");
+
+	return (0);
+}
+
+static void
+iichid_teardown_interrupt(struct iichid_softc *sc)
+{
+	if (sc->irq_cookie)
+		bus_teardown_intr(sc->dev, sc->irq_res, sc->irq_cookie);
+
+	sc->irq_cookie = 0;
+}
+
 #ifdef IICHID_SAMPLING
 static int
 iichid_setup_callout(struct iichid_softc *sc)
@@ -677,34 +700,7 @@ iichid_teardown_callout(struct iichid_softc *sc)
 	taskqueue_cancel_timeout(sc->taskqueue, &sc->periodic_task, NULL);
 	DPRINTF(sc, "tore callout down\n");
 }
-#endif /* IICHID_SAMPLING */
 
-static int
-iichid_setup_interrupt(struct iichid_softc *sc)
-{
-	sc->irq_cookie = 0;
-
-	int error = bus_setup_intr(sc->dev, sc->irq_res,
-	    INTR_TYPE_TTY | INTR_MPSAFE, NULL, iichid_intr, sc, &sc->irq_cookie);
-	if (error != 0) {
-		DPRINTF(sc, "Could not setup interrupt handler\n");
-		return error;
-	} else
-		DPRINTF(sc, "successfully setup interrupt\n");
-
-	return (0);
-}
-
-static void
-iichid_teardown_interrupt(struct iichid_softc *sc)
-{
-	if (sc->irq_cookie)
-		bus_teardown_intr(sc->dev, sc->irq_res, sc->irq_cookie);
-
-	sc->irq_cookie = 0;
-}
-
-#ifdef IICHID_SAMPLING
 static int
 iichid_sysctl_sampling_rate_handler(SYSCTL_HANDLER_ARGS)
 {
