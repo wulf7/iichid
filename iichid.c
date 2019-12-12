@@ -104,7 +104,7 @@ struct iichid_softc {
 	int			sampling_rate_fast;
 	int			sampling_hysteresis;
 	int			missing_samples;
-	struct callout		periodic_callout;
+	struct timeout_task	periodic_task;
 	bool			callout_setup;
 
 	struct taskqueue	*taskqueue;
@@ -530,16 +530,21 @@ iichid_event_task(void *context, int pending)
 		return;
 	}
 
-	if (actual <= (sc->iid != 0 ? 1 : 0)) {
-//		device_printf(sc->dev, "no data received\n");
-		++sc->missing_samples;
-		return;
-	}
-
 	mtx_lock(sc->intr_mtx);
-	if (sc->open) {
-		sc->missing_samples = 0;
-		sc->intr_handler(sc->intr_context, sc->ibuf, actual);
+	if (actual > (sc->iid != 0 ? 1 : 0)) {
+		if (sc->open) {
+			sc->missing_samples = 0;
+			sc->intr_handler(sc->intr_context, sc->ibuf, actual);
+		}
+	} else
+		++sc->missing_samples;
+
+	if (sc->callout_setup && sc->sampling_rate_slow > 0 && sc->open) {
+		if (sc->missing_samples == sc->sampling_hysteresis)
+			sc->intr_handler(sc->intr_context, sc->ibuf, 0);
+		taskqueue_enqueue_timeout(sc->taskqueue, &sc->periodic_task,
+		    hz / MAX(sc->missing_samples >= sc->sampling_hysteresis ?
+		      sc->sampling_rate_slow : sc->sampling_rate_fast, 1));
 	}
 	mtx_unlock(sc->intr_mtx);
 }
@@ -549,7 +554,7 @@ iichid_intr(void *context)
 {
 	struct iichid_softc *sc = context;
 #ifdef HAVE_IG4_POLLING
-	int actual = 0;
+	uint16_t actual = 0;
 	int error;
 
 	if (taskqueue_poll_is_busy(sc->taskqueue, &sc->event_task) == 0 &&
@@ -557,35 +562,18 @@ iichid_intr(void *context)
 	      sc, sc->ibuf, sc->isize, &actual, true)) != IIC_EBUSBSY) {
 		if (error != 0) {
 			device_printf(sc->dev, "an error occured\n");
-			goto out;
+			return;
 		}
-		if (actual <= (sc->iid != 0 ? 1 : 0)) {
-			++sc->missing_samples;
-			goto out;
-		}
+		if (actual <= (sc->iid != 0 ? 1 : 0))
+			return;
 
-		if (!sc->callout_setup)
-			mtx_lock(sc->intr_mtx);
-		if (sc->open) {
-			sc->missing_samples = 0;
+		mtx_lock(sc->intr_mtx);
+		if (sc->open)
 			sc->intr_handler(sc->intr_context, sc->ibuf, actual);
-		}
-		if (!sc->callout_setup)
-			mtx_unlock(sc->intr_mtx);
+		mtx_unlock(sc->intr_mtx);
 	} else
 #endif
 		taskqueue_enqueue(sc->taskqueue, &sc->event_task);
-#ifdef HAVE_IG4_POLLING
-out:
-#endif
-	if (sc->callout_setup && sc->sampling_rate_slow > 0 && sc->open) {
-		if (sc->missing_samples == sc->sampling_hysteresis)
-			sc->intr_handler(sc->intr_context, sc->ibuf, 0);
-		callout_reset(&sc->periodic_callout, hz /
-		    MAX(sc->missing_samples >= sc->sampling_hysteresis ?
-		      sc->sampling_rate_slow : sc->sampling_rate_fast, 1),
-		    iichid_intr, sc);
-	}
 }
 
 static int
@@ -629,12 +617,14 @@ static int
 iichid_setup_callout(struct iichid_softc *sc)
 {
 
+	mtx_assert(sc->intr_mtx, MA_OWNED);
+
 	if (sc->sampling_rate_slow < 0) {
 		DPRINTF(sc, "sampling_rate is below 0, can't setup callout\n");
 		return (EINVAL);
 	}
 
-	sc->callout_setup=true;
+	sc->callout_setup = true;
 	DPRINTF(sc, "successfully setup callout\n");
 	return (0);
 }
@@ -643,27 +633,32 @@ static int
 iichid_reset_callout(struct iichid_softc *sc)
 {
 
+	mtx_assert(sc->intr_mtx, MA_OWNED);
+
 	if (sc->sampling_rate_slow <= 0) {
 		DPRINTF(sc, "sampling_rate is below or equal to 0, "
 		    "can't reset callout\n");
 		return (EINVAL);
 	}
 
-	if (sc->callout_setup) {
-		/* Start with slow sampling */
-		sc->missing_samples = sc->sampling_hysteresis;
-		callout_reset(&sc->periodic_callout,
-		    hz / MIN(sc->sampling_rate_slow, 1), iichid_intr, sc);
-	} else
+	if (!sc->callout_setup)
 		return (EINVAL);
+
+	/* Start with slow sampling */
+	sc->missing_samples = sc->sampling_hysteresis;
+	taskqueue_enqueue(sc->taskqueue, &sc->event_task);
+
 	return (0);
 }
 
 static void
 iichid_teardown_callout(struct iichid_softc *sc)
 {
-	callout_stop(&sc->periodic_callout);
-	sc->callout_setup=false;
+
+	mtx_assert(sc->intr_mtx, MA_OWNED);
+
+	sc->callout_setup = false;
+	taskqueue_cancel_timeout(sc->taskqueue, &sc->periodic_task, NULL);
 	DPRINTF(sc, "tore callout down\n");
 }
 
@@ -753,7 +748,6 @@ iichid_intr_setup(device_t dev, struct mtx *mtx, hid_intr_t intr,
 	sc->intr_handler = intr;
 	sc->intr_context = context;
 	sc->intr_mtx = mtx;
-	callout_init_mtx(&sc->periodic_callout, sc->intr_mtx, 0);
 	taskqueue_start_threads(&sc->taskqueue, 1, PI_TTY,
 	    "%s taskq", device_get_nameunit(sc->dev));
 }
@@ -959,12 +953,15 @@ iichid_attach(device_t dev)
 	/* taskqueue_create can't fail with M_WAITOK mflag passed */
 	sc->taskqueue = taskqueue_create("imt_tq", M_WAITOK | M_ZERO,
 	    taskqueue_thread_enqueue, &sc->taskqueue);
+	TIMEOUT_TASK_INIT(sc->taskqueue, &sc->periodic_task, 0,
+	    iichid_event_task, sc);
 
 	sc->irq_rid = 0;
 	sc->sampling_rate_slow = -1;
 	sc->sampling_rate_fast = IICHID_SAMPLING_RATE_FAST;
 	sc->sampling_hysteresis = IICHID_SAMPLING_HYSTERESIS;
-	sc->irq_res = bus_alloc_resource_any(sc->dev, SYS_RES_IRQ, &sc->irq_rid, RF_ACTIVE);
+	sc->irq_res = bus_alloc_resource_any(sc->dev, SYS_RES_IRQ,
+	    &sc->irq_rid, RF_ACTIVE);
 
 	if (sc->irq_res != NULL) {
 		DPRINTF(sc, "allocated irq at 0x%lx and rid %d\n",
@@ -982,6 +979,7 @@ iichid_attach(device_t dev)
 			sc->sampling_rate_slow = IICHID_SAMPLING_RATE_SLOW;
 		}
 	}
+
 	SYSCTL_ADD_PROC(device_get_sysctl_ctx(sc->dev),
 		SYSCTL_CHILDREN(device_get_sysctl_tree(sc->dev)),
 		OID_AUTO, "sampling_rate_slow", CTLTYPE_INT | CTLFLAG_RWTUN,
