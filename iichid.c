@@ -569,6 +569,18 @@ iichid_intr(void *context)
 	uint16_t actual = 0;
 	int error;
 
+	/*
+	 * 8.2 SLEEP Power State: The DEVICE may send an interrupt to the HOST
+	 * to request servicing (e.g. DEVICE wishes to remote wake the HOST).
+	 * The HOST is responsible for setting the device into ON state if the
+	 * DEVICE alerts via the interrupt line.
+	 *
+	 * For now just ignore such an interrupts. Reading of input reports of
+	 * I2C devices residing in SLEEP state often returns a garbage.
+	 */
+	if (!sc->power_on)
+		return;
+
 	if (taskqueue_poll_is_busy(sc->taskqueue, &sc->event_task) == 0 &&
 	    (error = iichid_cmd_read(
 	      sc, sc->ibuf, sc->isize, &actual, true)) != IIC_EBUSBSY) {
