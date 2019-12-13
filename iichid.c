@@ -568,19 +568,24 @@ iichid_intr(void *context)
 #ifdef HAVE_IG4_POLLING
 	uint16_t actual = 0;
 	int error;
+#endif
 
 	/*
-	 * 8.2 SLEEP Power State: The DEVICE may send an interrupt to the HOST
-	 * to request servicing (e.g. DEVICE wishes to remote wake the HOST).
-	 * The HOST is responsible for setting the device into ON state if the
-	 * DEVICE alerts via the interrupt line.
+	 * 8.2 - SLEEP Power State:
+	 * - The DEVICE may send an interrupt to the HOST to request servicing
+	 *   (e.g. DEVICE wishes to remote wake the HOST).
+	 * - The HOST is responsible for setting the device into ON state
+	 *   if the DEVICE alerts via the interrupt line.
+	 * - If a HOST needs to communicate with the DEVICE it MUST issue
+	 *   a SET POWER command (to ON) before any other command.
 	 *
-	 * For now just ignore such an interrupts. Reading of input reports of
-	 * I2C devices residing in SLEEP state often returns a garbage.
+	 * Ignore such an interrupts. Reading of input reports of I2C devices
+	 * residing in SLEEP state is not allowed and often returns a garbage.
 	 */
 	if (!sc->power_on)
 		return;
 
+#ifdef HAVE_IG4_POLLING
 	if (taskqueue_poll_is_busy(sc->taskqueue, &sc->event_task) == 0 &&
 	    (error = iichid_cmd_read(
 	      sc, sc->ibuf, sc->isize, &actual, true)) != IIC_EBUSBSY) {
