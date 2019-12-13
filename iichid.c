@@ -531,7 +531,7 @@ iichid_event_task(void *context, int pending)
 
 	error = iichid_cmd_read(sc, sc->ibuf, sc->isize, &actual, false);
 	if (error != 0) {
-		device_printf(sc->dev, "an error occured\n");
+		DPRINTF(sc, "read error occured: %d\n", error);
 		return;
 	}
 
@@ -542,12 +542,12 @@ iichid_event_task(void *context, int pending)
 #ifdef IICHID_SAMPLING
 		sc->missing_samples = 0;
 #endif
-	} else {
-//		device_printf(sc->dev, "no data received\n");
+	} else
 #ifdef IICHID_SAMPLING
 		++sc->missing_samples;
+#else
+		DPRINTF(sc, "no data received\n");
 #endif
-	}
 
 #ifdef IICHID_SAMPLING
 	if (sc->callout_setup && sc->sampling_rate_slow > 0 && sc->open) {
@@ -590,11 +590,14 @@ iichid_intr(void *context)
 	    (error = iichid_cmd_read(
 	      sc, sc->ibuf, sc->isize, &actual, true)) != IIC_EBUSBSY) {
 		if (error != 0) {
-			device_printf(sc->dev, "an error occured\n");
+			DPRINTF(sc, "read error occured: %d\n", error);
 			return;
 		}
-		if (actual <= (sc->iid != 0 ? 1 : 0))
+
+		if (actual <= (sc->iid != 0 ? 1 : 0)) {
+			DPRINTF(sc, "no data received\n");
 			return;
+		}
 
 		mtx_lock(sc->intr_mtx);
 		if (sc->open)
