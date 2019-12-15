@@ -63,15 +63,15 @@ __FBSDID("$FreeBSD$");
 #include <sys/priv.h>
 #include <sys/proc.h>
 
-#include <dev/usb/usb.h>
-#include <dev/usb/usbdi.h>
-#include <dev/usb/usbdi_util.h>
-#include <dev/usb/usbhid.h>
+#include "hid.h"
+#include "hidbus.h"
 
-#define	USB_DEBUG_VAR ukbd_debug
-#include <dev/usb/usb_debug.h>
+#define	HID_DEBUG_VAR hkbd_debug
+#include "hid_debug.h"
 
+#ifdef NOT_YET
 #include <dev/usb/quirk/usb_quirk.h>
+#endif
 
 #ifdef EVDEV_SUPPORT
 #include <dev/evdev/input.h>
@@ -94,22 +94,19 @@ __FBSDID("$FreeBSD$");
 /* the following file must be included after "ukbdmap.h" */
 #include <dev/kbd/kbdtables.h>
 
-#ifdef USB_DEBUG
-static int ukbd_debug = 0;
-static int ukbd_no_leds = 0;
-static int ukbd_pollrate = 0;
+#ifdef HID_DEBUG
+static int hkbd_debug = 0;
+static int hkbd_no_leds = 0;
 
-static SYSCTL_NODE(_hw_usb, OID_AUTO, ukbd, CTLFLAG_RW, 0, "USB keyboard");
-SYSCTL_INT(_hw_usb_ukbd, OID_AUTO, debug, CTLFLAG_RWTUN,
-    &ukbd_debug, 0, "Debug level");
-SYSCTL_INT(_hw_usb_ukbd, OID_AUTO, no_leds, CTLFLAG_RWTUN,
-    &ukbd_no_leds, 0, "Disables setting of keyboard leds");
-SYSCTL_INT(_hw_usb_ukbd, OID_AUTO, pollrate, CTLFLAG_RWTUN,
-    &ukbd_pollrate, 0, "Force this polling rate, 1-1000Hz");
+static SYSCTL_NODE(_hw_hid, OID_AUTO, hkbd, CTLFLAG_RW, 0, "USB keyboard");
+SYSCTL_INT(_hw_hid_hkbd, OID_AUTO, debug, CTLFLAG_RWTUN,
+    &hkbd_debug, 0, "Debug level");
+SYSCTL_INT(_hw_hid_hkbd, OID_AUTO, no_leds, CTLFLAG_RWTUN,
+    &hkbd_no_leds, 0, "Disables setting of keyboard leds");
 #endif
 
 #define	UKBD_EMULATE_ATSCANCODE	       1
-#define	UKBD_DRIVER_NAME          "ukbd"
+#define	UKBD_DRIVER_NAME          "hkbd"
 #define	UKBD_NMOD                     8	/* units */
 #define	UKBD_NKEYCODE                 6	/* units */
 #define	UKBD_IN_BUF_SIZE  (2*(UKBD_NMOD + (2*UKBD_NKEYCODE)))	/* bytes */
@@ -133,14 +130,10 @@ struct ukbd_data {
 	uint8_t	keycode[UKBD_NKEYCODE];
 };
 
-enum {
-	UKBD_INTR_DT_0,
-	UKBD_INTR_DT_1,
-	UKBD_CTRL_LED,
-	UKBD_N_TRANSFER,
-};
-
 struct ukbd_softc {
+	device_t sc_dev;
+	struct mtx *sc_lock;	/* Giant */
+
 	keyboard_t sc_kbd;
 	keymap_t sc_keymap;
 	accentmap_t sc_accmap;
@@ -159,14 +152,11 @@ struct ukbd_softc {
 	struct hid_location sc_loc_numlock;
 	struct hid_location sc_loc_capslock;
 	struct hid_location sc_loc_scrolllock;
-	struct usb_callout sc_callout;
+	struct callout sc_callout;
 	struct ukbd_data sc_ndata;
 	struct ukbd_data sc_odata;
 
 	struct thread *sc_poll_thread;
-	struct usb_device *sc_udev;
-	struct usb_interface *sc_iface;
-	struct usb_xfer *sc_xfer[UKBD_N_TRANSFER];
 #ifdef EVDEV_SUPPORT
 	struct evdev_dev *sc_evdev;
 #endif
@@ -256,9 +246,9 @@ struct ukbd_softc {
 			 SCAN_PREFIX_CTL | SCAN_PREFIX_SHIFT)
 #define	SCAN_CHAR(c)	((c) & 0x7f)
 
-#define	UKBD_LOCK()	USB_MTX_LOCK(&Giant)
-#define	UKBD_UNLOCK()	USB_MTX_UNLOCK(&Giant)
-#define	UKBD_LOCK_ASSERT()	USB_MTX_ASSERT(&Giant, MA_OWNED)
+#define	HKBD_LOCK(sc)	HID_MTX_LOCK((sc)->sc_lock)
+#define	HKBD_UNLOCK(sc)	HID_MTX_UNLOCK((sc)->sc_lock)
+#define	HKBD_LOCK_ASSERT(sc)	HID_MTX_ASSERT((sc)->sc_lock, MA_OWNED)
 
 struct ukbd_mods {
 	uint32_t mask, key;
@@ -327,6 +317,7 @@ static const uint8_t ukbd_trtab[256] = {
 	NN, NN, NN, NN, NN, NN, NN, NN,	/* F8 - FF */
 };
 
+#ifdef NOT_YET
 static const uint8_t ukbd_boot_desc[] = {
 	0x05, 0x01, 0x09, 0x06, 0xa1,
 	0x01, 0x05, 0x07, 0x19, 0xe0,
@@ -342,6 +333,7 @@ static const uint8_t ukbd_boot_desc[] = {
 	0x05, 0x07, 0x19, 0x00, 0x2a,
 	0xff, 0x00, 0x81, 0x00, 0xc0
 };
+#endif
 
 /* prototypes */
 static void	ukbd_timeout(void *);
@@ -405,15 +397,16 @@ ukbd_start_timer(struct ukbd_softc *sc)
 
 	/* This is rarely called, so prefer precision to efficiency. */
 	prec = qmin(delay >> 7, SBT_1MS * 10);
-	usb_callout_reset_sbt(&sc->sc_callout, sc->sc_co_basetime, prec,
-	    ukbd_timeout, sc, C_ABSOLUTE);
+	if (!HID_IN_POLLING_MODE_FUNC())
+		callout_reset_sbt(&sc->sc_callout, sc->sc_co_basetime, prec,
+		    ukbd_timeout, sc, C_ABSOLUTE);
 }
 
 static void
 ukbd_put_key(struct ukbd_softc *sc, uint32_t key)
 {
 
-	UKBD_LOCK_ASSERT();
+	HKBD_LOCK_ASSERT(sc);
 
 	DPRINTF("0x%02x (%d) %s\n", key, key,
 	    (key & KEY_RELEASE) ? "released" : "pressed");
@@ -442,12 +435,12 @@ static void
 ukbd_do_poll(struct ukbd_softc *sc, uint8_t wait)
 {
 
-	UKBD_LOCK_ASSERT();
+	HKBD_LOCK_ASSERT(sc);
 	KASSERT((sc->sc_flags & UKBD_FLAG_POLLING) != 0,
 	    ("ukbd_do_poll called when not polling\n"));
 	DPRINTFN(2, "polling\n");
 
-	if (USB_IN_POLLING_MODE_FUNC() == 0) {
+	if (HID_IN_POLLING_MODE_FUNC() == 0) {
 		/*
 		 * In this context the kernel is polling for input,
 		 * but the USB subsystem works in normal interrupt-driven
@@ -469,7 +462,9 @@ ukbd_do_poll(struct ukbd_softc *sc, uint8_t wait)
 
 	while (sc->sc_inputs == 0) {
 
+#ifdef NOT_YET
 		usbd_transfer_poll(sc->sc_xfer, UKBD_N_TRANSFER);
+#endif
 
 		/* Delay-optimised support for repetition of keys */
 		if (ukbd_any_key_pressed(sc)) {
@@ -492,17 +487,10 @@ ukbd_get_key(struct ukbd_softc *sc, uint8_t wait)
 {
 	int32_t c;
 
-	UKBD_LOCK_ASSERT();
-	KASSERT((USB_IN_POLLING_MODE_FUNC() == 0) ||
+	HKBD_LOCK_ASSERT(sc);
+	KASSERT((HID_IN_POLLING_MODE_FUNC() == 0) ||
 	    (sc->sc_flags & UKBD_FLAG_POLLING) != 0,
 	    ("not polling in kdb or panic\n"));
-
-	if (sc->sc_inputs == 0 &&
-	    (sc->sc_flags & UKBD_FLAG_GONE) == 0) {
-		/* start transfer, if not already started */
-		usbd_transfer_start(sc->sc_xfer[UKBD_INTR_DT_0]);
-		usbd_transfer_start(sc->sc_xfer[UKBD_INTR_DT_1]);
-	}
 
 	if (sc->sc_flags & UKBD_FLAG_POLLING)
 		ukbd_do_poll(sc, wait);
@@ -531,7 +519,7 @@ ukbd_interrupt(struct ukbd_softc *sc)
 	uint8_t i;
 	uint8_t j;
 
-	UKBD_LOCK_ASSERT();
+	HKBD_LOCK_ASSERT(sc);
 
 	if (sc->sc_ndata.keycode[0] == KEY_ERROR)
 		return;
@@ -624,7 +612,7 @@ ukbd_event_keyinput(struct ukbd_softc *sc)
 {
 	int c;
 
-	UKBD_LOCK_ASSERT();
+	HKBD_LOCK_ASSERT(sc);
 
 	if ((sc->sc_flags & UKBD_FLAG_POLLING) != 0)
 		return;
@@ -650,7 +638,7 @@ ukbd_timeout(void *arg)
 {
 	struct ukbd_softc *sc = arg;
 
-	UKBD_LOCK_ASSERT();
+	HKBD_LOCK_ASSERT(sc);
 
 	sc->sc_time_ms += sc->sc_delay;
 	sc->sc_delay = 0;
@@ -688,48 +676,35 @@ ukbd_apple_swap(uint8_t keycode) {
 }
 
 static void
-ukbd_intr_callback(struct usb_xfer *xfer, usb_error_t error)
+ukbd_intr_callback(void *context, void *data, uint16_t len)
 {
-	struct ukbd_softc *sc = usbd_xfer_softc(xfer);
-	struct usb_page_cache *pc;
+	device_t dev = context;
+	struct ukbd_softc *sc = device_get_softc(dev);
+	uint8_t *buf = data;
 	uint8_t i;
-	uint8_t offset;
 	uint8_t id;
-	int len;
 
-	UKBD_LOCK_ASSERT();
+	HKBD_LOCK_ASSERT(sc);
 
-	usbd_xfer_status(xfer, &len, NULL, NULL, NULL);
-	pc = usbd_xfer_get_frame(xfer, 0);
-
-	switch (USB_GET_STATE(xfer)) {
-	case USB_ST_TRANSFERRED:
 		DPRINTF("actlen=%d bytes\n", len);
 
 		if (len == 0) {
 			DPRINTF("zero length data\n");
-			goto tr_setup;
+			return;
 		}
 
 		if (sc->sc_kbd_id != 0) {
 			/* check and remove HID ID byte */
-			usbd_copy_out(pc, 0, &id, 1);
-			offset = 1;
+			id = buf[0];
+			buf++;
 			len--;
 			if (len == 0) {
 				DPRINTF("zero length data\n");
-				goto tr_setup;
+				return;
 			}
 		} else {
-			offset = 0;
 			id = 0;
 		}
-
-		if (len > UKBD_BUFFER_SIZE)
-			len = UKBD_BUFFER_SIZE;
-
-		/* get data */
-		usbd_copy_out(pc, offset, sc->sc_buffer, len);
 
 		/* clear temporary storage */
 		memset(&sc->sc_ndata, 0, sizeof(sc->sc_ndata));
@@ -737,70 +712,70 @@ ukbd_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 		/* scan through HID data */
 		if ((sc->sc_flags & UKBD_FLAG_APPLE_EJECT) &&
 		    (id == sc->sc_id_apple_eject)) {
-			if (hid_get_data(sc->sc_buffer, len, &sc->sc_loc_apple_eject))
+			if (hid_get_data(buf, len, &sc->sc_loc_apple_eject))
 				sc->sc_modifiers |= MOD_EJECT;
 			else
 				sc->sc_modifiers &= ~MOD_EJECT;
 		}
 		if ((sc->sc_flags & UKBD_FLAG_APPLE_FN) &&
 		    (id == sc->sc_id_apple_fn)) {
-			if (hid_get_data(sc->sc_buffer, len, &sc->sc_loc_apple_fn))
+			if (hid_get_data(buf, len, &sc->sc_loc_apple_fn))
 				sc->sc_modifiers |= MOD_FN;
 			else
 				sc->sc_modifiers &= ~MOD_FN;
 		}
 		if ((sc->sc_flags & UKBD_FLAG_CTRL_L) &&
 		    (id == sc->sc_id_ctrl_l)) {
-			if (hid_get_data(sc->sc_buffer, len, &sc->sc_loc_ctrl_l))
+			if (hid_get_data(buf, len, &sc->sc_loc_ctrl_l))
 			  sc->	sc_modifiers |= MOD_CONTROL_L;
 			else
 			  sc->	sc_modifiers &= ~MOD_CONTROL_L;
 		}
 		if ((sc->sc_flags & UKBD_FLAG_CTRL_R) &&
 		    (id == sc->sc_id_ctrl_r)) {
-			if (hid_get_data(sc->sc_buffer, len, &sc->sc_loc_ctrl_r))
+			if (hid_get_data(buf, len, &sc->sc_loc_ctrl_r))
 				sc->sc_modifiers |= MOD_CONTROL_R;
 			else
 				sc->sc_modifiers &= ~MOD_CONTROL_R;
 		}
 		if ((sc->sc_flags & UKBD_FLAG_SHIFT_L) &&
 		    (id == sc->sc_id_shift_l)) {
-			if (hid_get_data(sc->sc_buffer, len, &sc->sc_loc_shift_l))
+			if (hid_get_data(buf, len, &sc->sc_loc_shift_l))
 				sc->sc_modifiers |= MOD_SHIFT_L;
 			else
 				sc->sc_modifiers &= ~MOD_SHIFT_L;
 		}
 		if ((sc->sc_flags & UKBD_FLAG_SHIFT_R) &&
 		    (id == sc->sc_id_shift_r)) {
-			if (hid_get_data(sc->sc_buffer, len, &sc->sc_loc_shift_r))
+			if (hid_get_data(buf, len, &sc->sc_loc_shift_r))
 				sc->sc_modifiers |= MOD_SHIFT_R;
 			else
 				sc->sc_modifiers &= ~MOD_SHIFT_R;
 		}
 		if ((sc->sc_flags & UKBD_FLAG_ALT_L) &&
 		    (id == sc->sc_id_alt_l)) {
-			if (hid_get_data(sc->sc_buffer, len, &sc->sc_loc_alt_l))
+			if (hid_get_data(buf, len, &sc->sc_loc_alt_l))
 				sc->sc_modifiers |= MOD_ALT_L;
 			else
 				sc->sc_modifiers &= ~MOD_ALT_L;
 		}
 		if ((sc->sc_flags & UKBD_FLAG_ALT_R) &&
 		    (id == sc->sc_id_alt_r)) {
-			if (hid_get_data(sc->sc_buffer, len, &sc->sc_loc_alt_r))
+			if (hid_get_data(buf, len, &sc->sc_loc_alt_r))
 				sc->sc_modifiers |= MOD_ALT_R;
 			else
 				sc->sc_modifiers &= ~MOD_ALT_R;
 		}
 		if ((sc->sc_flags & UKBD_FLAG_WIN_L) &&
 		    (id == sc->sc_id_win_l)) {
-			if (hid_get_data(sc->sc_buffer, len, &sc->sc_loc_win_l))
+			if (hid_get_data(buf, len, &sc->sc_loc_win_l))
 				sc->sc_modifiers |= MOD_WIN_L;
 			else
 				sc->sc_modifiers &= ~MOD_WIN_L;
 		}
 		if ((sc->sc_flags & UKBD_FLAG_WIN_R) &&
 		    (id == sc->sc_id_win_r)) {
-			if (hid_get_data(sc->sc_buffer, len, &sc->sc_loc_win_r))
+			if (hid_get_data(buf, len, &sc->sc_loc_win_r))
 				sc->sc_modifiers |= MOD_WIN_R;
 			else
 				sc->sc_modifiers &= ~MOD_WIN_R;
@@ -817,12 +792,12 @@ ukbd_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 				i = len;
 			while (i--) {
 				sc->sc_ndata.keycode[i] =
-				    hid_get_data(sc->sc_buffer + i, len - i,
+				    hid_get_data(buf + i, len - i,
 				    &sc->sc_loc_events);
 			}
 		}
 
-#ifdef USB_DEBUG
+#ifdef HID_DEBUG
 		DPRINTF("modifiers = 0x%04x\n", (int)sc->sc_modifiers);
 		for (i = 0; i < UKBD_NKEYCODE; i++) {
 			if (sc->sc_ndata.keycode[i]) {
@@ -846,29 +821,9 @@ ukbd_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 		}
 
 		ukbd_interrupt(sc);
-
-	case USB_ST_SETUP:
-tr_setup:
-		if (sc->sc_inputs < UKBD_IN_BUF_FULL) {
-			usbd_xfer_set_frame_len(xfer, 0, usbd_xfer_max_len(xfer));
-			usbd_transfer_submit(xfer);
-		} else {
-			DPRINTF("input queue is full!\n");
-		}
-		break;
-
-	default:			/* Error */
-		DPRINTF("error=%s\n", usbd_errstr(error));
-
-		if (error != USB_ERR_CANCELLED) {
-			/* try to clear stall first */
-			usbd_xfer_set_stall(xfer);
-			goto tr_setup;
-		}
-		break;
-	}
 }
 
+#ifdef NOT_YET
 static void
 ukbd_set_leds_callback(struct usb_xfer *xfer, usb_error_t error)
 {
@@ -881,7 +836,7 @@ ukbd_set_leds_callback(struct usb_xfer *xfer, usb_error_t error)
 
 	UKBD_LOCK_ASSERT();
 
-#ifdef USB_DEBUG
+#ifdef HID_DEBUG
 	if (ukbd_no_leds)
 		return;
 #endif
@@ -978,99 +933,40 @@ ukbd_set_leds_callback(struct usb_xfer *xfer, usb_error_t error)
 		break;
 	}
 }
-
-static const struct usb_config ukbd_config[UKBD_N_TRANSFER] = {
-
-	[UKBD_INTR_DT_0] = {
-		.type = UE_INTERRUPT,
-		.endpoint = UE_ADDR_ANY,
-		.direction = UE_DIR_IN,
-		.flags = {.pipe_bof = 1,.short_xfer_ok = 1,},
-		.bufsize = 0,	/* use wMaxPacketSize */
-		.callback = &ukbd_intr_callback,
-	},
-
-	[UKBD_INTR_DT_1] = {
-		.type = UE_INTERRUPT,
-		.endpoint = UE_ADDR_ANY,
-		.direction = UE_DIR_IN,
-		.flags = {.pipe_bof = 1,.short_xfer_ok = 1,},
-		.bufsize = 0,	/* use wMaxPacketSize */
-		.callback = &ukbd_intr_callback,
-	},
-
-	[UKBD_CTRL_LED] = {
-		.type = UE_CONTROL,
-		.endpoint = 0x00,	/* Control pipe */
-		.direction = UE_DIR_ANY,
-		.bufsize = sizeof(struct usb_device_request) + UKBD_BUFFER_SIZE,
-		.callback = &ukbd_set_leds_callback,
-		.timeout = 1000,	/* 1 second */
-	},
-};
+#endif
 
 /* A match on these entries will load ukbd */
-static const STRUCT_USB_HOST_ID __used ukbd_devs[] = {
-	{USB_IFACE_CLASS(UICLASS_HID),
-	 USB_IFACE_SUBCLASS(UISUBCLASS_BOOT),
-	 USB_IFACE_PROTOCOL(UIPROTO_BOOT_KEYBOARD),},
+static const struct hid_device_id __used hkbd_devs[] = {
+	{ HID_TLC(HUP_GENERIC_DESKTOP, HUG_KEYBOARD) },
 };
 
 static int
 ukbd_probe(device_t dev)
 {
 	keyboard_switch_t *sw = kbd_get_switch(UKBD_DRIVER_NAME);
-	struct usb_attach_arg *uaa = device_get_ivars(dev);
-	void *d_ptr;
 	int error;
-	uint16_t d_len;
 
-	UKBD_LOCK_ASSERT();
 	DPRINTFN(11, "\n");
 
 	if (sw == NULL) {
 		return (ENXIO);
 	}
-	if (uaa->usb_mode != USB_MODE_HOST) {
-		return (ENXIO);
-	}
 
-	if (uaa->info.bInterfaceClass != UICLASS_HID)
-		return (ENXIO);
+	error = hidbus_lookup_driver_info(dev, hkbd_devs, sizeof(hkbd_devs));
+	if (error != 0)
+                return (error);
 
+#ifdef NOT_YET
 	if (usb_test_quirk(uaa, UQ_KBD_IGNORE))
 		return (ENXIO);
+#endif
 
-	if ((uaa->info.bInterfaceSubClass == UISUBCLASS_BOOT) &&
-	    (uaa->info.bInterfaceProtocol == UIPROTO_BOOT_KEYBOARD))
-		return (BUS_PROBE_DEFAULT);
-
-	error = usbd_req_get_hid_desc(uaa->device, NULL,
-	    &d_ptr, &d_len, M_TEMP, uaa->info.bIfaceIndex);
-
-	if (error)
-		return (ENXIO);
-
-	if (hid_is_keyboard(d_ptr, d_len)) {
-		if (hid_is_mouse(d_ptr, d_len)) {
-			/*
-			 * NOTE: We currently don't support USB mouse
-			 * and USB keyboard on the same USB endpoint.
-			 * Let "ums" driver win.
-			 */
-			error = ENXIO;
-		} else {
-			error = BUS_PROBE_DEFAULT;
-		}
-	} else {
-		error = ENXIO;
-	}
-	free(d_ptr, M_TEMP);
-	return (error);
+	return (BUS_PROBE_DEFAULT);
 }
 
 static void
-ukbd_parse_hid(struct ukbd_softc *sc, const uint8_t *ptr, uint32_t len)
+ukbd_parse_hid(struct ukbd_softc *sc, const uint8_t *ptr, uint32_t len,
+    uint8_t tlc_index)
 {
 	uint32_t flags;
 
@@ -1082,93 +978,93 @@ ukbd_parse_hid(struct ukbd_softc *sc, const uint8_t *ptr, uint32_t len)
 	    hid_input, &sc->sc_kbd_id);
 
 	/* investigate if this is an Apple Keyboard */
-	if (hid_locate(ptr, len,
+	if (hid_tlc_locate(ptr, len,
 	    HID_USAGE2(HUP_CONSUMER, HUG_APPLE_EJECT),
-	    hid_input, 0, &sc->sc_loc_apple_eject, &flags,
-	    &sc->sc_id_apple_eject)) {
+	    hid_input, tlc_index, 0, &sc->sc_loc_apple_eject, &flags,
+	    &sc->sc_id_apple_eject, NULL)) {
 		if (flags & HIO_VARIABLE)
 			sc->sc_flags |= UKBD_FLAG_APPLE_EJECT | 
 			    UKBD_FLAG_APPLE_SWAP;
 		DPRINTFN(1, "Found Apple eject-key\n");
 	}
-	if (hid_locate(ptr, len,
+	if (hid_tlc_locate(ptr, len,
 	    HID_USAGE2(0xFFFF, 0x0003),
-	    hid_input, 0, &sc->sc_loc_apple_fn, &flags,
-	    &sc->sc_id_apple_fn)) {
+	    hid_input, tlc_index, 0, &sc->sc_loc_apple_fn, &flags,
+	    &sc->sc_id_apple_fn, NULL)) {
 		if (flags & HIO_VARIABLE)
 			sc->sc_flags |= UKBD_FLAG_APPLE_FN;
 		DPRINTFN(1, "Found Apple FN-key\n");
 	}
 	/* figure out some keys */
-	if (hid_locate(ptr, len,
+	if (hid_tlc_locate(ptr, len,
 	    HID_USAGE2(HUP_KEYBOARD, 0xE0),
-	    hid_input, 0, &sc->sc_loc_ctrl_l, &flags,
-	    &sc->sc_id_ctrl_l)) {
+	    hid_input, tlc_index, 0, &sc->sc_loc_ctrl_l, &flags,
+	    &sc->sc_id_ctrl_l, NULL)) {
 		if (flags & HIO_VARIABLE)
 			sc->sc_flags |= UKBD_FLAG_CTRL_L;
 		DPRINTFN(1, "Found left control\n");
 	}
-	if (hid_locate(ptr, len,
+	if (hid_tlc_locate(ptr, len,
 	    HID_USAGE2(HUP_KEYBOARD, 0xE4),
-	    hid_input, 0, &sc->sc_loc_ctrl_r, &flags,
-	    &sc->sc_id_ctrl_r)) {
+	    hid_input, tlc_index, 0, &sc->sc_loc_ctrl_r, &flags,
+	    &sc->sc_id_ctrl_r, NULL)) {
 		if (flags & HIO_VARIABLE)
 			sc->sc_flags |= UKBD_FLAG_CTRL_R;
 		DPRINTFN(1, "Found right control\n");
 	}
-	if (hid_locate(ptr, len,
+	if (hid_tlc_locate(ptr, len,
 	    HID_USAGE2(HUP_KEYBOARD, 0xE1),
-	    hid_input, 0, &sc->sc_loc_shift_l, &flags,
-	    &sc->sc_id_shift_l)) {
+	    hid_input, tlc_index, 0, &sc->sc_loc_shift_l, &flags,
+	    &sc->sc_id_shift_l, NULL)) {
 		if (flags & HIO_VARIABLE)
 			sc->sc_flags |= UKBD_FLAG_SHIFT_L;
 		DPRINTFN(1, "Found left shift\n");
 	}
-	if (hid_locate(ptr, len,
+	if (hid_tlc_locate(ptr, len,
 	    HID_USAGE2(HUP_KEYBOARD, 0xE5),
-	    hid_input, 0, &sc->sc_loc_shift_r, &flags,
-	    &sc->sc_id_shift_r)) {
+	    hid_input, tlc_index, 0, &sc->sc_loc_shift_r, &flags,
+	    &sc->sc_id_shift_r, NULL)) {
 		if (flags & HIO_VARIABLE)
 			sc->sc_flags |= UKBD_FLAG_SHIFT_R;
 		DPRINTFN(1, "Found right shift\n");
 	}
-	if (hid_locate(ptr, len,
+	if (hid_tlc_locate(ptr, len,
 	    HID_USAGE2(HUP_KEYBOARD, 0xE2),
-	    hid_input, 0, &sc->sc_loc_alt_l, &flags,
-	    &sc->sc_id_alt_l)) {
+	    hid_input, tlc_index, 0, &sc->sc_loc_alt_l, &flags,
+	    &sc->sc_id_alt_l, NULL)) {
 		if (flags & HIO_VARIABLE)
 			sc->sc_flags |= UKBD_FLAG_ALT_L;
 		DPRINTFN(1, "Found left alt\n");
 	}
-	if (hid_locate(ptr, len,
+	if (hid_tlc_locate(ptr, len,
 	    HID_USAGE2(HUP_KEYBOARD, 0xE6),
-	    hid_input, 0, &sc->sc_loc_alt_r, &flags,
-	    &sc->sc_id_alt_r)) {
+	    hid_input, tlc_index, 0, &sc->sc_loc_alt_r, &flags,
+	    &sc->sc_id_alt_r, NULL)) {
 		if (flags & HIO_VARIABLE)
 			sc->sc_flags |= UKBD_FLAG_ALT_R;
 		DPRINTFN(1, "Found right alt\n");
 	}
-	if (hid_locate(ptr, len,
+	if (hid_tlc_locate(ptr, len,
 	    HID_USAGE2(HUP_KEYBOARD, 0xE3),
-	    hid_input, 0, &sc->sc_loc_win_l, &flags,
-	    &sc->sc_id_win_l)) {
+	    hid_input, tlc_index, 0, &sc->sc_loc_win_l, &flags,
+	    &sc->sc_id_win_l, NULL)) {
 		if (flags & HIO_VARIABLE)
 			sc->sc_flags |= UKBD_FLAG_WIN_L;
 		DPRINTFN(1, "Found left GUI\n");
 	}
-	if (hid_locate(ptr, len,
+	if (hid_tlc_locate(ptr, len,
 	    HID_USAGE2(HUP_KEYBOARD, 0xE7),
-	    hid_input, 0, &sc->sc_loc_win_r, &flags,
-	    &sc->sc_id_win_r)) {
+	    hid_input, tlc_index, 0, &sc->sc_loc_win_r, &flags,
+	    &sc->sc_id_win_r, NULL)) {
 		if (flags & HIO_VARIABLE)
 			sc->sc_flags |= UKBD_FLAG_WIN_R;
 		DPRINTFN(1, "Found right GUI\n");
 	}
 	/* figure out event buffer */
-	if (hid_locate(ptr, len,
+	if (hid_tlc_locate(ptr, len,
 	    HID_USAGE2(HUP_KEYBOARD, 0x00),
-	    hid_input, 0, &sc->sc_loc_events, &flags,
-	    &sc->sc_id_events)) {
+	    hid_input, tlc_index, 0, &sc->sc_loc_events, &flags,
+	    &sc->sc_id_events, NULL)) {
 		if (flags & HIO_VARIABLE) {
 			DPRINTFN(1, "Ignoring keyboard event control\n");
 		} else {
@@ -1181,26 +1077,26 @@ ukbd_parse_hid(struct ukbd_softc *sc, const uint8_t *ptr, uint32_t len)
 	sc->sc_led_size = hid_report_size(ptr, len,
 	    hid_output, NULL);
 
-	if (hid_locate(ptr, len,
+	if (hid_tlc_locate(ptr, len,
 	    HID_USAGE2(HUP_LEDS, 0x01),
-	    hid_output, 0, &sc->sc_loc_numlock, &flags,
-	    &sc->sc_id_numlock)) {
+	    hid_output, tlc_index, 0, &sc->sc_loc_numlock, &flags,
+	    &sc->sc_id_numlock, NULL)) {
 		if (flags & HIO_VARIABLE)
 			sc->sc_flags |= UKBD_FLAG_NUMLOCK;
 		DPRINTFN(1, "Found keyboard numlock\n");
 	}
-	if (hid_locate(ptr, len,
+	if (hid_tlc_locate(ptr, len,
 	    HID_USAGE2(HUP_LEDS, 0x02),
-	    hid_output, 0, &sc->sc_loc_capslock, &flags,
-	    &sc->sc_id_capslock)) {
+	    hid_output, tlc_index, 0, &sc->sc_loc_capslock, &flags,
+	    &sc->sc_id_capslock, NULL)) {
 		if (flags & HIO_VARIABLE)
 			sc->sc_flags |= UKBD_FLAG_CAPSLOCK;
 		DPRINTFN(1, "Found keyboard capslock\n");
 	}
-	if (hid_locate(ptr, len,
+	if (hid_tlc_locate(ptr, len,
 	    HID_USAGE2(HUP_LEDS, 0x03),
-	    hid_output, 0, &sc->sc_loc_scrolllock, &flags,
-	    &sc->sc_id_scrolllock)) {
+	    hid_output, tlc_index, 0, &sc->sc_loc_scrolllock, &flags,
+	    &sc->sc_id_scrolllock, NULL)) {
 		if (flags & HIO_VARIABLE)
 			sc->sc_flags |= UKBD_FLAG_SCROLLLOCK;
 		DPRINTFN(1, "Found keyboard scrolllock\n");
@@ -1211,61 +1107,35 @@ static int
 ukbd_attach(device_t dev)
 {
 	struct ukbd_softc *sc = device_get_softc(dev);
-	struct usb_attach_arg *uaa = device_get_ivars(dev);
+	const struct hid_device_info *hw = hid_get_device_info(dev);
 	int unit = device_get_unit(dev);
 	keyboard_t *kbd = &sc->sc_kbd;
 	void *hid_ptr = NULL;
 	usb_error_t err;
 	uint16_t n;
 	uint16_t hid_len;
+	uint8_t tlc_index = hidbus_get_index(dev);
 #ifdef EVDEV_SUPPORT
 	struct evdev_dev *evdev;
 	int i;
 #endif
-#ifdef USB_DEBUG
-	int rate;
-#endif
-	UKBD_LOCK_ASSERT();
+
+	sc->sc_dev = dev;
+	sc->sc_lock = hidbus_get_lock(dev);
+	HKBD_LOCK_ASSERT(sc);
 
 	kbd_init_struct(kbd, UKBD_DRIVER_NAME, KB_OTHER, unit, 0, 0, 0);
 
 	kbd->kb_data = (void *)sc;
 
-	device_set_usb_desc(dev);
+	device_set_desc(dev, hw->name);
 
-	sc->sc_udev = uaa->device;
-	sc->sc_iface = uaa->iface;
-	sc->sc_iface_index = uaa->info.bIfaceIndex;
-	sc->sc_iface_no = uaa->info.bIfaceNum;
 	sc->sc_mode = K_XLATE;
 
-	usb_callout_init_mtx(&sc->sc_callout, &Giant, 0);
+	callout_init_mtx(&sc->sc_callout, sc->sc_lock, 0);
 
-#ifdef UKBD_NO_POLLING
-	err = usbd_transfer_setup(uaa->device,
-	    &uaa->info.bIfaceIndex, sc->sc_xfer, ukbd_config,
-	    UKBD_N_TRANSFER, sc, &Giant);
-#else
-	/*
-	 * Setup the UKBD USB transfers one by one, so they are memory
-	 * independent which allows for handling panics triggered by
-	 * the keyboard driver itself, typically via CTRL+ALT+ESC
-	 * sequences. Or if the USB keyboard driver was processing a
-	 * key at the moment of panic.
-	 */
-	for (n = 0; n != UKBD_N_TRANSFER; n++) {
-		err = usbd_transfer_setup(uaa->device,
-		    &uaa->info.bIfaceIndex, sc->sc_xfer + n, ukbd_config + n,
-		    1, sc, &Giant);
-		if (err)
-			break;
-	}
-#endif
+	hidbus_set_intr(dev, ukbd_intr_callback);
 
-	if (err) {
-		DPRINTF("error=%s\n", usbd_errstr(err));
-		goto detach;
-	}
 	/* setup default keyboard maps */
 
 	sc->sc_keymap = key_map;
@@ -1288,26 +1158,25 @@ ukbd_attach(device_t dev)
 	KBD_PROBE_DONE(kbd);
 
 	/* get HID descriptor */
-	err = usbd_req_get_hid_desc(uaa->device, NULL, &hid_ptr,
-	    &hid_len, M_TEMP, uaa->info.bIfaceIndex);
+	err = hid_get_report_descr(dev, &hid_ptr, &hid_len);
 
 	if (err == 0) {
 		DPRINTF("Parsing HID descriptor of %d bytes\n",
 		    (int)hid_len);
 
-		ukbd_parse_hid(sc, hid_ptr, hid_len);
+		ukbd_parse_hid(sc, hid_ptr, hid_len, tlc_index);
 
 		free(hid_ptr, M_TEMP);
 	}
 
+#ifdef NOT_YET
 	/* check if we should use the boot protocol */
 	if (usb_test_quirk(uaa, UQ_KBD_BOOTPROTO) ||
 	    (err != 0) || (!(sc->sc_flags & UKBD_FLAG_EVENTS))) {
 
 		DPRINTF("Forcing boot protocol\n");
 
-		err = usbd_req_set_protocol(sc->sc_udev, NULL, 
-			sc->sc_iface_index, 0);
+		err = hid_set_protocol(dev, 0);
 
 		if (err != 0) {
 			DPRINTF("Set protocol error=%s (ignored)\n",
@@ -1316,9 +1185,10 @@ ukbd_attach(device_t dev)
 
 		ukbd_parse_hid(sc, ukbd_boot_desc, sizeof(ukbd_boot_desc));
 	}
+#endif
 
 	/* ignore if SETIDLE fails, hence it is not crucial */
-	usbd_req_set_idle(sc->sc_udev, NULL, sc->sc_iface_index, 0, 0);
+	hid_set_idle(dev, 0, 0);
 
 	ukbd_ioctl(kbd, KDSETLED, (caddr_t)&sc->sc_state);
 
@@ -1341,9 +1211,9 @@ ukbd_attach(device_t dev)
 	evdev = evdev_alloc();
 	evdev_set_name(evdev, device_get_desc(dev));
 	evdev_set_phys(evdev, device_get_nameunit(dev));
-	evdev_set_id(evdev, BUS_USB, uaa->info.idVendor,
-	   uaa->info.idProduct, 0);
-	evdev_set_serial(evdev, usb_get_serial(uaa->device));
+	evdev_set_id(evdev, hw->idBus, hw->idVendor, hw->idProduct,
+	    hw->idVersion);
+	evdev_set_serial(evdev, hw->serial);
 	evdev_set_methods(evdev, kbd, &ukbd_evdev_methods);
 	evdev_support_event(evdev, EV_SYN);
 	evdev_support_event(evdev, EV_KEY);
@@ -1361,7 +1231,7 @@ ukbd_attach(device_t dev)
 	if (sc->sc_flags & UKBD_FLAG_SCROLLLOCK)
 		evdev_support_led(evdev, LED_SCROLLL);
 
-	if (evdev_register_mtx(evdev, &Giant))
+	if (evdev_register_mtx(evdev, sc->sc_lock))
 		evdev_free(evdev);
 	else
 		sc->sc_evdev = evdev;
@@ -1373,23 +1243,8 @@ ukbd_attach(device_t dev)
 		genkbd_diag(kbd, bootverbose);
 	}
 
-#ifdef USB_DEBUG
-	/* check for polling rate override */
-	rate = ukbd_pollrate;
-	if (rate > 0) {
-		if (rate > 1000)
-			rate = 1;
-		else
-			rate = 1000 / rate;
-
-		/* set new polling interval in ms */
-		usbd_xfer_set_interval(sc->sc_xfer[UKBD_INTR_DT_0], rate);
-		usbd_xfer_set_interval(sc->sc_xfer[UKBD_INTR_DT_1], rate);
-	}
-#endif
 	/* start the keyboard */
-	usbd_transfer_start(sc->sc_xfer[UKBD_INTR_DT_0]);
-	usbd_transfer_start(sc->sc_xfer[UKBD_INTR_DT_1]);
+	hidbus_set_xfer(dev, HID_XFER_READ);
 
 	return (0);			/* success */
 
@@ -1404,19 +1259,18 @@ ukbd_detach(device_t dev)
 	struct ukbd_softc *sc = device_get_softc(dev);
 	int error;
 
-	UKBD_LOCK_ASSERT();
+	HKBD_LOCK_ASSERT(sc);
 
 	DPRINTF("\n");
 
 	sc->sc_flags |= UKBD_FLAG_GONE;
 
-	usb_callout_stop(&sc->sc_callout);
+	callout_stop(&sc->sc_callout);
 
 	/* kill any stuck keys */
 	if (sc->sc_flags & UKBD_FLAG_ATTACHED) {
 		/* stop receiving events from the USB keyboard */
-		usbd_transfer_stop(sc->sc_xfer[UKBD_INTR_DT_0]);
-		usbd_transfer_stop(sc->sc_xfer[UKBD_INTR_DT_1]);
+		hidbus_set_xfer(dev, 0);
 
 		/* release all leftover keys, if any */
 		memset(&sc->sc_ndata, 0, sizeof(sc->sc_ndata));
@@ -1452,10 +1306,6 @@ ukbd_detach(device_t dev)
 	}
 	sc->sc_kbd.kb_flags = 0;
 
-	usbd_transfer_unsetup(sc->sc_xfer, UKBD_N_TRANSFER);
-
-	usb_callout_drain(&sc->sc_callout);
-
 	DPRINTF("%s: disconnected\n",
 	    device_get_nameunit(dev));
 
@@ -1467,7 +1317,7 @@ ukbd_resume(device_t dev)
 {
 	struct ukbd_softc *sc = device_get_softc(dev);
 
-	UKBD_LOCK_ASSERT();
+	HKBD_LOCK_ASSERT();
 
 	ukbd_clear_state(&sc->sc_kbd);
 
@@ -1480,12 +1330,13 @@ ukbd_ev_event(struct evdev_dev *evdev, uint16_t type, uint16_t code,
     int32_t value)
 {
 	keyboard_t *kbd = evdev_get_softc(evdev);
+	struct ukbd_softc *sc = kbd->kb_data;
 
 	if (evdev_rcpt_mask & EVDEV_RCPT_HW_KBD &&
 	    (type == EV_LED || type == EV_REP)) {
-		mtx_lock(&Giant);
+		HKBD_LOCK(sc);
 		kbd_ev_event(kbd, type, code, value);
-		mtx_unlock(&Giant);
+		HKBD_UNLOCK(sc);
 	}
 }
 #endif
@@ -1546,10 +1397,11 @@ ukbd_lock(keyboard_t *kbd, int lock)
 static int
 ukbd_enable(keyboard_t *kbd)
 {
+	struct ukbd_softc *sc = kbd->kb_data;
 
-	UKBD_LOCK();
+	HKBD_LOCK(sc);
 	KBD_ACTIVATE(kbd);
-	UKBD_UNLOCK();
+	HKBD_UNLOCK(sc);
 
 	return (0);
 }
@@ -1558,10 +1410,11 @@ ukbd_enable(keyboard_t *kbd)
 static int
 ukbd_disable(keyboard_t *kbd)
 {
+	struct ukbd_softc *sc = kbd->kb_data;
 
-	UKBD_LOCK();
+	HKBD_LOCK(sc);
 	KBD_DEACTIVATE(kbd);
-	UKBD_UNLOCK();
+	HKBD_UNLOCK(sc);
 
 	return (0);
 }
@@ -1573,7 +1426,7 @@ ukbd_check(keyboard_t *kbd)
 {
 	struct ukbd_softc *sc = kbd->kb_data;
 
-	UKBD_LOCK_ASSERT();
+	HKBD_LOCK_ASSERT();
 
 	if (!KBD_IS_ACTIVE(kbd))
 		return (0);
@@ -1598,7 +1451,7 @@ ukbd_check_char_locked(keyboard_t *kbd)
 {
 	struct ukbd_softc *sc = kbd->kb_data;
 
-	UKBD_LOCK_ASSERT();
+	HKBD_LOCK_ASSERT(sc);
 
 	if (!KBD_IS_ACTIVE(kbd))
 		return (0);
@@ -1613,11 +1466,12 @@ ukbd_check_char_locked(keyboard_t *kbd)
 static int
 ukbd_check_char(keyboard_t *kbd)
 {
+	struct ukbd_softc *sc = kbd->kb_data;
 	int result;
 
-	UKBD_LOCK();
+	HKBD_LOCK(sc);
 	result = ukbd_check_char_locked(kbd);
-	UKBD_UNLOCK();
+	HKBD_UNLOCK(sc);
 
 	return (result);
 }
@@ -1635,7 +1489,7 @@ ukbd_read(keyboard_t *kbd, int wait)
 
 #endif
 
-	UKBD_LOCK_ASSERT();
+	HKBD_LOCK_ASSERT(sc);
 
 	if (!KBD_IS_ACTIVE(kbd))
 		return (-1);
@@ -1684,7 +1538,7 @@ ukbd_read_char_locked(keyboard_t *kbd, int wait)
 	uint32_t scancode;
 #endif
 
-	UKBD_LOCK_ASSERT();
+	HKBD_LOCK_ASSERT(sc);
 
 	if (!KBD_IS_ACTIVE(kbd))
 		return (NOKEY);
@@ -1856,11 +1710,12 @@ errkey:
 static uint32_t
 ukbd_read_char(keyboard_t *kbd, int wait)
 {
+	struct ukbd_softc *sc = kbd->kb_data;
 	uint32_t keycode;
 
-	UKBD_LOCK();
+	HKBD_LOCK(sc);
 	keycode = ukbd_read_char_locked(kbd, wait);
-	UKBD_UNLOCK();
+	HKBD_UNLOCK(sc);
 
 	return (keycode);
 }
@@ -1877,7 +1732,7 @@ ukbd_ioctl_locked(keyboard_t *kbd, u_long cmd, caddr_t arg)
 
 #endif
 
-	UKBD_LOCK_ASSERT();
+	HKBD_LOCK_ASSERT(sc);
 
 	switch (cmd) {
 	case KDGKBMODE:		/* get keyboard mode */
@@ -2010,6 +1865,7 @@ ukbd_ioctl_locked(keyboard_t *kbd, u_long cmd, caddr_t arg)
 static int
 ukbd_ioctl(keyboard_t *kbd, u_long cmd, caddr_t arg)
 {
+	struct ukbd_softc *sc = kbd->kb_data;
 	int result;
 
 	/*
@@ -2032,13 +1888,13 @@ ukbd_ioctl(keyboard_t *kbd, u_long cmd, caddr_t arg)
 	case KDGKBSTATE:
 	case KDSKBSTATE:
 	case KDSETLED:
-		if (!mtx_owned(&Giant) && !USB_IN_POLLING_MODE_FUNC())
+		if (!mtx_owned(&Giant) && !HID_IN_POLLING_MODE_FUNC())
 			return (EDEADLK);	/* best I could come up with */
 		/* FALLTHROUGH */
 	default:
-		UKBD_LOCK();
+		HKBD_LOCK(sc);
 		result = ukbd_ioctl_locked(kbd, cmd, arg);
-		UKBD_UNLOCK();
+		HKBD_UNLOCK(sc);
 		return (result);
 	}
 }
@@ -2050,7 +1906,7 @@ ukbd_clear_state(keyboard_t *kbd)
 {
 	struct ukbd_softc *sc = kbd->kb_data;
 
-	UKBD_LOCK_ASSERT();
+	HKBD_LOCK_ASSERT(sc);
 
 	sc->sc_flags &= ~(UKBD_FLAG_COMPOSE | UKBD_FLAG_POLLING);
 	sc->sc_state &= LOCK_MASK;	/* preserve locking key state */
@@ -2085,7 +1941,7 @@ ukbd_poll(keyboard_t *kbd, int on)
 {
 	struct ukbd_softc *sc = kbd->kb_data;
 
-	UKBD_LOCK();
+	HKBD_LOCK(sc);
 	/*
 	 * Keep a reference count on polling to allow recursive
 	 * cngrab() during a panic for example.
@@ -2102,7 +1958,7 @@ ukbd_poll(keyboard_t *kbd, int on)
 		sc->sc_flags &= ~UKBD_FLAG_POLLING;
 		sc->sc_delay = 0;
 	}
-	UKBD_UNLOCK();
+	HKBD_UNLOCK(sc);
 
 	return (0);
 }
@@ -2113,7 +1969,7 @@ static void
 ukbd_set_leds(struct ukbd_softc *sc, uint8_t leds)
 {
 
-	UKBD_LOCK_ASSERT();
+	HKBD_LOCK_ASSERT(sc);
 	DPRINTF("leds=0x%02x\n", leds);
 
 	sc->sc_leds = leds;
@@ -2121,7 +1977,7 @@ ukbd_set_leds(struct ukbd_softc *sc, uint8_t leds)
 
 	/* start transfer, if not already started */
 
-	usbd_transfer_start(sc->sc_xfer[UKBD_CTRL_LED]);
+	hidbus_set_xfer(sc->sc_dev, HID_XFER_READ | HID_XFER_WRITE);
 }
 
 static int
@@ -2266,7 +2122,7 @@ ukbd_key2scan(struct ukbd_softc *sc, int code, int shift, int up)
 
 #endif					/* UKBD_EMULATE_ATSCANCODE */
 
-static keyboard_switch_t ukbdsw = {
+static keyboard_switch_t hkbdsw = {
 	.probe = &ukbd__probe,
 	.init = &ukbd_init,
 	.term = &ukbd_term,
@@ -2288,23 +2144,23 @@ static keyboard_switch_t ukbdsw = {
 	.diag = &genkbd_diag,
 };
 
-KEYBOARD_DRIVER(ukbd, ukbdsw, ukbd_configure);
+KEYBOARD_DRIVER(hkbd, hkbdsw, ukbd_configure);
 
 static int
-ukbd_driver_load(module_t mod, int what, void *arg)
+hkbd_driver_load(module_t mod, int what, void *arg)
 {
 	switch (what) {
 	case MOD_LOAD:
-		kbd_add_driver(&ukbd_kbd_driver);
+		kbd_add_driver(&hkbd_kbd_driver);
 		break;
 	case MOD_UNLOAD:
-		kbd_delete_driver(&ukbd_kbd_driver);
+		kbd_delete_driver(&hkbd_kbd_driver);
 		break;
 	}
 	return (0);
 }
 
-static devclass_t ukbd_devclass;
+static devclass_t hkbd_devclass;
 
 static device_method_t ukbd_methods[] = {
 	DEVMETHOD(device_probe, ukbd_probe),
@@ -2315,16 +2171,18 @@ static device_method_t ukbd_methods[] = {
 	DEVMETHOD_END
 };
 
-static driver_t ukbd_driver = {
-	.name = "ukbd",
+static driver_t hkbd_driver = {
+	.name = "hkbd",
 	.methods = ukbd_methods,
 	.size = sizeof(struct ukbd_softc),
 };
 
-DRIVER_MODULE(ukbd, uhub, ukbd_driver, ukbd_devclass, ukbd_driver_load, 0);
-MODULE_DEPEND(ukbd, usb, 1, 1, 1);
+DRIVER_MODULE(hkbd, hidbus, hkbd_driver, hkbd_devclass, hkbd_driver_load, 0);
+MODULE_DEPEND(hkbd, hid, 1, 1, 1);
 #ifdef EVDEV_SUPPORT
-MODULE_DEPEND(ukbd, evdev, 1, 1, 1);
+MODULE_DEPEND(hkbd, evdev, 1, 1, 1);
 #endif
-MODULE_VERSION(ukbd, 1);
-USB_PNP_HOST_INFO(ukbd_devs);
+MODULE_VERSION(hkbd, 1);
+#ifdef NOT_YET
+HID_PNP_HOST_INFO(hkbd_devs);
+#endif

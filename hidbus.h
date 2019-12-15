@@ -139,9 +139,33 @@ struct hid_device_id {
 #define HID_GET_DRIVER_INFO(did)		\
   (did)->driver_info
 
+/*
+ * General purpose locking wrappers to ease supporting
+ * HID polled mode:
+ */
+#define	HID_SYSCONS_MTX	(&Giant)
+#ifdef INVARIANTS
+#define	HID_MTX_ASSERT(_m, _t) do {		\
+	if (!HID_IN_POLLING_MODE_FUNC())	\
+		mtx_assert(_m, _t);		\
+} while (0)
+#else
+#define	HID_MTX_ASSERT(_m, _t) do { } while (0)
+#endif
+
+#define	HID_MTX_LOCK(_m) do {			\
+	if (!HID_IN_POLLING_MODE_FUNC())	\
+		mtx_lock(_m);			\
+} while (0)
+
+#define	HID_MTX_UNLOCK(_m) do {			\
+	if (!HID_IN_POLLING_MODE_FUNC())	\
+		mtx_unlock(_m);			\
+} while (0)
+
 const struct hid_device_id *hidbus_lookup_id(device_t,
 		    const struct hid_device_id *, size_t);
-int 		hidbus_lookup_driver_info(device_t,
+int		hidbus_lookup_driver_info(device_t,
 		    const struct hid_device_id *, size_t);
 struct mtx *	hidbus_get_lock(device_t);
 int		hidbus_set_xfer(device_t, uint8_t);

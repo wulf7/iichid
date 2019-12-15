@@ -53,7 +53,8 @@ static device_detach_t	hidbus_detach;
 
 struct hidbus_softc {
 	device_t			dev;
-	struct mtx			lock;
+	struct mtx			*lock;
+	struct mtx			mtx;
 
 	STAILQ_HEAD(, hidbus_ivars)	tlcs;
 };
@@ -72,25 +73,20 @@ hidbus_add_child(device_t dev, u_int order, const char *name, int unit)
 	tlc = malloc(sizeof(struct hidbus_ivars), M_DEVBUF, M_WAITOK | M_ZERO);
 	tlc->child = child;
 	device_set_ivars(child, tlc);
-	mtx_lock(&sc->lock);
+	mtx_lock(sc->lock);
 	STAILQ_INSERT_TAIL(&sc->tlcs, tlc, link);
-	mtx_unlock(&sc->lock);
+	mtx_unlock(sc->lock);
 
 	return (child);
 }
 
 static int
-hidbus_enumerate_children(device_t dev)
+hidbus_enumerate_children(device_t dev, void* data, uint16_t len)
 {
 	struct hid_data *hd;
 	struct hid_item hi;
 	device_t child;
-	void *data;
-	uint16_t len;
 	uint8_t index = 0;
-
-	if (HID_GET_REPORT_DESCR(device_get_parent(dev), &data, &len) != 0)
-		return (ENXIO);
 
 	/* Add a child for each top level collection */
 	hd = hid_start_parse(data, len, 1 << hid_input);
@@ -130,15 +126,26 @@ static int
 hidbus_attach(device_t dev)
 {
 	struct hidbus_softc *sc = device_get_softc(dev);
+	void *d_ptr;
+	uint16_t d_len;
 	int error;
 
 	sc->dev = dev;
 	STAILQ_INIT(&sc->tlcs);
 
-	mtx_init(&sc->lock, "hidbus lock", NULL, MTX_DEF);
-	HID_INTR_SETUP(device_get_parent(dev), &sc->lock, hidbus_intr, sc);
+	if (HID_GET_REPORT_DESCR(device_get_parent(dev), &d_ptr, &d_len) != 0)
+		return (ENXIO);
 
-	error = hidbus_enumerate_children(dev);
+	mtx_init(&sc->mtx, "hidbus lock", NULL, MTX_DEF);
+	if (hid_is_keyboard(d_ptr, d_len))
+		sc->lock = HID_SYSCONS_MTX;
+	else
+		sc->lock = &sc->mtx;
+
+
+	HID_INTR_SETUP(device_get_parent(dev), sc->lock, hidbus_intr, sc);
+
+	error = hidbus_enumerate_children(dev, d_ptr, d_len);
 	if (error != 0) {
 		hidbus_detach(dev);
 		return (ENXIO);
@@ -160,7 +167,7 @@ hidbus_detach(device_t dev)
 	device_delete_children(dev);
 
 	HID_INTR_UNSETUP(device_get_parent(dev));
-	mtx_destroy(&sc->lock);
+	mtx_destroy(&sc->mtx);
 
 	return (0);
 }
@@ -173,9 +180,9 @@ hidbus_child_deleted(device_t bus, device_t child)
 
 	KASSERT(!sc->open, ("Child device is running"));
 
-	mtx_lock(&sc->lock);
+	mtx_lock(sc->lock);
 	STAILQ_REMOVE(&sc->tlcs, tlc, hidbus_ivars, link);
-	mtx_unlock(&sc->lock);
+	mtx_unlock(sc->lock);
 	free(tlc, M_DEVBUF);
 }
 
@@ -258,7 +265,7 @@ hidbus_get_lock(device_t child)
 {
 	struct hidbus_softc *sc = device_get_softc(device_get_parent(child));
 
-	return (&sc->lock);
+	return (sc->lock);
 }
 
 void
@@ -267,7 +274,7 @@ hidbus_intr(void *context, void *buf, uint16_t len)
 	struct hidbus_softc *sc = context;
 	struct hidbus_ivars *tlc;
 
-	mtx_assert(&sc->lock, MA_OWNED);
+	mtx_assert(sc->lock, MA_OWNED);
 
 	/*
 	 * Broadcast input report to all subscribers.
@@ -290,7 +297,7 @@ hidbus_set_xfer(device_t child, uint8_t xfer)
 	struct hidbus_ivars *tlc;
 	uint8_t dev_xfer = 0, old_dev_xfer = 0;
 
-	mtx_assert(&sc->lock, MA_OWNED);
+	mtx_assert(sc->lock, MA_OWNED);
 	KASSERT((xfer & ~HID_XFER_ALL) == 0, ("Bad xfer mask"));
 
 	STAILQ_FOREACH(tlc, &sc->tlcs, link)

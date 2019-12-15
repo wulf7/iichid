@@ -33,7 +33,10 @@
  */
 
 #include <sys/param.h>
+#include <sys/kdb.h>
+#include <sys/lock.h>
 #include <sys/module.h>
+#include <sys/proc.h>
 
 #include "hid.h"
 
@@ -113,6 +116,12 @@ hid_tlc_locate(const void *desc, hid_size_t size, int32_t u, enum hid_kind k,
 		*id = 0;
 	hid_end_parse(d);
 	return (0);
+}
+
+int
+hid_in_polling_mode(void)
+{
+	return (HID_IN_POLLING_MODE_VALUE());
 }
 
 MODULE_DEPEND(hid, usb, 1, 1, 1);

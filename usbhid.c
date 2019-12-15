@@ -563,17 +563,6 @@ uhid_probe(device_t dev)
 	if (usb_test_quirk(uaa, UQ_HID_IGNORE))
 		return (ENXIO);
 
-	/*
-	 * Don't attach to mouse and keyboard devices, hence then no
-	 * "nomatch" event is generated and then ums and ukbd won't
-	 * attach properly when loaded.
-	 */
-	if ((uaa->info.bInterfaceClass == UICLASS_HID) &&
-	    (uaa->info.bInterfaceSubClass == UISUBCLASS_BOOT) &&
-	    (((uaa->info.bInterfaceProtocol == UIPROTO_BOOT_KEYBOARD) &&
-	      !usb_test_quirk(uaa, UQ_KBD_IGNORE))))
-		return (ENXIO);
-
 	return (BUS_PROBE_GENERIC);
 }
 

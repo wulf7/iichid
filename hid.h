@@ -40,6 +40,9 @@
 SYSCTL_DECL(_hw_hid);
 #endif
 
+#define	HID_IN_POLLING_MODE_FUNC() hid_in_polling_mode()
+#define	HID_IN_POLLING_MODE_VALUE() (SCHEDULER_STOPPED() || kdb_active)
+
 /*
  * Walk through all HID items hi belonging Top Level Collection #tidx
  */
@@ -75,5 +78,6 @@ int	hid_tlc_locate(const void *desc, hid_size_t size, int32_t u,
 	    enum hid_kind k, uint8_t tlc_index, uint8_t index,
 	    struct hid_location *loc, uint32_t *flags, uint8_t *id,
 	    struct hid_absinfo *ai);
+int	hid_in_polling_mode(void);
 
 #endif					/* _HID_H_ */
