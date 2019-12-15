@@ -682,145 +682,134 @@ hkbd_intr_callback(void *context, void *data, uint16_t len)
 	struct hkbd_softc *sc = device_get_softc(dev);
 	uint8_t *buf = data;
 	uint8_t i;
-	uint8_t id;
+	uint8_t id = 0;
 
 	HKBD_LOCK_ASSERT(sc);
 
-		DPRINTF("actlen=%d bytes\n", len);
+	DPRINTF("actlen=%d bytes\n", len);
 
+	if (len == 0) {
+		DPRINTF("zero length data\n");
+		return;
+	}
+
+	if (sc->sc_kbd_id != 0) {
+		/* check and remove HID ID byte */
+		id = buf[0];
+		buf++;
+		len--;
 		if (len == 0) {
 			DPRINTF("zero length data\n");
 			return;
 		}
+	}
 
-		if (sc->sc_kbd_id != 0) {
-			/* check and remove HID ID byte */
-			id = buf[0];
-			buf++;
-			len--;
-			if (len == 0) {
-				DPRINTF("zero length data\n");
-				return;
-			}
-		} else {
-			id = 0;
-		}
+	/* clear temporary storage */
+	memset(&sc->sc_ndata, 0, sizeof(sc->sc_ndata));
 
-		/* clear temporary storage */
-		memset(&sc->sc_ndata, 0, sizeof(sc->sc_ndata));
+	/* scan through HID data */
+	if ((sc->sc_flags & HKBD_FLAG_APPLE_EJECT) &&
+	    (id == sc->sc_id_apple_eject)) {
+		if (hid_get_data(buf, len, &sc->sc_loc_apple_eject))
+			sc->sc_modifiers |= MOD_EJECT;
+		else
+			sc->sc_modifiers &= ~MOD_EJECT;
+	}
+	if ((sc->sc_flags & HKBD_FLAG_APPLE_FN) &&
+	    (id == sc->sc_id_apple_fn)) {
+		if (hid_get_data(buf, len, &sc->sc_loc_apple_fn))
+			sc->sc_modifiers |= MOD_FN;
+		else
+			sc->sc_modifiers &= ~MOD_FN;
+	}
+	if ((sc->sc_flags & HKBD_FLAG_CTRL_L) && (id == sc->sc_id_ctrl_l)) {
+		if (hid_get_data(buf, len, &sc->sc_loc_ctrl_l))
+		  sc->	sc_modifiers |= MOD_CONTROL_L;
+		else
+		  sc->	sc_modifiers &= ~MOD_CONTROL_L;
+	}
+	if ((sc->sc_flags & HKBD_FLAG_CTRL_R) && (id == sc->sc_id_ctrl_r)) {
+		if (hid_get_data(buf, len, &sc->sc_loc_ctrl_r))
+			sc->sc_modifiers |= MOD_CONTROL_R;
+		else
+			sc->sc_modifiers &= ~MOD_CONTROL_R;
+	}
+	if ((sc->sc_flags & HKBD_FLAG_SHIFT_L) && (id == sc->sc_id_shift_l)) {
+		if (hid_get_data(buf, len, &sc->sc_loc_shift_l))
+			sc->sc_modifiers |= MOD_SHIFT_L;
+		else
+			sc->sc_modifiers &= ~MOD_SHIFT_L;
+	}
+	if ((sc->sc_flags & HKBD_FLAG_SHIFT_R) && (id == sc->sc_id_shift_r)) {
+		if (hid_get_data(buf, len, &sc->sc_loc_shift_r))
+			sc->sc_modifiers |= MOD_SHIFT_R;
+		else
+			sc->sc_modifiers &= ~MOD_SHIFT_R;
+	}
+	if ((sc->sc_flags & HKBD_FLAG_ALT_L) && (id == sc->sc_id_alt_l)) {
+		if (hid_get_data(buf, len, &sc->sc_loc_alt_l))
+			sc->sc_modifiers |= MOD_ALT_L;
+		else
+			sc->sc_modifiers &= ~MOD_ALT_L;
+	}
+	if ((sc->sc_flags & HKBD_FLAG_ALT_R) && (id == sc->sc_id_alt_r)) {
+		if (hid_get_data(buf, len, &sc->sc_loc_alt_r))
+			sc->sc_modifiers |= MOD_ALT_R;
+		else
+			sc->sc_modifiers &= ~MOD_ALT_R;
+	}
+	if ((sc->sc_flags & HKBD_FLAG_WIN_L) && (id == sc->sc_id_win_l)) {
+		if (hid_get_data(buf, len, &sc->sc_loc_win_l))
+			sc->sc_modifiers |= MOD_WIN_L;
+		else
+			sc->sc_modifiers &= ~MOD_WIN_L;
+	}
+	if ((sc->sc_flags & HKBD_FLAG_WIN_R) && (id == sc->sc_id_win_r)) {
+		if (hid_get_data(buf, len, &sc->sc_loc_win_r))
+			sc->sc_modifiers |= MOD_WIN_R;
+		else
+			sc->sc_modifiers &= ~MOD_WIN_R;
+	}
 
-		/* scan through HID data */
-		if ((sc->sc_flags & HKBD_FLAG_APPLE_EJECT) &&
-		    (id == sc->sc_id_apple_eject)) {
-			if (hid_get_data(buf, len, &sc->sc_loc_apple_eject))
-				sc->sc_modifiers |= MOD_EJECT;
-			else
-				sc->sc_modifiers &= ~MOD_EJECT;
-		}
-		if ((sc->sc_flags & HKBD_FLAG_APPLE_FN) &&
-		    (id == sc->sc_id_apple_fn)) {
-			if (hid_get_data(buf, len, &sc->sc_loc_apple_fn))
-				sc->sc_modifiers |= MOD_FN;
-			else
-				sc->sc_modifiers &= ~MOD_FN;
-		}
-		if ((sc->sc_flags & HKBD_FLAG_CTRL_L) &&
-		    (id == sc->sc_id_ctrl_l)) {
-			if (hid_get_data(buf, len, &sc->sc_loc_ctrl_l))
-			  sc->	sc_modifiers |= MOD_CONTROL_L;
-			else
-			  sc->	sc_modifiers &= ~MOD_CONTROL_L;
-		}
-		if ((sc->sc_flags & HKBD_FLAG_CTRL_R) &&
-		    (id == sc->sc_id_ctrl_r)) {
-			if (hid_get_data(buf, len, &sc->sc_loc_ctrl_r))
-				sc->sc_modifiers |= MOD_CONTROL_R;
-			else
-				sc->sc_modifiers &= ~MOD_CONTROL_R;
-		}
-		if ((sc->sc_flags & HKBD_FLAG_SHIFT_L) &&
-		    (id == sc->sc_id_shift_l)) {
-			if (hid_get_data(buf, len, &sc->sc_loc_shift_l))
-				sc->sc_modifiers |= MOD_SHIFT_L;
-			else
-				sc->sc_modifiers &= ~MOD_SHIFT_L;
-		}
-		if ((sc->sc_flags & HKBD_FLAG_SHIFT_R) &&
-		    (id == sc->sc_id_shift_r)) {
-			if (hid_get_data(buf, len, &sc->sc_loc_shift_r))
-				sc->sc_modifiers |= MOD_SHIFT_R;
-			else
-				sc->sc_modifiers &= ~MOD_SHIFT_R;
-		}
-		if ((sc->sc_flags & HKBD_FLAG_ALT_L) &&
-		    (id == sc->sc_id_alt_l)) {
-			if (hid_get_data(buf, len, &sc->sc_loc_alt_l))
-				sc->sc_modifiers |= MOD_ALT_L;
-			else
-				sc->sc_modifiers &= ~MOD_ALT_L;
-		}
-		if ((sc->sc_flags & HKBD_FLAG_ALT_R) &&
-		    (id == sc->sc_id_alt_r)) {
-			if (hid_get_data(buf, len, &sc->sc_loc_alt_r))
-				sc->sc_modifiers |= MOD_ALT_R;
-			else
-				sc->sc_modifiers &= ~MOD_ALT_R;
-		}
-		if ((sc->sc_flags & HKBD_FLAG_WIN_L) &&
-		    (id == sc->sc_id_win_l)) {
-			if (hid_get_data(buf, len, &sc->sc_loc_win_l))
-				sc->sc_modifiers |= MOD_WIN_L;
-			else
-				sc->sc_modifiers &= ~MOD_WIN_L;
-		}
-		if ((sc->sc_flags & HKBD_FLAG_WIN_R) &&
-		    (id == sc->sc_id_win_r)) {
-			if (hid_get_data(buf, len, &sc->sc_loc_win_r))
-				sc->sc_modifiers |= MOD_WIN_R;
-			else
-				sc->sc_modifiers &= ~MOD_WIN_R;
-		}
+	sc->sc_ndata.modifiers = sc->sc_modifiers;
 
-		sc->sc_ndata.modifiers = sc->sc_modifiers;
-
-		if ((sc->sc_flags & HKBD_FLAG_EVENTS) &&
-		    (id == sc->sc_id_events)) {
-			i = sc->sc_loc_events.count;
-			if (i > HKBD_NKEYCODE)
-				i = HKBD_NKEYCODE;
-			if (i > len)
-				i = len;
-			while (i--) {
-				sc->sc_ndata.keycode[i] =
-				    hid_get_data(buf + i, len - i,
-				    &sc->sc_loc_events);
-			}
+	if ((sc->sc_flags & HKBD_FLAG_EVENTS) && (id == sc->sc_id_events)) {
+		i = sc->sc_loc_events.count;
+		if (i > HKBD_NKEYCODE)
+			i = HKBD_NKEYCODE;
+		if (i > len)
+			i = len;
+		while (i--) {
+			sc->sc_ndata.keycode[i] =
+			    hid_get_data(buf + i, len - i,
+			    &sc->sc_loc_events);
 		}
+	}
 
 #ifdef HID_DEBUG
-		DPRINTF("modifiers = 0x%04x\n", (int)sc->sc_modifiers);
-		for (i = 0; i < HKBD_NKEYCODE; i++) {
-			if (sc->sc_ndata.keycode[i]) {
-				DPRINTF("[%d] = 0x%02x\n",
-				    (int)i, (int)sc->sc_ndata.keycode[i]);
-			}
+	DPRINTF("modifiers = 0x%04x\n", (int)sc->sc_modifiers);
+	for (i = 0; i < HKBD_NKEYCODE; i++) {
+		if (sc->sc_ndata.keycode[i]) {
+			DPRINTF("[%d] = 0x%02x\n",
+			    (int)i, (int)sc->sc_ndata.keycode[i]);
 		}
+	}
 #endif
-		if (sc->sc_modifiers & MOD_FN) {
-			for (i = 0; i < HKBD_NKEYCODE; i++) {
-				sc->sc_ndata.keycode[i] = 
-				    hkbd_apple_fn(sc->sc_ndata.keycode[i]);
-			}
+	if (sc->sc_modifiers & MOD_FN) {
+		for (i = 0; i < HKBD_NKEYCODE; i++) {
+			sc->sc_ndata.keycode[i] = 
+			    hkbd_apple_fn(sc->sc_ndata.keycode[i]);
 		}
+	}
 
-		if (sc->sc_flags & HKBD_FLAG_APPLE_SWAP) {
-			for (i = 0; i < HKBD_NKEYCODE; i++) {
-				sc->sc_ndata.keycode[i] = 
-				    hkbd_apple_swap(sc->sc_ndata.keycode[i]);
-			}
+	if (sc->sc_flags & HKBD_FLAG_APPLE_SWAP) {
+		for (i = 0; i < HKBD_NKEYCODE; i++) {
+			sc->sc_ndata.keycode[i] = 
+			    hkbd_apple_swap(sc->sc_ndata.keycode[i]);
 		}
+	}
 
-		hkbd_interrupt(sc);
+	hkbd_interrupt(sc);
 }
 
 #ifdef NOT_YET
