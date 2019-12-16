@@ -112,7 +112,7 @@ SYSCTL_INT(_hw_hid_hkbd, OID_AUTO, no_leds, CTLFLAG_RWTUN,
 #define	HKBD_IN_BUF_SIZE  (2*(HKBD_NMOD + (2*HKBD_NKEYCODE)))	/* bytes */
 #define	HKBD_IN_BUF_FULL  ((HKBD_IN_BUF_SIZE / 2) - 1)	/* bytes */
 #define	HKBD_NFKEY        (sizeof(fkey_tab)/sizeof(fkey_tab[0]))	/* units */
-#define	HKBD_BUFFER_SIZE	      64	/* bytes */
+#define	HKBD_BUFFER_SIZE	      8	/* bytes */
 
 struct hkbd_data {
 	uint16_t	modifiers;
@@ -222,8 +222,6 @@ struct hkbd_softc {
 	uint8_t sc_id_leds;
 	uint8_t sc_id_events;
 	uint8_t sc_kbd_id;
-
-	uint8_t sc_buffer[HKBD_BUFFER_SIZE];
 };
 
 #define	KEY_ERROR	  0x01
@@ -1849,6 +1847,7 @@ hkbd_poll(keyboard_t *kbd, int on)
 static int
 hkbd_set_leds(struct hkbd_softc *sc, uint8_t leds)
 {
+	uint8_t buffer[HKBD_BUFFER_SIZE];
 	uint8_t id;
 	uint8_t any;
 	uint8_t *buf;
@@ -1863,7 +1862,7 @@ hkbd_set_leds(struct hkbd_softc *sc, uint8_t leds)
 		return (0);
 #endif
 
-	memset(sc->sc_buffer, 0, HKBD_BUFFER_SIZE);
+	memset(buffer, 0, HKBD_BUFFER_SIZE);
 
 	id = sc->sc_id_leds;
 	any = 0;
@@ -1871,19 +1870,19 @@ hkbd_set_leds(struct hkbd_softc *sc, uint8_t leds)
 	/* Assumption: All led bits must be in the same ID. */
 
 	if (sc->sc_flags & HKBD_FLAG_NUMLOCK) {
-		hid_put_data_unsigned(sc->sc_buffer + 1, HKBD_BUFFER_SIZE - 1,
+		hid_put_data_unsigned(buffer + 1, HKBD_BUFFER_SIZE - 1,
 		    &sc->sc_loc_numlock, leds & NLKED ? 1 : 0);
 		any = 1;
 	}
 
 	if (sc->sc_flags & HKBD_FLAG_SCROLLLOCK) {
-		hid_put_data_unsigned(sc->sc_buffer + 1, HKBD_BUFFER_SIZE - 1,
+		hid_put_data_unsigned(buffer + 1, HKBD_BUFFER_SIZE - 1,
 		    &sc->sc_loc_scrolllock, leds & SLKED ? 1 : 0);
 		any = 1;
 	}
 
 	if (sc->sc_flags & HKBD_FLAG_CAPSLOCK) {
-		hid_put_data_unsigned(sc->sc_buffer + 1, HKBD_BUFFER_SIZE - 1,
+		hid_put_data_unsigned(buffer + 1, HKBD_BUFFER_SIZE - 1,
 		    &sc->sc_loc_capslock, leds & CLKED ? 1 : 0);
 		any = 1;
 	}
@@ -1905,10 +1904,10 @@ hkbd_set_leds(struct hkbd_softc *sc, uint8_t leds)
 	/* check if we need to prefix an ID byte */
 
 	if (id != 0) {
-		sc->sc_buffer[0] = id;
-		buf = sc->sc_buffer;
+		buffer[0] = id;
+		buf = buffer;
 	} else {
-		buf = sc->sc_buffer + 1;
+		buf = buffer + 1;
 	}
 
 	DPRINTF("len=%d, id=%d\n", len, id);
