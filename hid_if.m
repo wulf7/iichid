@@ -73,6 +73,14 @@ METHOD int intr_stop {
 	device_t dev;
 };
 
+#
+# The following function gets called from the HID keyboard driver
+# when the system has paniced.
+#
+METHOD void intr_poll {
+	device_t dev;
+};
+
 # HID interface
 
 #

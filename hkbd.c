@@ -456,9 +456,7 @@ hkbd_do_poll(struct hkbd_softc *sc, uint8_t wait)
 
 	while (sc->sc_inputs == 0) {
 
-#ifdef NOT_YET
-		usbd_transfer_poll(sc->sc_xfer, HKBD_N_TRANSFER);
-#endif
+		hidbus_intr_poll(sc->sc_dev);
 
 		/* Delay-optimised support for repetition of keys */
 		if (hkbd_any_key_pressed(sc)) {

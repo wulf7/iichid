@@ -281,7 +281,8 @@ iichid_cmd_read(struct iichid_softc* sc, void *buf, uint16_t maxlen,
 	int how = do_poll ? IIC_DONTWAIT : IIC_WAIT;
 	int error;
 
-	if (iicbus_request_bus(parent, sc->dev, how) != 0)
+	if (!HID_IN_POLLING_MODE_FUNC() &&
+	    iicbus_request_bus(parent, sc->dev, how) != 0)
 		return (IIC_EBUSBSY);
 
 	error = iicbus_transfer(sc->dev, msgs, nitems(msgs));
@@ -312,7 +313,8 @@ iichid_cmd_read(struct iichid_softc* sc, void *buf, uint16_t maxlen,
 
 	/* DPRINTF(sc, "%*D - %*D\n", 2, actbuf, " ", actlen, buf, " "); */
 out:
-	iicbus_release_bus(parent, sc->dev);
+	if (!HID_IN_POLLING_MODE_FUNC())
+		iicbus_release_bus(parent, sc->dev);
 	return (error);
 }
 
@@ -831,6 +833,18 @@ iichid_intr_stop(device_t dev)
 	return (0);
 }
 
+static void
+iichid_intr_poll(device_t dev)
+{
+	struct iichid_softc* sc = device_get_softc(dev);
+	uint16_t actual = 0;
+	int error;
+
+	error = iichid_cmd_read(sc, sc->ibuf, sc->isize, &actual, false);
+	if (error == 0 && actual > (sc->iid != 0 ? 1 : 0) && sc->open)
+		sc->intr_handler(sc->intr_context, sc->ibuf, actual);
+}
+
 /*
  * HID interface
  */
@@ -1303,6 +1317,7 @@ static device_method_t iichid_methods[] = {
 	DEVMETHOD(hid_intr_unsetup,	iichid_intr_unsetup),
 	DEVMETHOD(hid_intr_start,	iichid_intr_start),
 	DEVMETHOD(hid_intr_stop,	iichid_intr_stop),
+	DEVMETHOD(hid_intr_poll,	iichid_intr_poll),
 
 	/* HID interface */
 	DEVMETHOD(hid_get_report_descr,	iichid_get_report_desc),

@@ -169,6 +169,7 @@ int		hidbus_lookup_driver_info(device_t,
 		    const struct hid_device_id *, size_t);
 struct mtx *	hidbus_get_lock(device_t);
 int		hidbus_set_xfer(device_t, uint8_t);
+void		hidbus_intr_poll(device_t);
 
 /* hidbus HID interface */
 int	hid_get_report_descr(device_t, void **, uint16_t *);

@@ -318,6 +318,14 @@ hidbus_set_xfer(device_t child, uint8_t xfer)
 		return (HID_INTR_STOP(device_get_parent(bus)));
 }
 
+void
+hidbus_intr_poll(device_t child)
+{
+	device_t bus = device_get_parent(child);
+
+	HID_INTR_POLL(device_get_parent(bus));
+}
+
 /*
  * HID interface
  */

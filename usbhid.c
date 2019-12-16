@@ -181,7 +181,8 @@ tr_setup:
 		}
 		sc->sc_tr_error = EIO;
 tr_exit:
-		wakeup(sc);
+		if (!HID_IN_POLLING_MODE_FUNC())
+			wakeup(sc);
 		return;
 	}
 }
@@ -303,7 +304,8 @@ uhid_write_callback(struct usb_xfer *xfer, usb_error_t error)
 		DPRINTFN(1, "error=%s\n", usbd_errstr(error));
 		sc->sc_tr_error = EIO;
 tr_exit:
-		wakeup(sc);
+		if (!HID_IN_POLLING_MODE_FUNC())
+			wakeup(sc);
 		return;
 	}
 }
@@ -438,6 +440,14 @@ usbhid_intr_stop(device_t dev)
 	return (0);
 }
 
+static void
+usbhid_intr_poll(device_t dev)
+{
+	struct uhid_softc* sc = device_get_softc(dev);
+
+	usbd_transfer_poll(sc->sc_xfer, UHID_N_TRANSFER);
+}
+
 /*
  * HID interface
  */
@@ -465,7 +475,7 @@ usbhid_write(device_t dev, void *buf, uint16_t len)
 	struct uhid_softc* sc = device_get_softc(dev);
 	int error = 0;
 
-	mtx_lock(sc->sc_intr_mtx);
+	HID_MTX_LOCK(sc->sc_intr_mtx);
 	sc->sc_tr_buf = buf;
 	sc->sc_tr_len = len;
 
@@ -474,7 +484,8 @@ usbhid_write(device_t dev, void *buf, uint16_t len)
 	else
 		usbd_transfer_start(sc->sc_xfer[UHID_INTR_DT_WR]);
 
-	if (msleep_sbt(sc, sc->sc_intr_mtx, 0, "uhid wr",
+	if (!HID_IN_POLLING_MODE_FUNC() &&
+	    msleep_sbt(sc, sc->sc_intr_mtx, 0, "uhid wr",
 	    SBT_1MS * USB_DEFAULT_TIMEOUT, 0, C_HARDCLOCK) == EWOULDBLOCK) {
 		DPRINTF("USB write timed out\n");
 		usbd_transfer_stop(sc->sc_xfer[UHID_CTRL_DT_WR]);
@@ -483,7 +494,7 @@ usbhid_write(device_t dev, void *buf, uint16_t len)
 	} else
 		error = sc->sc_tr_error;
 
-	mtx_unlock(sc->sc_intr_mtx);
+	HID_MTX_UNLOCK(sc->sc_intr_mtx);
 
 	return (error);
 }
@@ -753,6 +764,7 @@ static device_method_t usbhid_methods[] = {
 	DEVMETHOD(hid_intr_unsetup,	usbhid_intr_unsetup),
 	DEVMETHOD(hid_intr_start,	usbhid_intr_start),
 	DEVMETHOD(hid_intr_stop,	usbhid_intr_stop),
+	DEVMETHOD(hid_intr_poll,	usbhid_intr_poll),
 
 	/* HID interface */
 	DEVMETHOD(hid_get_report_descr,	usbhid_get_report_desc),
