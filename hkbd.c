@@ -1847,6 +1847,7 @@ hkbd_set_leds(struct hkbd_softc *sc, uint8_t leds)
 	uint8_t any;
 	uint8_t *buf;
 	int len;
+	int error;
 
 	HKBD_LOCK_ASSERT(sc);
 	DPRINTF("leds=0x%02x\n", leds);
@@ -1915,7 +1916,11 @@ hkbd_set_leds(struct hkbd_softc *sc, uint8_t leds)
 	DPRINTF("len=%d, id=%d\n", len, id);
 
 	/* start data transfer */
-	return (hid_set_report(sc->sc_dev, buf, len, HID_OUTPUT_REPORT, id));
+	HKBD_UNLOCK(sc);
+	error = hid_write(sc->sc_dev, buf, len);
+	HKBD_LOCK(sc);
+
+	return (error);
 }
 
 static int

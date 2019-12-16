@@ -88,12 +88,10 @@ SYSCTL_INT(_hw_usb_uhid, OID_AUTO, debug, CTLFLAG_RWTUN,
 #define	UHID_FRAME_NUM 	  50		/* bytes, frame number */
 
 enum {
-#ifdef NOT_YET
 	UHID_INTR_DT_WR,
-#endif
 	UHID_INTR_DT_RD,
-#ifdef NOT_YET
 	UHID_CTRL_DT_WR,
+#ifdef NOT_YET
 	UHID_CTRL_DT_RD,
 #endif
 	UHID_N_TRANSFER,
@@ -128,6 +126,9 @@ struct uhid_softc {
 #define	UHID_FLAG_IMMED        0x01	/* set if read should be immediate */
 #define	UHID_FLAG_STATIC_DESC  0x04	/* set if report descriptors are
 					 * static */
+	uint8_t *sc_tr_buf;
+	uint16_t sc_tr_len;
+	int sc_tr_error;
 };
 
 static const uint8_t uhid_xb360gp_report_descr[] = {UHID_XB360GP_REPORT_DESCR()};
@@ -140,33 +141,36 @@ static device_probe_t uhid_probe;
 static device_attach_t uhid_attach;
 static device_detach_t uhid_detach;
 
-#ifdef NOT_YET
 static usb_callback_t uhid_intr_write_callback;
-#endif
 static usb_callback_t uhid_intr_read_callback;
-#ifdef NOT_YET
 static usb_callback_t uhid_write_callback;
+#ifdef NOT_YET
 static usb_callback_t uhid_read_callback;
 #endif
 
-#ifdef NOT_YET
 static void
 uhid_intr_write_callback(struct usb_xfer *xfer, usb_error_t error)
 {
 	struct uhid_softc *sc = usbd_xfer_softc(xfer);
 	struct usb_page_cache *pc;
-	int actlen;
+	uint16_t io_len;
 
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_TRANSFERRED:
 	case USB_ST_SETUP:
+		sc->sc_tr_error = 0;
 tr_setup:
+		if (sc->sc_tr_len == 0)
+			goto tr_exit;
+		io_len = MIN(sc->sc_tr_len, UHID_BSIZE);
+
 		pc = usbd_xfer_get_frame(xfer, 0);
-		if (usb_fifo_get_data(sc->sc_fifo.fp[USB_FIFO_TX], pc,
-		    0, usbd_xfer_max_len(xfer), &actlen, 0)) {
-			usbd_xfer_set_frame_len(xfer, 0, actlen);
-			usbd_transfer_submit(xfer);
-		}
+		usbd_copy_in(pc, 0, sc->sc_tr_buf, io_len);
+		usbd_xfer_set_frame_len(xfer, 0, io_len);
+		usbd_transfer_submit(xfer);
+
+		sc->sc_tr_len -= io_len;
+		sc->sc_tr_buf += io_len;
 		return;
 
 	default:			/* Error */
@@ -175,10 +179,12 @@ tr_setup:
 			usbd_xfer_set_stall(xfer);
 			goto tr_setup;
 		}
+		sc->sc_tr_error = EIO;
+tr_exit:
+		wakeup(sc);
 		return;
 	}
 }
-#endif
 
 static void
 uhid_intr_read_callback(struct usb_xfer *xfer, usb_error_t error)
@@ -228,7 +234,6 @@ re_submit:
 	}
 }
 
-#ifdef NOT_YET
 static void
 uhid_fill_set_report(struct usb_device_request *req, uint8_t iface_no,
     uint8_t type, uint8_t id, uint16_t size)
@@ -241,6 +246,7 @@ uhid_fill_set_report(struct usb_device_request *req, uint8_t iface_no,
 	USETW(req->wLength, size);
 }
 
+#ifdef NOT_YET
 static void
 uhid_fill_get_report(struct usb_device_request *req, uint8_t iface_no,
     uint8_t type, uint8_t id, uint16_t size)
@@ -252,6 +258,7 @@ uhid_fill_get_report(struct usb_device_request *req, uint8_t iface_no,
 	req->wIndex[1] = 0;
 	USETW(req->wLength, size);
 }
+#endif
 
 static void
 uhid_write_callback(struct usb_xfer *xfer, usb_error_t error)
@@ -259,61 +266,49 @@ uhid_write_callback(struct usb_xfer *xfer, usb_error_t error)
 	struct uhid_softc *sc = usbd_xfer_softc(xfer);
 	struct usb_device_request req;
 	struct usb_page_cache *pc;
-	uint32_t size = sc->sc_osize;
-	uint32_t actlen;
 	uint8_t id;
 
 	switch (USB_GET_STATE(xfer)) {
-	case USB_ST_TRANSFERRED:
 	case USB_ST_SETUP:
+		if (sc->sc_tr_len > UHID_BSIZE) {
+			sc->sc_tr_error = ENOBUFS;
+			goto tr_exit;
+		}
+
 		/* try to extract the ID byte */
-		if (sc->sc_oid) {
-			pc = usbd_xfer_get_frame(xfer, 0);
-			if (usb_fifo_get_data(sc->sc_fifo.fp[USB_FIFO_TX], pc,
-			    0, 1, &actlen, 0)) {
-				if (actlen != 1) {
-					goto tr_error;
-				}
-				usbd_copy_out(pc, 0, &id, 1);
+		id = (sc->sc_oid & (sc->sc_tr_len > 0)) ? sc->sc_tr_buf[0] : 0;
 
-			} else {
-				return;
-			}
-			if (size) {
-				size--;
-			}
-		} else {
-			id = 0;
+		if (sc->sc_tr_len > 0) {
+			pc = usbd_xfer_get_frame(xfer, 1);
+			usbd_copy_in(pc, 0, sc->sc_tr_buf, sc->sc_tr_len);
+			usbd_xfer_set_frame_len(xfer, 1, sc->sc_tr_len);
 		}
 
-		pc = usbd_xfer_get_frame(xfer, 1);
-		if (usb_fifo_get_data(sc->sc_fifo.fp[USB_FIFO_TX], pc,
-		    0, UHID_BSIZE, &actlen, 1)) {
-			if (actlen != size) {
-				goto tr_error;
-			}
-			uhid_fill_set_report
-			    (&req, sc->sc_iface_no,
-			    UHID_OUTPUT_REPORT, id, size);
+		uhid_fill_set_report(&req, sc->sc_iface_no,
+		    UHID_OUTPUT_REPORT, id, sc->sc_tr_len);
 
-			pc = usbd_xfer_get_frame(xfer, 0);
-			usbd_copy_in(pc, 0, &req, sizeof(req));
+		pc = usbd_xfer_get_frame(xfer, 0);
+		usbd_copy_in(pc, 0, &req, sizeof(req));
+		usbd_xfer_set_frame_len(xfer, 0, sizeof(req));
 
-			usbd_xfer_set_frame_len(xfer, 0, sizeof(req));
-			usbd_xfer_set_frame_len(xfer, 1, size);
-			usbd_xfer_set_frames(xfer, size ? 2 : 1);
-			usbd_transfer_submit(xfer);
-		}
+		usbd_xfer_set_frames(xfer, sc->sc_tr_len > 0 ? 2 : 1);
+		usbd_transfer_submit(xfer);
 		return;
 
-	default:
-tr_error:
-		/* bomb out */
-		usb_fifo_get_data_error(sc->sc_fifo.fp[USB_FIFO_TX]);
+	case USB_ST_TRANSFERRED:
+		sc->sc_tr_error = 0;
+		goto tr_exit;
+
+	default:			/* Error */
+		DPRINTFN(1, "error=%s\n", usbd_errstr(error));
+		sc->sc_tr_error = EIO;
+tr_exit:
+		wakeup(sc);
 		return;
 	}
 }
 
+#ifdef NOT_YET
 static void
 uhid_read_callback(struct usb_xfer *xfer, usb_error_t error)
 {
@@ -356,7 +351,6 @@ uhid_read_callback(struct usb_xfer *xfer, usb_error_t error)
 
 static const struct usb_config uhid_config[UHID_N_TRANSFER] = {
 
-#ifdef NOT_YET
 	[UHID_INTR_DT_WR] = {
 		.type = UE_INTERRUPT,
 		.endpoint = UE_ADDR_ANY,
@@ -365,7 +359,6 @@ static const struct usb_config uhid_config[UHID_N_TRANSFER] = {
 		.bufsize = UHID_BSIZE,
 		.callback = &uhid_intr_write_callback,
 	},
-#endif
 	[UHID_INTR_DT_RD] = {
 		.type = UE_INTERRUPT,
 		.endpoint = UE_ADDR_ANY,
@@ -374,7 +367,6 @@ static const struct usb_config uhid_config[UHID_N_TRANSFER] = {
 		.bufsize = UHID_BSIZE,
 		.callback = &uhid_intr_read_callback,
 	},
-#ifdef NOT_YET
 	[UHID_CTRL_DT_WR] = {
 		.type = UE_CONTROL,
 		.endpoint = 0x00,	/* Control pipe */
@@ -383,7 +375,7 @@ static const struct usb_config uhid_config[UHID_N_TRANSFER] = {
 		.callback = &uhid_write_callback,
 		.timeout = 1000,	/* 1 second */
 	},
-
+#ifdef NOT_YET
 	[UHID_CTRL_DT_RD] = {
 		.type = UE_CONTROL,
 		.endpoint = 0x00,	/* Control pipe */
@@ -470,8 +462,30 @@ usbhid_read(device_t dev, void *buf, uint16_t maxlen, uint16_t *actlen)
 static int
 usbhid_write(device_t dev, void *buf, uint16_t len)
 {
+	struct uhid_softc* sc = device_get_softc(dev);
+	int error = 0;
 
-	return (ENOTSUP);
+	mtx_lock(sc->sc_intr_mtx);
+	sc->sc_tr_buf = buf;
+	sc->sc_tr_len = len;
+
+	if (sc->sc_xfer[UHID_INTR_DT_WR] == NULL)
+		usbd_transfer_start(sc->sc_xfer[UHID_CTRL_DT_WR]);
+	else
+		usbd_transfer_start(sc->sc_xfer[UHID_INTR_DT_WR]);
+
+	if (msleep_sbt(sc, sc->sc_intr_mtx, 0, "uhid wr",
+	    SBT_1MS * USB_DEFAULT_TIMEOUT, 0, C_HARDCLOCK) == EWOULDBLOCK) {
+		DPRINTF("USB write timed out\n");
+		usbd_transfer_stop(sc->sc_xfer[UHID_CTRL_DT_WR]);
+		usbd_transfer_stop(sc->sc_xfer[UHID_INTR_DT_WR]);
+		error = ETIMEDOUT;
+	} else
+		error = sc->sc_tr_error;
+
+	mtx_unlock(sc->sc_intr_mtx);
+
+	return (error);
 }
 
 static int
