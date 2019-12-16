@@ -219,9 +219,7 @@ struct hkbd_softc {
 	uint8_t sc_id_win_l;
 	uint8_t sc_id_win_r;
 	uint8_t sc_id_event;
-	uint8_t sc_id_numlock;
-	uint8_t sc_id_capslock;
-	uint8_t sc_id_scrolllock;
+	uint8_t sc_id_leds;
 	uint8_t sc_id_events;
 	uint8_t sc_kbd_id;
 
@@ -844,6 +842,7 @@ hkbd_parse_hid(struct hkbd_softc *sc, const uint8_t *ptr, uint32_t len,
     uint8_t tlc_index)
 {
 	uint32_t flags;
+	uint8_t id;
 
 	/* reset detected bits */
 	sc->sc_flags &= ~HKBD_FLAG_HID_MASK;
@@ -949,13 +948,10 @@ hkbd_parse_hid(struct hkbd_softc *sc, const uint8_t *ptr, uint32_t len,
 	}
 
 	/* figure out leds on keyboard */
-	sc->sc_led_size = hid_report_size(ptr, len,
-	    hid_output, NULL);
-
 	if (hid_tlc_locate(ptr, len,
 	    HID_USAGE2(HUP_LEDS, 0x01),
 	    hid_output, tlc_index, 0, &sc->sc_loc_numlock, &flags,
-	    &sc->sc_id_numlock, NULL)) {
+	    &sc->sc_id_leds, NULL)) {
 		if (flags & HIO_VARIABLE)
 			sc->sc_flags |= HKBD_FLAG_NUMLOCK;
 		DPRINTFN(1, "Found keyboard numlock\n");
@@ -963,19 +959,29 @@ hkbd_parse_hid(struct hkbd_softc *sc, const uint8_t *ptr, uint32_t len,
 	if (hid_tlc_locate(ptr, len,
 	    HID_USAGE2(HUP_LEDS, 0x02),
 	    hid_output, tlc_index, 0, &sc->sc_loc_capslock, &flags,
-	    &sc->sc_id_capslock, NULL)) {
-		if (flags & HIO_VARIABLE)
+	    &id, NULL)) {
+		if ((sc->sc_flags & HKBD_FLAG_NUMLOCK) == 0)
+			sc->sc_id_leds = id;
+		if (flags & HIO_VARIABLE && sc->sc_id_leds == id)
 			sc->sc_flags |= HKBD_FLAG_CAPSLOCK;
 		DPRINTFN(1, "Found keyboard capslock\n");
 	}
 	if (hid_tlc_locate(ptr, len,
 	    HID_USAGE2(HUP_LEDS, 0x03),
 	    hid_output, tlc_index, 0, &sc->sc_loc_scrolllock, &flags,
-	    &sc->sc_id_scrolllock, NULL)) {
-		if (flags & HIO_VARIABLE)
+	    &id, NULL)) {
+		if ((sc->sc_flags & (HKBD_FLAG_NUMLOCK | HKBD_FLAG_CAPSLOCK))
+		    == 0)
+			sc->sc_id_leds = id;
+		if (flags & HIO_VARIABLE && sc->sc_id_leds == id)
 			sc->sc_flags |= HKBD_FLAG_SCROLLLOCK;
 		DPRINTFN(1, "Found keyboard scrolllock\n");
 	}
+
+	if ((sc->sc_flags & (HKBD_FLAG_NUMLOCK | HKBD_FLAG_CAPSLOCK |
+	    HKBD_FLAG_SCROLLLOCK)) != 0)
+		sc->sc_led_size = hid_report_size_1(ptr, len,
+		    hid_output, sc->sc_id_leds);
 }
 
 static int
@@ -1852,10 +1858,6 @@ hkbd_set_leds(struct hkbd_softc *sc, uint8_t leds)
 	HKBD_LOCK_ASSERT(sc);
 	DPRINTF("leds=0x%02x\n", leds);
 
-	/* start transfer, if not already started */
-
-	hidbus_set_xfer(sc->sc_dev, HID_XFER_READ | HID_XFER_WRITE);
-
 #ifdef HID_DEBUG
 	if (hkbd_no_leds)
 		return (0);
@@ -1863,7 +1865,7 @@ hkbd_set_leds(struct hkbd_softc *sc, uint8_t leds)
 
 	memset(sc->sc_buffer, 0, HKBD_BUFFER_SIZE);
 
-	id = 0;
+	id = sc->sc_id_leds;
 	any = 0;
 
 	/* Assumption: All led bits must be in the same ID. */
@@ -1871,21 +1873,18 @@ hkbd_set_leds(struct hkbd_softc *sc, uint8_t leds)
 	if (sc->sc_flags & HKBD_FLAG_NUMLOCK) {
 		hid_put_data_unsigned(sc->sc_buffer + 1, HKBD_BUFFER_SIZE - 1,
 		    &sc->sc_loc_numlock, leds & NLKED ? 1 : 0);
-		id = sc->sc_id_numlock;
 		any = 1;
 	}
 
 	if (sc->sc_flags & HKBD_FLAG_SCROLLLOCK) {
 		hid_put_data_unsigned(sc->sc_buffer + 1, HKBD_BUFFER_SIZE - 1,
 		    &sc->sc_loc_scrolllock, leds & SLKED ? 1 : 0);
-		id = sc->sc_id_scrolllock;
 		any = 1;
 	}
 
 	if (sc->sc_flags & HKBD_FLAG_CAPSLOCK) {
 		hid_put_data_unsigned(sc->sc_buffer + 1, HKBD_BUFFER_SIZE - 1,
 		    &sc->sc_loc_capslock, leds & CLKED ? 1 : 0);
-		id = sc->sc_id_capslock;
 		any = 1;
 	}
 
@@ -1904,10 +1903,9 @@ hkbd_set_leds(struct hkbd_softc *sc, uint8_t leds)
 		len = (HKBD_BUFFER_SIZE - 1);
 
 	/* check if we need to prefix an ID byte */
-	sc->sc_buffer[0] = id;
 
 	if (id != 0) {
-		len++;
+		sc->sc_buffer[0] = id;
 		buf = sc->sc_buffer;
 	} else {
 		buf = sc->sc_buffer + 1;
