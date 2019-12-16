@@ -1121,7 +1121,7 @@ hkbd_attach(device_t dev)
 	}
 
 	/* start the keyboard */
-	hidbus_set_xfer(dev, HID_XFER_READ);
+	hidbus_intr_start(dev);
 
 	return (0);			/* success */
 
@@ -1147,7 +1147,7 @@ hkbd_detach(device_t dev)
 	/* kill any stuck keys */
 	if (sc->sc_flags & HKBD_FLAG_ATTACHED) {
 		/* stop receiving events from the USB keyboard */
-		hidbus_set_xfer(dev, 0);
+		hidbus_intr_stop(dev);
 
 		/* release all leftover keys, if any */
 		memset(&sc->sc_ndata, 0, sizeof(sc->sc_ndata));

@@ -265,7 +265,7 @@ hmt_ev_close(struct evdev_dev *evdev)
 
 	mtx_assert(hidbus_get_lock(dev), MA_OWNED);
 
-	return (hidbus_set_xfer(dev, 0));
+	return (hidbus_intr_stop(dev));
 }
 
 static int
@@ -275,7 +275,7 @@ hmt_ev_open(struct evdev_dev *evdev)
 
 	mtx_assert(hidbus_get_lock(dev), MA_OWNED);
 
-	return (hidbus_set_xfer(dev, HID_XFER_READ));
+	return (hidbus_intr_start(dev));
 }
 
 static int

@@ -30,14 +30,6 @@
 #define	HID_OUTPUT_REPORT	0x2
 #define	HID_FEATURE_REPORT	0x3
 
-#define	HID_XFER_READ		0x01
-#define	HID_XFER_WRITE		0x02
-#define	HID_XFER_GET_REPORT	0x04
-#define	HID_XFER_SET_REPORT	0x08
-
-#define	HID_XFER_ALL		(HID_XFER_READ | HID_XFER_WRITE | \
-				    HID_XFER_GET_REPORT | HID_XFER_SET_REPORT)
-
 typedef void hid_intr_t(void *context, void *data, uint16_t len);
 
 struct hid_device_info {
@@ -56,7 +48,7 @@ struct hidbus_ivars {
 	uint8_t				index;
 	uintptr_t			driver_info;	/* for internal use */
 	hid_intr_t			*intr;
-	uint8_t				xfer;
+	bool				open;
 	STAILQ_ENTRY(hidbus_ivars)	link;
 };
 
@@ -168,7 +160,8 @@ const struct hid_device_id *hidbus_lookup_id(device_t,
 int		hidbus_lookup_driver_info(device_t,
 		    const struct hid_device_id *, size_t);
 struct mtx *	hidbus_get_lock(device_t);
-int		hidbus_set_xfer(device_t, uint8_t);
+int		hidbus_intr_start(device_t);
+int		hidbus_intr_stop(device_t);
 void		hidbus_intr_poll(device_t);
 
 /* hidbus HID interface */
