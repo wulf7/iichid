@@ -89,7 +89,6 @@ struct iichid_softc {
 	uint16_t		config_reg;
 	struct i2c_hid_desc	desc;
 
-	struct intr_config_hook	enum_hook;
 	hid_intr_t		*intr_handler;
 	void			*intr_context;
 	struct mtx		*intr_mtx;
@@ -908,30 +907,67 @@ iichid_set_protocol(device_t dev, uint16_t protocol)
 	return (ENOTSUP);
 }
 
-static void
-iichid_start(void *xdev)
+static int
+iichid_attach(device_t dev)
 {
-	device_t dev = xdev;
 	struct iichid_softc* sc = device_get_softc(dev);
+	ACPI_HANDLE handle;
+	ACPI_STATUS status;
+	ACPI_DEVICE_INFO *device_info;
 	int error;
 
-	config_intrhook_disestablish(&sc->enum_hook);
+	/* Fetch hardware settings from ACPI */
+#ifdef HAVE_ACPI_IICBUS
+	handle = acpi_get_handle(dev);
+#else
+	handle = iichid_get_handle(dev);
+#endif
+	if (handle == NULL)
+		return (ENXIO);
+
+	/* get ACPI HID. It is a base part of the evdev device name */
+	status = AcpiGetObjectInfo(handle, &device_info);
+	if (ACPI_FAILURE(status)) {
+		device_printf(dev, "error evaluating AcpiGetObjectInfo\n");
+		return (ENXIO);
+	}
+
+	DPRINTF(sc, "  ACPI Hardware ID  : %s\n",
+	    device_info->HardwareId.String);
+	DPRINTF(sc, "  IICbus addr       : 0x%02X\n", sc->addr >> 1);
+	DPRINTF(sc, "  HID descriptor reg: 0x%02X\n", sc->config_reg);
+
+	if (device_info->Valid & ACPI_VALID_HID)
+		strlcpy(sc->hw.name, device_info->HardwareId.String,
+		    sizeof(sc->hw.name));
+
+	AcpiOsFree(device_info);
+
+	sc->hw.parent = dev;
+	strlcpy(sc->hw.serial, "", sizeof(sc->hw.serial));
+	sc->hw.idBus = BUS_I2C;
+	sc->hw.idVendor = le16toh(sc->desc.wVendorID);
+	sc->hw.idProduct = le16toh(sc->desc.wProductID);
+	sc->hw.idVersion = le16toh(sc->desc.wVersionID);
 
 	error = iichid_set_power(sc, I2C_HID_POWER_ON);
 	if (error) {
 		device_printf(dev, "failed to power on: %d\n", error);
-		goto done;
+		return (ENXIO);
 	}
 	/*
 	 * Windows driver sleeps for 1ms between the SET_POWER and RESET
 	 * commands. So we too as some devices may depend on this.
 	 */
-	pause("iichid", (hz + 999) / 1000);
+	if (cold)
+		DELAY(1000);
+	else
+		tsleep(sc, 0, "iichid", (hz + 999) / 1000);
 
 	error = iichid_reset(sc);
 	if (error) {
 		device_printf(dev, "failed to reset hardware: %d\n", error);
-		goto done;
+		return (ENXIO);
 	}
 
 	sc->rep_desc = malloc(le16toh(sc->desc.wReportDescLength), M_DEVBUF,
@@ -941,7 +977,8 @@ iichid_start(void *xdev)
 	if (error) {
 		device_printf(dev, "failed to fetch report descriptor: %d\n",
 		    error);
-		goto done;
+		free (sc->rep_desc, M_TEMP);
+		return (ENXIO);
 	}
 
 	/*
@@ -956,9 +993,67 @@ iichid_start(void *xdev)
 		    sc->isize, le16toh(sc->desc.wMaxInputLength) - 2);
 	sc->ibuf = malloc(sc->isize, M_DEVBUF, M_WAITOK | M_ZERO);
 
+	sx_init(&sc->lock, device_get_nameunit(dev));
+
+	sc->power_on = false;
+	TASK_INIT(&sc->event_task, 0, iichid_event_task, sc);
+	TASK_INIT(&sc->power_task, 0, iichid_power_task, sc);
+	/* taskqueue_create can't fail with M_WAITOK mflag passed */
+	sc->taskqueue = taskqueue_create("imt_tq", M_WAITOK | M_ZERO,
+	    taskqueue_thread_enqueue, &sc->taskqueue);
+#ifdef IICHID_SAMPLING
+	TIMEOUT_TASK_INIT(sc->taskqueue, &sc->periodic_task, 0,
+	    iichid_event_task, sc);
+
+	sc->sampling_rate_slow = -1;
+	sc->sampling_rate_fast = IICHID_SAMPLING_RATE_FAST;
+	sc->sampling_hysteresis = IICHID_SAMPLING_HYSTERESIS;
+#endif
+
+	sc->irq_rid = 0;
+	sc->irq_res = bus_alloc_resource_any(sc->dev, SYS_RES_IRQ,
+	    &sc->irq_rid, RF_ACTIVE);
+
+	if (sc->irq_res != NULL) {
+		DPRINTF(sc, "allocated irq at 0x%lx and rid %d\n",
+		    (uint64_t)sc->irq_res, sc->irq_rid);
+		error = iichid_setup_interrupt(sc);
+	}
+
+	if (sc->irq_res == NULL || error != 0) {
+#ifdef IICHID_SAMPLING
+		device_printf(sc->dev,
+		    "Interrupt setup failed. Fallback to sampling\n");
+		sc->sampling_rate_slow = IICHID_SAMPLING_RATE_SLOW;
+#else
+		device_printf(sc->dev, "Interrupt setup failed\n");
+		error = ENXIO;
+		goto done;
+#endif
+	}
+
+#ifdef IICHID_SAMPLING
+	SYSCTL_ADD_PROC(device_get_sysctl_ctx(sc->dev),
+		SYSCTL_CHILDREN(device_get_sysctl_tree(sc->dev)),
+		OID_AUTO, "sampling_rate_slow", CTLTYPE_INT | CTLFLAG_RWTUN,
+		sc, 0, iichid_sysctl_sampling_rate_handler, "I",
+		"idle sampling rate in num/second");
+	SYSCTL_ADD_INT(device_get_sysctl_ctx(sc->dev),
+		SYSCTL_CHILDREN(device_get_sysctl_tree(sc->dev)),
+		OID_AUTO, "sampling_rate_fast", CTLTYPE_INT | CTLFLAG_RWTUN,
+		&sc->sampling_rate_fast, 0,
+		"active sampling rate in num/second");
+	SYSCTL_ADD_INT(device_get_sysctl_ctx(sc->dev),
+		SYSCTL_CHILDREN(device_get_sysctl_tree(sc->dev)),
+		OID_AUTO, "sampling_hysteresis", CTLTYPE_INT | CTLFLAG_RWTUN,
+		&sc->sampling_hysteresis, 0,
+		"number of missing samples before enabling of slow mode");
+#endif /* IICHID_SAMPLING */
+
 	sc->child = device_add_child(dev, "hidbus", -1);
 	if (sc->child == NULL) {
-		device_printf(sc->dev, "Could not add HIDbus device\n");
+		device_printf(sc->dev, "Could not add I2C device\n");
+		error = ENXIO;
 		goto done;
 	}
 
@@ -969,6 +1064,7 @@ iichid_start(void *xdev)
 
 done:
 	(void)iichid_set_power(sc, I2C_HID_POWER_OFF);
+	return (error);
 }
 
 static int
@@ -1023,125 +1119,6 @@ iichid_probe(device_t dev)
 
 	sc->probe_result = BUS_PROBE_DEFAULT;
 	return (sc->probe_result);
-}
-
-static int
-iichid_attach(device_t dev)
-{
-	struct iichid_softc* sc = device_get_softc(dev);
-	ACPI_HANDLE handle;
-	ACPI_STATUS status;
-	ACPI_DEVICE_INFO *device_info;
-	int error;
-
-	/* Fetch hardware settings from ACPI */
-#ifdef HAVE_ACPI_IICBUS
-	handle = acpi_get_handle(dev);
-#else
-	handle = iichid_get_handle(dev);
-#endif
-	if (handle == NULL)
-		return (ENXIO);
-
-	/* get ACPI HID. It is a base part of the evdev device name */
-	status = AcpiGetObjectInfo(handle, &device_info);
-	if (ACPI_FAILURE(status)) {
-		device_printf(dev, "error evaluating AcpiGetObjectInfo\n");
-		return (ENXIO);
-	}
-
-	DPRINTF(sc, "  ACPI Hardware ID  : %s\n",
-	    device_info->HardwareId.String);
-	DPRINTF(sc, "  IICbus addr       : 0x%02X\n", sc->addr >> 1);
-	DPRINTF(sc, "  HID descriptor reg: 0x%02X\n", sc->config_reg);
-
-	if (device_info->Valid & ACPI_VALID_HID)
-		strlcpy(sc->hw.name, device_info->HardwareId.String,
-		    sizeof(sc->hw.name));
-
-	AcpiOsFree(device_info);
-
-	sc->hw.parent = dev;
-	strlcpy(sc->hw.serial, "", sizeof(sc->hw.serial));
-	sc->hw.idBus = BUS_I2C;
-	sc->hw.idVendor = le16toh(sc->desc.wVendorID);
-	sc->hw.idProduct = le16toh(sc->desc.wProductID);
-	sc->hw.idVersion = le16toh(sc->desc.wVersionID);
-
-#ifdef IICHID_SAMPLING
-	sc->sampling_rate_slow = -1;
-	sc->sampling_rate_fast = IICHID_SAMPLING_RATE_FAST;
-	sc->sampling_hysteresis = IICHID_SAMPLING_HYSTERESIS;
-#endif
-
-	sc->irq_rid = 0;
-	sc->irq_res = bus_alloc_resource_any(sc->dev, SYS_RES_IRQ,
-	    &sc->irq_rid, RF_ACTIVE);
-
-	if (sc->irq_res != NULL) {
-		DPRINTF(sc, "allocated irq at 0x%lx and rid %d\n",
-		    (uint64_t)sc->irq_res, sc->irq_rid);
-		error = iichid_setup_interrupt(sc);
-	}
-
-	if (sc->irq_res == NULL || error != 0) {
-		if (sc->irq_res != NULL)
-			bus_release_resource(dev, SYS_RES_IRQ, sc->irq_rid,
-			    sc->irq_res);
-#ifdef IICHID_SAMPLING
-		device_printf(sc->dev,
-		    "Interrupt setup failed. Fallback to sampling\n");
-		sc->sampling_rate_slow = IICHID_SAMPLING_RATE_SLOW;
-#else
-		device_printf(sc->dev, "Interrupt setup failed\n");
-		return (ENXIO);
-#endif
-	}
-
-#ifdef IICHID_SAMPLING
-	SYSCTL_ADD_PROC(device_get_sysctl_ctx(sc->dev),
-		SYSCTL_CHILDREN(device_get_sysctl_tree(sc->dev)),
-		OID_AUTO, "sampling_rate_slow", CTLTYPE_INT | CTLFLAG_RWTUN,
-		sc, 0, iichid_sysctl_sampling_rate_handler, "I",
-		"idle sampling rate in num/second");
-	SYSCTL_ADD_INT(device_get_sysctl_ctx(sc->dev),
-		SYSCTL_CHILDREN(device_get_sysctl_tree(sc->dev)),
-		OID_AUTO, "sampling_rate_fast", CTLTYPE_INT | CTLFLAG_RWTUN,
-		&sc->sampling_rate_fast, 0,
-		"active sampling rate in num/second");
-	SYSCTL_ADD_INT(device_get_sysctl_ctx(sc->dev),
-		SYSCTL_CHILDREN(device_get_sysctl_tree(sc->dev)),
-		OID_AUTO, "sampling_hysteresis", CTLTYPE_INT | CTLFLAG_RWTUN,
-		&sc->sampling_hysteresis, 0,
-		"number of missing samples before enabling of slow mode");
-#endif /* IICHID_SAMPLING */
-
-	sx_init(&sc->lock, device_get_nameunit(dev));
-
-	sc->power_on = false;
-	TASK_INIT(&sc->event_task, 0, iichid_event_task, sc);
-	TASK_INIT(&sc->power_task, 0, iichid_power_task, sc);
-	/* taskqueue_create can't fail with M_WAITOK mflag passed */
-	sc->taskqueue = taskqueue_create("imt_tq", M_WAITOK | M_ZERO,
-	    taskqueue_thread_enqueue, &sc->taskqueue);
-#ifdef IICHID_SAMPLING
-	TIMEOUT_TASK_INIT(sc->taskqueue, &sc->periodic_task, 0,
-	    iichid_event_task, sc);
-#endif
-
-	sc->enum_hook.ich_func = iichid_start;
-	sc->enum_hook.ich_arg = sc->dev;
-
-	/*
-	 * Wait until interrupts are enabled. I2C read and write
-	 * utilize sleeps when interrupts are available.
-	 */
-	if (config_intrhook_establish(&sc->enum_hook) != 0)
-		error = ENOMEM;
-	else
-		error = 0;
-
-	return (error);
 }
 
 static int
