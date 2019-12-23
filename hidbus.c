@@ -45,6 +45,10 @@ __FBSDID("$FreeBSD$");
 #define	HID_DEBUG_VAR	hid_debug
 #include "hid_debug.h"
 
+#if __FreeBSD_version >= 1300067
+#define HAVE_BUS_DELAYED_ATTACH_CHILDREN
+#endif
+
 static hid_intr_t	hidbus_intr;
 
 static device_probe_t	hidbus_probe;
@@ -129,19 +133,17 @@ hidbus_attach(device_t dev)
 	void *d_ptr;
 	uint16_t d_len;
 	int error;
+	bool is_keyboard;
 
 	sc->dev = dev;
 	STAILQ_INIT(&sc->tlcs);
 
 	if (HID_GET_REPORT_DESCR(device_get_parent(dev), &d_ptr, &d_len) != 0)
 		return (ENXIO);
+	is_keyboard = hid_is_keyboard(d_ptr, d_len) != 0;
 
 	mtx_init(&sc->mtx, "hidbus lock", NULL, MTX_DEF);
-	if (hid_is_keyboard(d_ptr, d_len))
-		sc->lock = HID_SYSCONS_MTX;
-	else
-		sc->lock = &sc->mtx;
-
+	sc->lock = is_keyboard ? HID_SYSCONS_MTX : &sc->mtx;
 
 	HID_INTR_SETUP(device_get_parent(dev), sc->lock, hidbus_intr, sc);
 
@@ -151,8 +153,15 @@ hidbus_attach(device_t dev)
 		return (ENXIO);
 	}
 
-	error = bus_generic_attach(dev);
-	if (error)
+	if (is_keyboard)
+		error = bus_generic_attach(dev);
+	else
+#ifdef HAVE_BUS_DELAYED_ATTACH_CHILDREN
+		error = bus_delayed_attach_children(dev);
+#else
+		config_intrhook_oneshot((ich_func_t)bus_generic_attach, dev);
+#endif
+	if (error != 0)
 		device_printf(dev, "failed to attach child: error %d\n", error);
 
 	return (0);
