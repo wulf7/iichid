@@ -80,7 +80,6 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/ioccom.h>
 #include <sys/filio.h>
-#include <sys/tty.h>
 #include <sys/kbio.h>
 
 #include <dev/kbd/kbdreg.h>
@@ -1117,7 +1116,7 @@ hkbd_attach(device_t dev)
 	sc->sc_flags |= HKBD_FLAG_ATTACHED;
 
 	if (bootverbose) {
-		genkbd_diag(kbd, bootverbose);
+		kbdd_diag(kbd, bootverbose);
 	}
 
 	/* start the keyboard */
@@ -2077,9 +2076,7 @@ static keyboard_switch_t hkbdsw = {
 	.clear_state = &hkbd_clear_state,
 	.get_state = &hkbd_get_state,
 	.set_state = &hkbd_set_state,
-	.get_fkeystr = &genkbd_get_fkeystr,
 	.poll = &hkbd_poll,
-	.diag = &genkbd_diag,
 };
 
 KEYBOARD_DRIVER(hkbd, hkbdsw, hkbd_configure);
