@@ -32,7 +32,7 @@ SRCS	+= acpi_if.h bus_if.h device_if.h iicbus_if.h
 SRCS	+= opt_acpi.h opt_usb.h opt_evdev.h
 # Revert 5d3a4a2 for compiling hkbd on pre 1300068 systems
 .if ${OSVERSION} >= 1300068
-SRCS	+= opt_kbd.h opt_ukbd.h hkbd.c
+SRCS	+= opt_kbd.h opt_hkbd.h hkbd.c
 .endif
 CFLAGS	+= -DHID_DEBUG
 CFLAGS	+= -DEVDEV_SUPPORT

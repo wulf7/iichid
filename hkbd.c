@@ -40,7 +40,7 @@ __FBSDID("$FreeBSD$");
  */
 
 #include "opt_kbd.h"
-#include "opt_ukbd.h"
+#include "opt_hkbd.h"
 #include "opt_evdev.h"
 
 #include <sys/stdint.h>
