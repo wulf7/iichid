@@ -311,7 +311,8 @@ iichid_cmd_read(struct iichid_softc* sc, void *buf, uint16_t maxlen,
 	if (error == 0 && actual_len != NULL)
 		*actual_len = actlen;
 
-	/* DPRINTF(sc, "%*D - %*D\n", 2, actbuf, " ", actlen, buf, " "); */
+	DPRINTFN(sc, 5,
+	    "%*D - %*D\n", 2, actbuf, " ", msgs[0].len, msgs[0].buf, " ");
 
 	return (error);
 }
