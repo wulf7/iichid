@@ -36,8 +36,6 @@ enum hconf_input_mode {
 	HCONF_INPUT_MODE_MT_TOUCHPAD	= 0x3,
 };
 
-struct hconf_softc;
-
-int	hconf_set_input_mode(struct hconf_softc *, enum hconf_input_mode);
+int	hconf_set_input_mode(device_t, enum hconf_input_mode);
 
 #endif	/* _HCONF_H_ */

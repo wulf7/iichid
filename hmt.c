@@ -816,7 +816,6 @@ hmt_set_input_mode(struct hmt_softc *sc, enum hconf_input_mode mode)
 {
 	devclass_t hconf_devclass;
 	device_t *children, hidbus, hconf = NULL;
-	struct hconf_softc *hconf_sc;
 	int ccount, i, error;
 
 	GIANT_REQUIRED;
@@ -847,9 +846,9 @@ hmt_set_input_mode(struct hmt_softc *sc, enum hconf_input_mode mode)
 	if (device_get_devclass(hconf) != hconf_devclass)
 		return (ENXIO);
 
+	/* hconf_set_input_mode can drop the Giant while sleeping */
 	device_busy(hconf);
-	hconf_sc = device_get_softc(hconf);
-	error = hconf_set_input_mode(hconf_sc, mode);
+	error = hconf_set_input_mode(hconf, mode);
 	device_unbusy(hconf);
 
 	return (error);

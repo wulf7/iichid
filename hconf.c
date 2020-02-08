@@ -96,6 +96,38 @@ static const struct hid_device_id hconf_devs[] = {
 };
 
 static int
+hconf_set_input_mode_impl(struct hconf_softc *sc, enum hconf_input_mode mode)
+{
+	uint8_t *fbuf;
+	int error;
+
+	if (sc->input_mode_rlen <= 1)
+		return (ENXIO);
+
+	fbuf = malloc(sc->input_mode_rlen, M_TEMP, M_WAITOK | M_ZERO);
+
+	/* Input Mode report is not strictly required to be readable */
+	error = hid_get_report(sc->dev, fbuf, sc->input_mode_rlen, NULL,
+	    HID_FEATURE_REPORT, sc->input_mode_rid);
+	if (error)
+		bzero(fbuf + 1, sc->input_mode_rlen - 1);
+
+	fbuf[0] = sc->input_mode_rid;
+	hid_put_data_unsigned(fbuf + 1, sc->input_mode_rlen - 1,
+	    &sc->input_mode_loc, mode);
+
+	error = hid_set_report(sc->dev, fbuf, sc->input_mode_rlen,
+	    HID_FEATURE_REPORT, sc->input_mode_rid);
+
+	free(fbuf, M_TEMP);
+
+	if (error == 0)
+		sc->input_mode = mode;
+
+	return (error);
+}
+
+static int
 hconf_probe(device_t dev)
 {
 	int error;
@@ -156,7 +188,7 @@ hconf_resume(device_t dev)
 	int error;
 
 	if (sc->input_mode_rlen > 1) {
-		error = hconf_set_input_mode(sc, sc->input_mode);
+		error = hconf_set_input_mode_impl(sc, sc->input_mode);
 		if (error)
 			DPRINTF("Failed to set input mode: %d\n", error);
 	}
@@ -165,35 +197,11 @@ hconf_resume(device_t dev)
 }
 
 int
-hconf_set_input_mode(struct hconf_softc *sc, enum hconf_input_mode mode)
+hconf_set_input_mode(device_t dev, enum hconf_input_mode mode)
 {
-	uint8_t *fbuf;
-	int error;
+	struct hconf_softc *sc = device_get_softc(dev);
 
-	if (sc->input_mode_rlen <= 1)
-		return (ENXIO);
-
-	fbuf = malloc(sc->input_mode_rlen, M_TEMP, M_WAITOK | M_ZERO);
-
-	/* Input Mode report is not strictly required to be readable */
-	error = hid_get_report(sc->dev, fbuf, sc->input_mode_rlen, NULL,
-	    HID_FEATURE_REPORT, sc->input_mode_rid);
-	if (error)
-		bzero(fbuf + 1, sc->input_mode_rlen - 1);
-
-	fbuf[0] = sc->input_mode_rid;
-	hid_put_data_unsigned(fbuf + 1, sc->input_mode_rlen - 1,
-	    &sc->input_mode_loc, mode);
-
-	error = hid_set_report(sc->dev, fbuf, sc->input_mode_rlen,
-	    HID_FEATURE_REPORT, sc->input_mode_rid);
-
-	free(fbuf, M_TEMP);
-
-	if (error == 0)
-		sc->input_mode = mode;
-
-	return (error);
+	return (hconf_set_input_mode_impl(sc, mode));
 }
 
 DRIVER_MODULE(hconf, hidbus, hconf_driver, hconf_devclass, NULL, 0);
