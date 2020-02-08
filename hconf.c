@@ -39,9 +39,9 @@ __FBSDID("$FreeBSD$");
 #include <sys/lock.h>
 #include <sys/malloc.h>
 #include <sys/module.h>
-#include <sys/mutex.h>
 #include <sys/sysctl.h>
 #include <sys/systm.h>
+#include <sys/sx.h>
 
 #include "hid.h"
 #include "hidbus.h"
@@ -62,7 +62,9 @@ SYSCTL_INT(_hw_hid_hconf, OID_AUTO, debug, CTLFLAG_RWTUN,
 
 struct hconf_softc {
 	device_t		dev;
-	uint32_t		input_mode;
+	struct sx		lock;
+
+	u_int			input_mode;
 	struct hid_location	input_mode_loc;
 	uint32_t		input_mode_rlen;
 	uint8_t			input_mode_rid;
@@ -105,11 +107,12 @@ hconf_set_input_mode_impl(struct hconf_softc *sc, enum hconf_input_mode mode)
 		return (ENXIO);
 
 	fbuf = malloc(sc->input_mode_rlen, M_TEMP, M_WAITOK | M_ZERO);
+	sx_xlock(&sc->lock);
 
 	/* Input Mode report is not strictly required to be readable */
 	error = hid_get_report(sc->dev, fbuf, sc->input_mode_rlen, NULL,
 	    HID_FEATURE_REPORT, sc->input_mode_rid);
-	if (error)
+	if (error != 0)
 		bzero(fbuf + 1, sc->input_mode_rlen - 1);
 
 	fbuf[0] = sc->input_mode_rid;
@@ -118,13 +121,32 @@ hconf_set_input_mode_impl(struct hconf_softc *sc, enum hconf_input_mode mode)
 
 	error = hid_set_report(sc->dev, fbuf, sc->input_mode_rlen,
 	    HID_FEATURE_REPORT, sc->input_mode_rid);
-
-	free(fbuf, M_TEMP);
-
 	if (error == 0)
 		sc->input_mode = mode;
 
+	sx_unlock(&sc->lock);
+	free(fbuf, M_TEMP);
+
 	return (error);
+}
+
+static int
+hconf_input_mode_handler(SYSCTL_HANDLER_ARGS)
+{
+	struct hconf_softc *sc = arg1;
+	u_int value;
+	int error;
+
+	value = sc->input_mode;
+	error = sysctl_handle_int(oidp, &value, 0, req);
+	if (error != 0 || req->newptr == NULL)
+		return (error);
+
+	error = hconf_set_input_mode_impl(sc, value);
+	if (error)
+		DPRINTF("Failed to set input mode: %d\n", error);
+
+        return (0);
 }
 
 static int
@@ -143,6 +165,8 @@ static int
 hconf_attach(device_t dev)
 {
 	struct hconf_softc *sc = device_get_softc(dev);
+	struct sysctl_ctx_list *ctx = device_get_sysctl_ctx(dev);
+	struct sysctl_oid *tree = device_get_sysctl_tree(dev);
 	const struct hid_device_info *hw = hid_get_device_info(dev);
 	uint32_t flags;
 	void *d_ptr;
@@ -160,6 +184,7 @@ hconf_attach(device_t dev)
 	}
 
 	sc->dev = dev;
+	sx_init(&sc->lock, device_get_nameunit(dev));
 
 	tlc_index = hidbus_get_index(dev);
 
@@ -171,12 +196,21 @@ hconf_attach(device_t dev)
 		sc->input_mode_rlen = hid_report_size_1(d_ptr, d_len,
 		    hid_feature, sc->input_mode_rid);
 
+	if (sc->input_mode_rlen > 1)
+		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(tree), OID_AUTO,
+		    "input_mode", CTLTYPE_UINT | CTLFLAG_RW, sc, 0,
+		    hconf_input_mode_handler, "I",
+		    "HID device input mode: 0 = mouse, 3 = touchpad");
+
 	return (0);
 }
 
 static int
 hconf_detach(device_t dev)
 {
+	struct hconf_softc *sc = device_get_softc(dev);
+
+	sx_destroy(&sc->lock);
 
 	return (0);
 }
