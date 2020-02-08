@@ -121,8 +121,7 @@ struct iichid_softc {
 	struct task		event_task;
 	struct task		power_task;
 
-	/* XXX: Need barriers or atomic type? */
-	volatile bool		open;
+	bool			open;
 	bool			suspend;
 	bool			power_on;
 };
@@ -635,12 +634,21 @@ iichid_set_power_state(struct iichid_softc *sc, enum iichid_powerstate_how how)
 		break;
 	}
 
+	mtx_lock(sc->intr_mtx);
+again:
 	power_on = sc->open & !sc->suspend;
+	mtx_unlock(sc->intr_mtx);
+
 	if (power_on != sc->power_on) {
 		error = iichid_set_power(sc,
 		    power_on ? I2C_HID_POWER_ON : I2C_HID_POWER_OFF);
-#ifdef IICHID_SAMPLING
+
+		sc->power_on = power_on;
 		mtx_lock(sc->intr_mtx);
+		/* Redo command if sc->open has been changed */
+		if (power_on != (sc->open & !sc->suspend))
+			goto again;
+#ifdef IICHID_SAMPLING
 		if (sc->sampling_rate_slow >= 0 && sc->intr_handler != NULL) {
 			if (power_on) {
 				iichid_setup_callout(sc);
@@ -648,9 +656,8 @@ iichid_set_power_state(struct iichid_softc *sc, enum iichid_powerstate_how how)
 			} else
 				iichid_teardown_callout(sc);
 		}
-		mtx_unlock(sc->intr_mtx);
 #endif
-		sc->power_on = power_on;
+		mtx_unlock(sc->intr_mtx);
 	}
 
 	sx_unlock(&sc->lock);
