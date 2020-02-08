@@ -60,12 +60,21 @@ __FBSDID("$FreeBSD$");
 
 #include "iichid.h"
 
-#define IICHID_DEBUG
-
 #ifdef IICHID_DEBUG
-#define	DPRINTF(sc, ...)	device_printf((sc)->dev, __VA_ARGS__)
+static int iichid_debug = 1;
+
+static SYSCTL_NODE(_hw, OID_AUTO, iichid, CTLFLAG_RW, 0, "I2C HID");
+SYSCTL_INT(_hw_iichid, OID_AUTO, debug, CTLFLAG_RWTUN,
+    &iichid_debug, 1, "Debug level");
+
+#define	DPRINTFN(sc, n, ...) do {			\
+	if (iichid_debug >= (n))			\
+		device_printf((sc)->dev, __VA_ARGS__);	\
+} while (0)
+#define	DPRINTF(sc, ...)	DPRINTFN((sc), 1, __VA_ARGS__)
 #else
-#define	DPRINTF(sc, ...)
+#define	DPRINTFN(...)
+#define	DPRINTF(...)
 #endif
 
 #define	IICHID_SAMPLING

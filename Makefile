@@ -35,6 +35,7 @@ SRCS	+= opt_acpi.h opt_usb.h opt_evdev.h
 SRCS	+= opt_kbd.h opt_hkbd.h hkbd.c
 .endif
 CFLAGS	+= -DHID_DEBUG
+CFLAGS	+= -DIICHID_DEBUG
 CFLAGS	+= -DEVDEV_SUPPORT
 #CFLAGS	+= -DHAVE_ACPI_IICBUS
 #CFLAGS	+= -DHAVE_IG4_POLLING
