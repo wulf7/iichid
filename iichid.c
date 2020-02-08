@@ -1,6 +1,6 @@
 /*-
  * Copyright (c) 2018-2019 Marc Priggemeyer <marc.priggemeyer@gmail.com>
- * Copyright (c) 2019 Vladimir Kondratyev <wulf@FreeBSD.org>
+ * Copyright (c) 2019-2020 Vladimir Kondratyev <wulf@FreeBSD.org>
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -85,7 +85,6 @@ enum iichid_powerstate_how {
 struct iichid_softc {
 	device_t		dev;
 	device_t		child;
-	struct sx		lock;
 
 	bool			probe_done;
 	int			probe_result;
@@ -121,9 +120,9 @@ struct iichid_softc {
 	struct task		event_task;
 	struct task		power_task;
 
-	bool			open;
-	bool			suspend;
-	bool			power_on;
+	bool			open;		/* intr_mtx */
+	bool			suspend;	/* iicbus lock */
+	bool			power_on;	/* iicbus lock */
 };
 
 #ifdef IICHID_SAMPLING
@@ -263,7 +262,7 @@ iichid_get_handle(device_t dev)
 
 static int
 iichid_cmd_read(struct iichid_softc* sc, void *buf, uint16_t maxlen,
-    uint16_t *actual_len, bool do_poll)
+    uint16_t *actual_len)
 {
 	/*
 	 * 6.1.3 - Retrieval of Input Reports
@@ -274,24 +273,12 @@ iichid_cmd_read(struct iichid_softc* sc, void *buf, uint16_t maxlen,
 	struct iic_msg msgs[] = {
 	    { sc->addr, IIC_M_RD | IIC_M_NOSTOP, sizeof(actbuf), actbuf },
 	};
-	device_t parent = device_get_parent(sc->dev);
 	uint16_t actlen;
-	/*
-	 * Designware(IG4) driver-specific hack.
-	 * Requesting of an I2C bus with IIC_DONTWAIT parameter enables polled
-	 * mode in the driver, making possible iicbus_transfer execution from
-	 * interrupt handlers and callouts.
-	 */
-	int how = do_poll ? IIC_DONTWAIT : IIC_WAIT;
 	int error;
-
-	if (!HID_IN_POLLING_MODE_FUNC() &&
-	    iicbus_request_bus(parent, sc->dev, how) != 0)
-		return (IIC_EBUSBSY);
 
 	error = iicbus_transfer(sc->dev, msgs, nitems(msgs));
 	if (error != 0)
-		goto out;
+		return (error);
 
 	actlen = actbuf[0] | actbuf[1] << 8;
 	if (actlen <= 2 || actlen == 0xFFFF) {
@@ -316,9 +303,7 @@ iichid_cmd_read(struct iichid_softc* sc, void *buf, uint16_t maxlen,
 		*actual_len = actlen;
 
 	/* DPRINTF(sc, "%*D - %*D\n", 2, actbuf, " ", actlen, buf, " "); */
-out:
-	if (!HID_IN_POLLING_MODE_FUNC())
-		iicbus_release_bus(parent, sc->dev);
+
 	return (error);
 }
 
@@ -532,16 +517,28 @@ static void
 iichid_event_task(void *context, int pending)
 {
 	struct iichid_softc *sc = context;
+	device_t parent = device_get_parent(sc->dev);
 	uint16_t actual = 0;
+	bool locked = false;
 	int error;
 
-	error = iichid_cmd_read(sc, sc->ibuf, sc->isize, &actual, false);
-	if (error != 0) {
-		DPRINTF(sc, "read error occured: %d\n", error);
+	if (iicbus_request_bus(parent, sc->dev, IIC_WAIT) != 0)
+		goto rearm;
+
+	if (!sc->power_on) {
+		iicbus_release_bus(parent, sc->dev);
 		return;
 	}
 
+	error = iichid_cmd_read(sc, sc->ibuf, sc->isize, &actual);
+	iicbus_release_bus(parent, sc->dev);
+	if (error != 0) {
+		DPRINTF(sc, "read error occured: %d\n", error);
+		goto rearm;
+	}
+
 	mtx_lock(sc->intr_mtx);
+	locked = true;
 	if (actual > (sc->iid != 0 ? 1 : 0)) {
 		if (sc->open)
 			sc->intr_handler(sc->intr_context, sc->ibuf, actual);
@@ -555,6 +552,7 @@ iichid_event_task(void *context, int pending)
 		DPRINTF(sc, "no data received\n");
 #endif
 
+rearm:
 #ifdef IICHID_SAMPLING
 	if (sc->callout_setup && sc->sampling_rate_slow > 0 && sc->open) {
 		if (sc->missing_samples == sc->sampling_hysteresis)
@@ -564,7 +562,8 @@ iichid_event_task(void *context, int pending)
 		      sc->sampling_rate_slow : sc->sampling_rate_fast, 1));
 	}
 #endif
-	mtx_unlock(sc->intr_mtx);
+	if (locked)
+		mtx_unlock(sc->intr_mtx);
 }
 
 static void
@@ -572,29 +571,31 @@ iichid_intr(void *context)
 {
 	struct iichid_softc *sc = context;
 #ifdef HAVE_IG4_POLLING
+	device_t parent = device_get_parent(sc->dev);
 	uint16_t actual = 0;
 	int error;
-#endif
 
 	/*
-	 * 8.2 - SLEEP Power State:
-	 * - The DEVICE may send an interrupt to the HOST to request servicing
-	 *   (e.g. DEVICE wishes to remote wake the HOST).
-	 * - The HOST is responsible for setting the device into ON state
-	 *   if the DEVICE alerts via the interrupt line.
-	 * - If a HOST needs to communicate with the DEVICE it MUST issue
-	 *   a SET POWER command (to ON) before any other command.
-	 *
-	 * Ignore such an interrupts. Reading of input reports of I2C devices
-	 * residing in SLEEP state is not allowed and often returns a garbage.
+	 * Designware(IG4) driver-specific hack.
+	 * Requesting of an I2C bus with IIC_DONTWAIT parameter enables polled
+	 * mode in the driver, making possible iicbus_transfer execution from
+	 * interrupt handlers and callouts.
 	 */
-	if (!sc->power_on)
-		return;
+	if (iicbus_request_bus(parent, sc->dev, IIC_DONTWAIT) == 0) {
+		/*
+		 * Ignore interrupts while in SLEEP power state. Reading of
+		 * input reports of I2C devices residing in SLEEP state is not
+		 * allowed and often returns a garbage. If a HOST needs to
+		 * communicate with the DEVICE it MUST issue a SET POWER
+		 * command (to ON) before any other command.
+		 */
+		if (!sc->power_on) {
+			iicbus_release_bus(parent, sc->dev);
+			return;
+		}
 
-#ifdef HAVE_IG4_POLLING
-	if (taskqueue_poll_is_busy(sc->taskqueue, &sc->event_task) == 0 &&
-	    (error = iichid_cmd_read(
-	      sc, sc->ibuf, sc->isize, &actual, true)) != IIC_EBUSBSY) {
+		error = iichid_cmd_read(sc, sc->ibuf, sc->isize, &actual);
+		iicbus_release_bus(parent, sc->dev);
 		if (error != 0) {
 			DPRINTF(sc, "read error occured: %d\n", error);
 			return;
@@ -617,10 +618,17 @@ iichid_intr(void *context)
 static int
 iichid_set_power_state(struct iichid_softc *sc, enum iichid_powerstate_how how)
 {
+	device_t parent = device_get_parent(sc->dev);
 	int error = 0;
 	bool power_on;
 
-	sx_xlock(&sc->lock);
+	/*
+	 * Request iicbus early as sc->suspend and sc->power_on
+	 * are protected by iicbus internal lock.
+	 */
+	error = iicbus_request_bus(parent, sc->dev, IIC_WAIT);
+	if (error != 0)
+		return (error);
 
 	switch (how) {
 	case IICHID_PS_SUSPEND:
@@ -660,7 +668,7 @@ again:
 		mtx_unlock(sc->intr_mtx);
 	}
 
-	sx_unlock(&sc->lock);
+	iicbus_release_bus(parent, sc->dev);
 
 	return (error);
 }
@@ -864,7 +872,7 @@ iichid_intr_poll(device_t dev)
 	uint16_t actual = 0;
 	int error;
 
-	error = iichid_cmd_read(sc, sc->ibuf, sc->isize, &actual, false);
+	error = iichid_cmd_read(sc, sc->ibuf, sc->isize, &actual);
 	if (error == 0 && actual > (sc->iid != 0 ? 1 : 0) && sc->open)
 		sc->intr_handler(sc->intr_context, sc->ibuf, actual);
 }
@@ -887,8 +895,16 @@ static int
 iichid_read(device_t dev, void *buf, uint16_t maxlen, uint16_t *actlen)
 {
 	struct iichid_softc* sc = device_get_softc(dev);
+	device_t parent = device_get_parent(sc->dev);
+	int error;
 
-	return (iic2errno(iichid_cmd_read(sc, buf, maxlen, actlen, false)));
+	error = iicbus_request_bus(parent, sc->dev, IIC_WAIT);
+	if (error == 0) {
+		error = iichid_cmd_read(sc, buf, maxlen, actlen);
+		iicbus_release_bus(parent, sc->dev);
+	}
+
+	return (iic2errno(error));
 }
 
 static int
@@ -1017,8 +1033,6 @@ iichid_attach(device_t dev)
 		    " input report lengths mismatch\n",
 		    sc->isize, le16toh(sc->desc.wMaxInputLength) - 2);
 	sc->ibuf = malloc(sc->isize, M_DEVBUF, M_WAITOK | M_ZERO);
-
-	sx_init(&sc->lock, device_get_nameunit(dev));
 
 	sc->power_on = false;
 	TASK_INIT(&sc->event_task, 0, iichid_event_task, sc);
@@ -1168,8 +1182,6 @@ iichid_detach(device_t dev)
 
 	free(sc->rep_desc, M_DEVBUF);
 	free(sc->ibuf, M_DEVBUF);
-
-	sx_destroy(&sc->lock);
 
 	return (0);
 }
