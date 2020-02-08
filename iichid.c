@@ -76,6 +76,12 @@ static char *iichid_ids[] = {
 	NULL
 };
 
+enum iichid_powerstate_how {
+	IICHID_PS_NOCHANGE,
+	IICHID_PS_SUSPEND,
+	IICHID_PS_RESUME,
+};
+
 struct iichid_softc {
 	device_t		dev;
 	device_t		child;
@@ -610,12 +616,24 @@ iichid_intr(void *context)
 }
 
 static int
-iichid_set_power_state(struct iichid_softc *sc)
+iichid_set_power_state(struct iichid_softc *sc, enum iichid_powerstate_how how)
 {
 	int error = 0;
 	bool power_on;
 
-	sx_assert(&sc->lock, SA_XLOCKED);
+	sx_xlock(&sc->lock);
+
+	switch (how) {
+	case IICHID_PS_SUSPEND:
+		sc->suspend = true;
+		break;
+	case IICHID_PS_RESUME:
+		sc->suspend = false;
+		break;
+	case IICHID_PS_NOCHANGE:
+	default:
+		break;
+	}
 
 	power_on = sc->open & !sc->suspend;
 	if (power_on != sc->power_on) {
@@ -635,6 +653,8 @@ iichid_set_power_state(struct iichid_softc *sc)
 		sc->power_on = power_on;
 	}
 
+	sx_unlock(&sc->lock);
+
 	return (error);
 }
 
@@ -643,9 +663,7 @@ iichid_power_task(void *context, int pending)
 {
 	struct iichid_softc *sc = context;
 
-	sx_xlock(&sc->lock);
-	(void)iichid_set_power_state(sc);
-	sx_unlock(&sc->lock);
+	(void)iichid_set_power_state(sc, IICHID_PS_NOCHANGE);
 }
 
 static int
@@ -1241,11 +1259,7 @@ iichid_suspend(device_t dev)
 	 * is recommended to issue a HIPO command to the DEVICE to force
 	 * the DEVICE in to a lower power state
          */
-	sx_xlock(&sc->lock);
-	sc->suspend = true;
-	error = iichid_set_power_state(sc);
-	sx_unlock(&sc->lock);
-
+	error = iichid_set_power_state(sc, IICHID_PS_SUSPEND);
 	if (error != 0)
 		DPRINTF(sc, "Could not set power_state, error: %d\n", error);
 	else
@@ -1262,11 +1276,7 @@ iichid_resume(device_t dev)
 
 	DPRINTF(sc, "Resume called, setting device to power_state 0\n");
 
-	sx_xlock(&sc->lock);
-	sc->suspend = false;
-	error = iichid_set_power_state(sc);
-	sx_unlock(&sc->lock);
-
+	error = iichid_set_power_state(sc, IICHID_PS_RESUME);
 	if (error != 0)
 		DPRINTF(sc, "Could not set power_state, error: %d\n", error);
 	else
