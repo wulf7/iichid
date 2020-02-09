@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2014-2020 Vladimir Kondratyev <wulf@FreeBSD.org>
+ * Copyright (c) 2014-2019 Vladimir Kondratyev <wulf@FreeBSD.org>
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -178,15 +178,13 @@ static const struct hmt_hid_map_item hmt_hid_map[HMT_N_USAGES] = {
 	},
 };
 
-struct hmt_button {
-	uint32_t		usage;
-	struct hid_location	loc;
-};
-
 #define	USAGE_SUPPORTED(caps, usage)	bit_test(caps, usage)
 #define	HMT_FOREACH_USAGE(caps, usage)			\
 	for ((usage) = 0; (usage) < HMT_N_USAGES; ++(usage))	\
 		if (USAGE_SUPPORTED((caps), (usage)))
+#define	HMT_FOREACH_BUTTON(buttons, button)			\
+	for ((button) = 0; (button) < HMT_BTN_MAX; ++(button))	\
+		if (bit_test(buttons, button))
 
 struct hmt_softc {
 	device_t dev;
@@ -195,17 +193,18 @@ struct hmt_softc {
 	struct hid_absinfo      ai[HMT_N_USAGES];
 	struct hid_location     locs[MAX_MT_SLOTS][HMT_N_USAGES];
 	struct hid_location     cont_count_loc;
-	struct hmt_button	btns[HMT_BTN_MAX];
+	struct hid_location	btn_loc[HMT_BTN_MAX];
 
 	struct evdev_dev        *evdev;
 
 	uint32_t                slot_data[HMT_N_USAGES];
 	bitstr_t		bit_decl(caps, HMT_N_USAGES);
+	bitstr_t		bit_decl(buttons, HMT_BTN_MAX);
 	uint32_t                isize;
 	uint32_t                nconts_per_report;
 	uint32_t		nconts_todo;
 	uint8_t                 report_id;
-	uint32_t		nbuttons;
+	bool			has_buttons;
 	bool			is_clickpad;
 
 	struct hid_location     cont_max_loc;
@@ -314,7 +313,9 @@ hmt_attach(device_t dev)
 	struct hmt_softc *sc = device_get_softc(dev);
 	const struct hid_device_info *hw = hid_get_device_info(dev);
 	void *d_ptr, *fbuf = NULL;
-	uint16_t d_len, fsize, i;
+	uint16_t d_len, fsize;
+	int nbuttons;
+	size_t i;
 	int error;
 
 	device_set_desc(dev, hw->name);
@@ -389,10 +390,10 @@ hmt_attach(device_t dev)
 	}
 	evdev_support_event(sc->evdev, EV_SYN);
 	evdev_support_event(sc->evdev, EV_ABS);
-	if (sc->nbuttons != 0) {
+	if (sc->has_buttons) {
 		evdev_support_event(sc->evdev, EV_KEY);
-		for(i = BTN_MOUSE; i < BTN_MOUSE + sc->nbuttons; i++)
-			evdev_support_key(sc->evdev, i);
+		HMT_FOREACH_BUTTON(sc->buttons, i)
+			evdev_support_key(sc->evdev, BTN_MOUSE + i);
 	}
 	HMT_FOREACH_USAGE(sc->caps, i) {
 		if (hmt_hid_map[i].code != HMT_NO_CODE)
@@ -407,9 +408,10 @@ hmt_attach(device_t dev)
 	}
 
 	/* Announce information about the touch device */
+	bit_count(sc->buttons, 0, HMT_BTN_MAX, &nbuttons);
 	device_printf(sc->dev, "Multitouch %s with %d button%s%s\n",
 	    sc->type == HMT_TYPE_TOUCHSCREEN ? "touchscreen" : "touchpad",
-	    sc->nbuttons, sc->nbuttons != 1 ? "s" : "",
+	    nbuttons, nbuttons != 1 ? "s" : "",
 	    sc->is_clickpad ? ", click-pad" : "");
 	device_printf(sc->dev,
 	    "%d contacts with [%s%s%s%s%s] properties. Report range [%d:%d] - [%d:%d]\n",
@@ -580,20 +582,15 @@ hmt_intr(void *context, void *buf, uint16_t len)
 
 	sc->nconts_todo -= cont_count;
 	if (sc->nconts_todo == 0) {
-		for(btn = 0; btn < sc->nbuttons; btn++)
-			evdev_push_key(sc->evdev, BTN_MOUSE + btn,
-			    hid_get_data(buf, len, &sc->btns[btn].loc) != 0);
+		if (sc->has_buttons) {
+			HMT_FOREACH_BUTTON(sc->buttons, btn)
+				evdev_push_key(sc->evdev, BTN_MOUSE + btn,
+				    hid_get_data(buf,
+						 len,
+						 &sc->btn_loc[btn]) != 0);
+		}
 		evdev_sync(sc->evdev);
 	}
-}
-
-static int
-hmt_button_cmp(const void *p1, const void *p2)
-{
-	const struct hmt_button *left = p1;
-	const struct hmt_button *right = p2;
-
-	return ((left->usage > right->usage) - (left->usage < right->usage));
 }
 
 static enum hmt_type
@@ -607,7 +604,8 @@ hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, uint16_t d_len,
 	size_t i;
 	size_t cont = 0;
 	enum hmt_type type;
-	uint32_t nbuttons = 0;
+	int nbuttons = 0;
+	uint32_t btn;
 	int32_t cont_count_max = 0;
 	uint8_t report_id = 0;
 	bool finger_coll = false;
@@ -674,14 +672,12 @@ hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, uint16_t d_len,
 			else
 				break;
 
-			if (hi.collevel == 1 && hi.usage >> 16 == HUP_BUTTON) {
-				if (nbuttons < HMT_BTN_MAX) {
-					sc->btns[nbuttons].usage = hi.usage;
-					sc->btns[nbuttons].loc = hi.loc;
-					nbuttons++;
-				} else
-					DPRINTF("Button %u (%04x) ignored\n",
-					    nbuttons, hi.usage);
+			if (hi.collevel == 1 &&
+			    hi.usage > HID_USAGE2(HUP_BUTTON, 0) &&
+			    hi.usage <= HID_USAGE2(HUP_BUTTON, HMT_BTN_MAX)) {
+				btn = (hi.usage & 0xFFFF) - 1;
+				bit_set(sc->buttons, btn);
+				sc->btn_loc[btn] = hi.loc;
 				break;
 			}
 			if (hi.collevel == 1 && hi.usage ==
@@ -747,11 +743,9 @@ hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, uint16_t d_len,
 	}
 
 	/* Touchpads must have at least one button */
+	bit_count(sc->buttons, 0, HMT_BTN_MAX, &nbuttons);
 	if (type == HMT_TYPE_TOUCHPAD && nbuttons == 0)
 		return (HMT_TYPE_UNSUPPORTED);
-
-	/* Map HID usages to evdev events in an order of significance */
-	qsort(sc->btns, nbuttons, sizeof(struct hmt_button), hmt_button_cmp);
 
 	/*
 	 * According to specifications 'Contact Count Maximum' should be read
@@ -787,7 +781,7 @@ hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, uint16_t d_len,
 
 	sc->report_id = report_id;
 	sc->nconts_per_report = cont;
-	sc->nbuttons = nbuttons;
+	sc->has_buttons = nbuttons != 0;
 
 	return (type);
 }
