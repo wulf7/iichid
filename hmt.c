@@ -450,8 +450,8 @@ hmt_intr(void *context, void *buf, uint16_t len)
 	uint32_t cont_count;
 	uint32_t width;
 	uint32_t height;
-	uint32_t int_btn;
-	uint32_t left_btn;
+	uint32_t int_btn = 0;
+	uint32_t left_btn = 0;
 	int32_t slot;
 	uint8_t id;
 
