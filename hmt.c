@@ -182,9 +182,6 @@ static const struct hmt_hid_map_item hmt_hid_map[HMT_N_USAGES] = {
 #define	HMT_FOREACH_USAGE(caps, usage)			\
 	for ((usage) = 0; (usage) < HMT_N_USAGES; ++(usage))	\
 		if (USAGE_SUPPORTED((caps), (usage)))
-#define	HMT_FOREACH_BUTTON(buttons, button)			\
-	for ((button) = 0; (button) < HMT_BTN_MAX; ++(button))	\
-		if (bit_test(buttons, button))
 
 struct hmt_softc {
 	device_t dev;
@@ -194,6 +191,7 @@ struct hmt_softc {
 	struct hid_location     locs[MAX_MT_SLOTS][HMT_N_USAGES];
 	struct hid_location     cont_count_loc;
 	struct hid_location	btn_loc[HMT_BTN_MAX];
+	struct hid_location	int_btn_loc;
 
 	struct evdev_dev        *evdev;
 
@@ -204,7 +202,8 @@ struct hmt_softc {
 	uint32_t                nconts_per_report;
 	uint32_t		nconts_todo;
 	uint8_t                 report_id;
-	bool			has_buttons;
+	uint32_t		max_button;
+	bool			has_int_button;
 	bool			is_clickpad;
 
 	struct hid_location     cont_max_loc;
@@ -314,7 +313,7 @@ hmt_attach(device_t dev)
 	const struct hid_device_info *hw = hid_get_device_info(dev);
 	void *d_ptr, *fbuf = NULL;
 	uint16_t d_len, fsize;
-	int nbuttons;
+	int nbuttons, btn;
 	size_t i;
 	int error;
 
@@ -390,10 +389,13 @@ hmt_attach(device_t dev)
 	}
 	evdev_support_event(sc->evdev, EV_SYN);
 	evdev_support_event(sc->evdev, EV_ABS);
-	if (sc->has_buttons) {
+	if (sc->max_button != 0 || sc->has_int_button) {
 		evdev_support_event(sc->evdev, EV_KEY);
-		HMT_FOREACH_BUTTON(sc->buttons, i)
-			evdev_support_key(sc->evdev, BTN_MOUSE + i);
+		if (sc->has_int_button)
+			evdev_support_key(sc->evdev, BTN_LEFT);
+		for (btn = 0; btn < sc->max_button; ++btn)
+			if (bit_test(sc->buttons, btn))
+				evdev_support_key(sc->evdev, BTN_MOUSE + btn);
 	}
 	HMT_FOREACH_USAGE(sc->caps, i) {
 		if (hmt_hid_map[i].code != HMT_NO_CODE)
@@ -409,7 +411,7 @@ hmt_attach(device_t dev)
 
 	/* Announce information about the touch device */
 	bit_count(sc->buttons, 0, HMT_BTN_MAX, &nbuttons);
-	device_printf(sc->dev, "Multitouch %s with %d button%s%s\n",
+	device_printf(sc->dev, "Multitouch %s with %d external button%s%s\n",
 	    sc->type == HMT_TYPE_TOUCHSCREEN ? "touchscreen" : "touchpad",
 	    nbuttons, nbuttons != 1 ? "s" : "",
 	    sc->is_clickpad ? ", click-pad" : "");
@@ -448,6 +450,8 @@ hmt_intr(void *context, void *buf, uint16_t len)
 	uint32_t cont_count;
 	uint32_t width;
 	uint32_t height;
+	uint32_t int_btn;
+	uint32_t left_btn;
 	int32_t slot;
 	uint8_t id;
 
@@ -582,8 +586,17 @@ hmt_intr(void *context, void *buf, uint16_t len)
 
 	sc->nconts_todo -= cont_count;
 	if (sc->nconts_todo == 0) {
-		if (sc->has_buttons) {
-			HMT_FOREACH_BUTTON(sc->buttons, btn)
+		/* Report both the click and external left btns as BTN_LEFT */
+		if (sc->has_int_button)
+			int_btn = hid_get_data(buf, len, &sc->int_btn_loc);
+		if (sc->max_button != 0 && bit_test(sc->buttons, 0))
+			left_btn = hid_get_data(buf, len, &sc->btn_loc[0]);
+		if (sc->has_int_button ||
+		    (sc->max_button != 0 && bit_test(sc->buttons, 0)))
+			evdev_push_key(sc->evdev, BTN_LEFT,
+			    int_btn != 0 | left_btn != 0);
+		for (btn = 1; btn < sc->max_button; ++btn) {
+			if (bit_test(sc->buttons, btn))
 				evdev_push_key(sc->evdev, BTN_MOUSE + btn,
 				    hid_get_data(buf,
 						 len,
@@ -604,24 +617,38 @@ hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, uint16_t d_len,
 	size_t i;
 	size_t cont = 0;
 	enum hmt_type type;
-	int nbuttons = 0;
-	uint32_t btn;
+	uint32_t left_btn, btn;
 	int32_t cont_count_max = 0;
 	uint8_t report_id = 0;
 	bool finger_coll = false;
 	bool cont_count_found = false;
 	bool scan_time_found = false;
+	bool has_int_button = false;
 
 #define HMT_HI_ABSOLUTE(hi)	\
 	(((hi).flags & (HIO_CONST|HIO_VARIABLE|HIO_RELATIVE)) == HIO_VARIABLE)
 #define	HUMS_THQA_CERT	0xC5
 
+	/*
+	 * Get left button usage taking in account MS Precision Touchpad specs.
+	 * For Windows PTP report descriptor assigns buttons in following way:
+	 * Button 1 - Indicates Button State for touchpad button integrated
+	 *            with digitizer.
+	 * Button 2 - Indicates Button State for external button for primary
+	 *            (default left) clicking.
+	 * Button 3 - Indicates Button State for external button for secondary
+	 *            (default right) clicking.
+	 * If a device only supports external buttons, it must still use
+	 * Button 2 and Button 3 to reference the external buttons.
+	 */
 	switch (tlc_usage) {
 	case HID_USAGE2(HUP_DIGITIZERS, HUD_TOUCHSCREEN):
 		type = HMT_TYPE_TOUCHSCREEN;
+		left_btn = 1;
 		break;
 	case HID_USAGE2(HUP_DIGITIZERS, HUD_TOUCHPAD):
 		type = HMT_TYPE_TOUCHPAD;
+		left_btn = 2;
 		break;
 	default:
 		return (HMT_TYPE_UNSUPPORTED);
@@ -672,12 +699,20 @@ hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, uint16_t d_len,
 			else
 				break;
 
+			if (hi.collevel == 1 && left_btn == 2 &&
+			    hi.usage == HID_USAGE2(HUP_BUTTON, 1)) {
+				has_int_button = true;
+				sc->int_btn_loc = hi.loc;
+				break;
+			}
 			if (hi.collevel == 1 &&
-			    hi.usage > HID_USAGE2(HUP_BUTTON, 0) &&
+			    hi.usage >= HID_USAGE2(HUP_BUTTON, left_btn) &&
 			    hi.usage <= HID_USAGE2(HUP_BUTTON, HMT_BTN_MAX)) {
-				btn = (hi.usage & 0xFFFF) - 1;
+				btn = (hi.usage & 0xFFFF) - left_btn;
 				bit_set(sc->buttons, btn);
 				sc->btn_loc[btn] = hi.loc;
+				if (btn >= sc->max_button)
+					sc->max_button = btn + 1;
 				break;
 			}
 			if (hi.collevel == 1 && hi.usage ==
@@ -743,8 +778,7 @@ hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, uint16_t d_len,
 	}
 
 	/* Touchpads must have at least one button */
-	bit_count(sc->buttons, 0, HMT_BTN_MAX, &nbuttons);
-	if (type == HMT_TYPE_TOUCHPAD && nbuttons == 0)
+	if (type == HMT_TYPE_TOUCHPAD && !sc->max_button && !has_int_button)
 		return (HMT_TYPE_UNSUPPORTED);
 
 	/*
@@ -781,7 +815,7 @@ hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, uint16_t d_len,
 
 	sc->report_id = report_id;
 	sc->nconts_per_report = cont;
-	sc->has_buttons = nbuttons != 0;
+	sc->has_int_button = has_int_button;
 
 	return (type);
 }
