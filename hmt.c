@@ -218,7 +218,6 @@ struct hmt_softc {
 
 static enum hmt_type hmt_hid_parse(struct hmt_softc *, const void *, uint16_t,
     uint32_t, uint8_t);
-static void hmt_devcaps_parse(struct hmt_softc *, const void *, uint16_t);
 static int hmt_set_input_mode(struct hmt_softc *, enum hconf_input_mode);
 
 static hid_intr_t		hmt_intr;
@@ -311,8 +310,10 @@ hmt_attach(device_t dev)
 {
 	struct hmt_softc *sc = device_get_softc(dev);
 	const struct hid_device_info *hw = hid_get_device_info(dev);
-	void *d_ptr, *fbuf = NULL;
+	void *d_ptr;
+	uint8_t *fbuf = NULL;
 	uint16_t d_len, fsize;
+	uint32_t cont_count_max;
 	int nbuttons, btn;
 	size_t i;
 	int error;
@@ -336,13 +337,34 @@ hmt_attach(device_t dev)
 	if (sc->cont_max_rlen > 1) {
 		error = hid_get_report(dev, fbuf, sc->cont_max_rlen, NULL,
 		    HID_FEATURE_REPORT, sc->cont_max_rid);
-		if (error == 0)
-			hmt_devcaps_parse(sc, fbuf, sc->cont_max_rlen);
-		else
+		if (error == 0) {
+			cont_count_max = hid_get_udata(fbuf + 1,
+			    sc->cont_max_rlen - 1, &sc->cont_max_loc);
+			/*
+			 * Feature report is a primary source of
+			 * 'Contact Count Maximum'
+			 */
+			if (cont_count_max > 0)
+				sc->ai[HMT_SLOT].max = cont_count_max - 1;
+		} else
 			DPRINTF("usbd_req_get_report error=%d\n", error);
 	} else
 		DPRINTF("Feature report %hhu size invalid: %u\n",
 		    sc->cont_max_rid, sc->cont_max_rlen);
+
+	/* Fetch and parse "Button type" feature report */
+	if (sc->btn_type_rlen > 1 && sc->btn_type_rid != sc->cont_max_rid) {
+		bzero(fbuf, fsize);
+		error = hid_get_report(dev, fbuf, sc->btn_type_rlen, NULL,
+		    HID_FEATURE_REPORT, sc->btn_type_rid);
+	}
+	if (sc->btn_type_rlen > 1) {
+		if (error == 0)
+			sc->is_clickpad = hid_get_udata(fbuf + 1,
+			    sc->btn_type_rlen - 1, &sc->btn_type_loc) == 0;
+		else
+			DPRINTF("usbd_req_get_report error=%d\n", error);
+	}
 
 	/* Fetch THQA certificate to enable some devices like WaveShare */
 	if (sc->thqa_cert_rlen > 1 && sc->thqa_cert_rid != sc->cont_max_rid)
@@ -818,25 +840,6 @@ hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, uint16_t d_len,
 	sc->has_int_button = has_int_button;
 
 	return (type);
-}
-
-/* Device capabilities feature report */
-static void
-hmt_devcaps_parse(struct hmt_softc *sc, const void *r_ptr, uint16_t r_len)
-{
-	uint32_t cont_count_max;
-	const uint8_t *rep = (const uint8_t *)r_ptr + 1;
-	uint16_t len = r_len - 1;
-
-	/* Feature report is a primary source of 'Contact Count Maximum' */
-	cont_count_max = hid_get_udata(rep, len, &sc->cont_max_loc);
-	if (cont_count_max > 0)
-		sc->ai[HMT_SLOT].max = cont_count_max - 1;
-
-	/* Assume that contact count shares the same report */
-	if (sc->btn_type_rid == sc->cont_max_rid)
-		sc->is_clickpad =
-		    hid_get_udata(rep, len, &sc->btn_type_loc) == 0;
 }
 
 static int
