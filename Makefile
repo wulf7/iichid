@@ -22,9 +22,10 @@ OSVERSION!=	awk '/^\#define[[:space:]]*__FreeBSD_version/ { print $$3 }' \
 .endif
 
 KMOD	= iichid
-SRCS	= iichid.c iichid.h hconf.c hconf.h hms.c hmt.c hpen.c
+SRCS	= iichid.c iichid.h hconf.c hconf.h hms.c hmt.c hpen.c hsctrl.c
 SRCS	+= hidbus.c hidbus.h hid_if.c hid_if.h hid.c hid.h hid_lookup.c
 SRCS	+= hid_debug.h hid_debug.c
+SRCS	+= hmap.h hmap.c
 SRCS	+= usbdevs.h usbhid.c
 SRCS	+= acpi_if.h bus_if.h device_if.h iicbus_if.h
 SRCS	+= opt_acpi.h opt_usb.h opt_evdev.h
