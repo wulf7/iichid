@@ -1,12 +1,7 @@
 /*-
  * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
  *
- * Copyright (c) 1998 The NetBSD Foundation, Inc.
- * Copyright (c) 2019 Vladimir Kondratyev <wulf@FreeBSD.org>
- *
- * This code is derived from software contributed to The NetBSD Foundation
- * by Lennart Augustsson (lennart@augustsson.net) at
- * Carlstedt Research & Technology.
+ * Copyright (c) 2020 Vladimir Kondratyev <wulf@FreeBSD.org>
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -17,17 +12,17 @@
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
  *
- * THIS SOFTWARE IS PROVIDED BY THE NETBSD FOUNDATION, INC. AND CONTRIBUTORS
- * ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
- * TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE FOUNDATION OR CONTRIBUTORS
- * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
  */
 
 #include <sys/cdefs.h>
@@ -37,24 +32,18 @@ __FBSDID("$FreeBSD$");
  * HID spec: https://www.usb.org/sites/default/files/documents/hid1_11.pdf
  */
 
-#include <sys/stdint.h>
-#include <sys/stddef.h>
 #include <sys/param.h>
-#include <sys/types.h>
-#include <sys/systm.h>
-#include <sys/kernel.h>
 #include <sys/bus.h>
+#include <sys/kernel.h>
 #include <sys/module.h>
-#include <sys/lock.h>
-#include <sys/mutex.h>
 #include <sys/sysctl.h>
-#include <sys/sbuf.h>
 
 #include <dev/evdev/input.h>
 #include <dev/evdev/evdev.h>
 
 #include "hid.h"
 #include "hidbus.h"
+#include "hmap.h"
 
 #define	HID_DEBUG_VAR	hms_debug
 #include "hid_debug.h"
@@ -67,277 +56,139 @@ SYSCTL_INT(_hw_hid_hms, OID_AUTO, debug, CTLFLAG_RWTUN,
     &hms_debug, 0, "Debug level");
 #endif
 
-#define	MOUSE_FLAGS_MASK (HIO_CONST|HIO_RELATIVE)
-#define	MOUSE_FLAGS_REL (HIO_RELATIVE)
-#define	MOUSE_FLAGS_ABS 0
-
-#define	HMS_BUTTON_MAX   31		/* exclusive, must be less than 32 */
-#define	HMS_BUT(i) ((i) < 16 ? BTN_MOUSE + (i) : BTN_MISC + (i) - 16)
-#define	HMS_INFO_MAX	  2		/* maximum number of HID sets */
-
-struct hms_info {
-	device_t sc_dev;
-
-	struct hid_location sc_loc_x;
-	struct hid_location sc_loc_y;
-	struct hid_location sc_loc_z;
-	struct hid_location sc_loc_wh;
-	struct hid_location sc_loc_hwh;
-	struct hid_location sc_loc_btn[HMS_BUTTON_MAX];
-
-	struct hid_absinfo  sc_ai_x;
-	struct hid_absinfo  sc_ai_y;
-
-	uint32_t sc_flags;
-#define	HMS_FLAG_X_AXIS     0x0001
-#define	HMS_FLAG_Y_AXIS     0x0002
-#define	HMS_FLAG_Z_AXIS     0x0004
-#define	HMS_FLAG_WHEEL      0x0008
-#define	HMS_FLAG_HWHEEL     0x0010
-#define	HMS_FLAG_REVWH	    0x0020	/* Wheel-axis is reversed */
-#define	HMS_FLAG_OPEN	    0x0040
-#define	HMS_FLAG_ABSX	    0x0080
-#define	HMS_FLAG_ABSY	    0x0100
-
-	uint8_t	sc_iid_x;
-	uint8_t	sc_iid_y;
-	uint8_t	sc_iid_z;
-	uint8_t	sc_iid_wh;
-	uint8_t	sc_iid_hwh;
-	uint8_t	sc_iid_btn[HMS_BUTTON_MAX];
-	uint8_t	sc_buttons;
-
-	struct evdev_dev *sc_evdev;
+enum {
+	HMT_REL_X,
+	HMT_REL_Y,
+	HMT_REL_Z,
+	HMT_ABS_X,
+	HMT_ABS_Y,
+	HMT_ABS_Z,
+	HMT_WHEEL,
+	HMT_HWHEEL,
+	HMT_BTN_LEFT,
+	HMT_BTN_RIGHT,
+	HMT_BTN_MIDDLE,
+	HMT_BTN_4,
+	HMT_BTN_5,
+	HMT_BTN_6,
+	HMT_BTN_7,
+	HMT_BTN_8,
+	HMT_BTN_9,
+	HMT_BTN_10,
+	HMT_BTN_11,
+	HMT_BTN_12,
+	HMT_BTN_13,
+	HMT_BTN_14,
+	HMT_BTN_15,
+	HMT_BTN_16,
+	HMT_BTN_MS1,
+	HMT_BTN_MS2,
 };
 
-struct hms_softc {
-	struct hms_info sc_info[HMS_INFO_MAX];
+static hmap_cb_t	hms_wheel_cb;
 
-	uint8_t	sc_buttons;
-	uint8_t	sc_iid;
+#define HMS_MAP_BUT(usage, code)	\
+	{ HMAP_KEY(#usage, HID_USAGE2(HUP_BUTTON, usage), code) }
+#define HMS_MAP_BUT_MS(usage, code)	\
+	{ HMAP_KEY(#usage, HID_USAGE2(HUP_MICROSOFT, usage), code) }
+#define HMS_MAP_ABS(usage, code)	\
+	{ HMAP_ABS(#usage, HID_USAGE2(HUP_GENERIC_DESKTOP, usage), code) }
+#define HMS_MAP_REL(usage, code)	\
+	{ HMAP_REL(#usage, HID_USAGE2(HUP_GENERIC_DESKTOP, usage), code) }
+#define HMS_MAP_REL_CN(usage, code)	\
+	{ HMAP_REL(#usage, HID_USAGE2(HUP_CONSUMER, usage), code) }
+#define HMS_MAP_REL_CB(usage, cb)	\
+	{ HMAP_REL_CB(#usage, HID_USAGE2(HUP_GENERIC_DESKTOP, usage), cb) }
+
+static const struct hmap_item hms_map[] = {
+	[HMT_REL_X]	= HMS_MAP_REL(HUG_X,		REL_X),
+	[HMT_REL_Y]	= HMS_MAP_REL(HUG_Y,		REL_Y),
+	[HMT_REL_Z]	= HMS_MAP_REL(HUG_Z,		REL_Z),
+	[HMT_ABS_X]	= HMS_MAP_ABS(HUG_X,		ABS_X),
+	[HMT_ABS_Y]	= HMS_MAP_ABS(HUG_Y,		ABS_Y),
+	[HMT_ABS_Z]	= HMS_MAP_ABS(HUG_Z,		ABS_Z),
+	[HMT_WHEEL]	= HMS_MAP_REL_CB(HUG_WHEEL,	hms_wheel_cb),
+	[HMT_HWHEEL]	= HMS_MAP_REL_CN(HUC_AC_PAN,	REL_HWHEEL),
+	[HMT_BTN_LEFT]	= HMS_MAP_BUT(1,		BTN_LEFT),
+	[HMT_BTN_RIGHT]	= HMS_MAP_BUT(2,		BTN_RIGHT),
+	[HMT_BTN_MIDDLE]= HMS_MAP_BUT(3,		BTN_MIDDLE),
+	[HMT_BTN_4]	= HMS_MAP_BUT(4,		BTN_SIDE),
+	[HMT_BTN_5]	= HMS_MAP_BUT(5,		BTN_EXTRA),
+	[HMT_BTN_6]	= HMS_MAP_BUT(6,		BTN_FORWARD),
+	[HMT_BTN_7]	= HMS_MAP_BUT(7,		BTN_BACK),
+	[HMT_BTN_8]	= HMS_MAP_BUT(8,		BTN_TASK),
+	[HMT_BTN_9]	= HMS_MAP_BUT(9,		BTN_MOUSE + 0x08),
+	[HMT_BTN_10]	= HMS_MAP_BUT(10,		BTN_MOUSE + 0x09),
+	[HMT_BTN_11]	= HMS_MAP_BUT(11,		BTN_MOUSE + 0x0a),
+	[HMT_BTN_12]	= HMS_MAP_BUT(12,		BTN_MOUSE + 0x0b),
+	[HMT_BTN_13]	= HMS_MAP_BUT(13,		BTN_MOUSE + 0x0c),
+	[HMT_BTN_14]	= HMS_MAP_BUT(14,		BTN_MOUSE + 0x0d),
+	[HMT_BTN_15] 	= HMS_MAP_BUT(15,		BTN_MOUSE + 0x0e),
+	[HMT_BTN_16]	= HMS_MAP_BUT(16,		BTN_MOUSE + 0x0f),
+	[HMT_BTN_MS1]	= HMS_MAP_BUT_MS(1,		BTN_RIGHT),
+	[HMT_BTN_MS2]	= HMS_MAP_BUT_MS(2,		BTN_MIDDLE),
 };
-
-static hid_intr_t hms_intr;
-
-static device_probe_t hms_probe;
-static device_attach_t hms_attach;
-static device_detach_t hms_detach;
-
-static evdev_open_t hms_ev_open;
-static evdev_close_t hms_ev_close;
-
-static int	hms_sysctl_handler_parseinfo(SYSCTL_HANDLER_ARGS);
-
-static const struct evdev_methods hms_evdev_methods = {
-	.ev_open = &hms_ev_open,
-	.ev_close = &hms_ev_close,
-};
-
-static void
-hms_intr(void *context, void *data, uint16_t len)
-{
-	device_t dev = context;
-	struct hms_softc *sc = device_get_softc(dev);
-	struct hms_info *info;
-	uint8_t *buf = data;
-	uint8_t i;
-	uint8_t id;
-
-	DPRINTFN(6, "data = %*D\n", len, buf, " ");
-
-	if (sc->sc_iid) {
-		id = *buf;
-
-		len--;
-		buf++;
-	}
-
-	for (info = sc->sc_info; info != &sc->sc_info[HMS_INFO_MAX]; info++) {
-
-		if (info->sc_flags == 0)
-			continue;
-
-		if ((info->sc_flags & HMS_FLAG_X_AXIS) && 
-		    (id == info->sc_iid_x)) {
-			if (info->sc_flags & HMS_FLAG_ABSX)
-				evdev_push_abs(info->sc_evdev, ABS_X,
-				    hid_get_udata(buf, len, &info->sc_loc_x));
-			else
-				evdev_push_rel(info->sc_evdev, REL_X,
-				    hid_get_data(buf, len, &info->sc_loc_x));
-		}
-
-		if ((info->sc_flags & HMS_FLAG_Y_AXIS) &&
-		    (id == info->sc_iid_y)) {
-			if (info->sc_flags & HMS_FLAG_ABSY)
-				evdev_push_abs(info->sc_evdev, ABS_Y,
-				    hid_get_udata(buf, len, &info->sc_loc_y));
-			else
-				evdev_push_rel(info->sc_evdev, REL_Y,
-				    hid_get_data(buf, len, &info->sc_loc_y));
-		}
-
-		if ((info->sc_flags & HMS_FLAG_Z_AXIS) &&
-		    (id == info->sc_iid_z))
-			evdev_push_rel(info->sc_evdev, REL_Z,
-			    hid_get_data(buf, len, &info->sc_loc_z));
-
-		if ((info->sc_flags & HMS_FLAG_WHEEL) &&
-		    (id == info->sc_iid_wh)) {
-			int32_t temp;
-			temp = hid_get_data(buf, len, &info->sc_loc_wh);
-			if (info->sc_flags & HMS_FLAG_REVWH)
-				temp = -temp;
-			evdev_push_rel(info->sc_evdev, REL_WHEEL, temp);
-		}
-
-		if ((info->sc_flags & HMS_FLAG_HWHEEL) &&
-		    (id == info->sc_iid_hwh))
-			evdev_push_rel(info->sc_evdev, REL_HWHEEL,
-			    hid_get_data(buf, len, &info->sc_loc_hwh));
-
-		for (i = 0; i < info->sc_buttons; i++) {
-			/* check for correct button ID */
-			if (id != info->sc_iid_btn[i])
-				continue;
-			/* check for button pressed */
-			evdev_push_key(info->sc_evdev, HMS_BUT(i),
-			    hid_get_data(buf, len, &info->sc_loc_btn[i]));
-		}
-
-		evdev_sync(info->sc_evdev);
-	}
-}
 
 /* A match on these entries will load hms */
 static const struct hid_device_id hms_devs[] = {
 	{ HID_TLC(HUP_GENERIC_DESKTOP, HUG_MOUSE) },
 };
 
+struct hms_softc {
+	struct hmap_softc	super_sc;
+	HMAP_CAPS(caps, hms_map);
+	bool			rev_wheel;
+};
+
+/* Reverse wheel if required. */
+static void
+hms_wheel_cb(HMAP_CB_ARGS)
+{
+	int32_t data;
+
+	if (HMAP_IS_ATTACHING) {
+		evdev_support_event(sc->evdev, EV_REL);
+		evdev_support_rel(sc->evdev, REL_WHEEL);
+	} else {
+		data = ctx;
+		if (((struct hms_softc *)sc)->rev_wheel)
+			data = -data;
+		evdev_push_rel(sc->evdev, REL_WHEEL, data);
+	}
+}
+
 static int
 hms_probe(device_t dev)
 {
+	struct hms_softc *sc = device_get_softc(dev);
 	int error;
-
-	DPRINTFN(11, "\n");
 
 	error = hidbus_lookup_driver_info(dev, hms_devs, sizeof(hms_devs));
 	if (error != 0)
 		return (error);
 
-	return (BUS_PROBE_LOW_PRIORITY);
-}
+	hmap_set_debug_var(dev, &HID_DEBUG_VAR);
 
-static void
-hms_hid_parse(struct hms_softc *sc, device_t dev, const uint8_t *buf,
-    uint16_t len, uint8_t index)
-{
-	struct hms_info *info = &sc->sc_info[index];
-	uint8_t tlc_index = hidbus_get_index(dev);
-	uint32_t flags;
-	uint8_t i;
-	uint8_t j;
+	/* Check if report descriptor belongs to mouse */
+	error = hmap_add_map(dev, hms_map, nitems(hms_map), sc->caps);
+	if (error != 0)
+		return (error);
 
-	if (hid_tlc_locate(buf, len, HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_X),
-	    hid_input, tlc_index, index, &info->sc_loc_x, &flags,
-	    &info->sc_iid_x, &info->sc_ai_x)) {
+	/* There should be at least one X or Y axis */
+	if (!hmap_test_cap(sc->caps, HMT_REL_X) &&
+	    !hmap_test_cap(sc->caps, HMT_REL_X) &&
+	    !hmap_test_cap(sc->caps, HMT_ABS_X) &&
+	    !hmap_test_cap(sc->caps, HMT_ABS_Y))
+		return (ENXIO);
 
-		if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS_REL)
-			info->sc_flags |= HMS_FLAG_X_AXIS;
-		else if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS_ABS)
-			info->sc_flags |= HMS_FLAG_X_AXIS | HMS_FLAG_ABSX;
-	}
-
-	if (hid_tlc_locate(buf, len, HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_Y),
-	    hid_input, tlc_index, index, &info->sc_loc_y, &flags,
-	    &info->sc_iid_y, &info->sc_ai_y)) {
-
-		if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS_REL)
-			info->sc_flags |= HMS_FLAG_Y_AXIS;
-		else if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS_ABS)
-			info->sc_flags |= HMS_FLAG_Y_AXIS | HMS_FLAG_ABSY;
-	}
-
-	if (hid_tlc_locate(buf, len, HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_Z),
-	    hid_input, tlc_index, index, &info->sc_loc_z, &flags,
-	    &info->sc_iid_z, NULL)) {
-
-		if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS_REL)
-			info->sc_flags |= HMS_FLAG_Z_AXIS;
-	}
-	if (hid_tlc_locate(buf, len,
-	    HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_WHEEL), hid_input, tlc_index,
-	    index, &info->sc_loc_wh, &flags, &info->sc_iid_wh, NULL)) {
-
-		if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS_REL)
-			info->sc_flags |= HMS_FLAG_WHEEL;
-	}
-	if (hid_tlc_locate(buf, len, HID_USAGE2(HUP_CONSUMER, HUC_AC_PAN),
-	    hid_input, tlc_index, index, &info->sc_loc_hwh, &flags,
-	    &info->sc_iid_hwh, NULL)) {
-
-		if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS_REL)
-			info->sc_flags |= HMS_FLAG_HWHEEL;
-	}
-
-	/* figure out the number of buttons */
-
-	for (i = 0; i < HMS_BUTTON_MAX; i++) {
-		if (!hid_tlc_locate(buf, len, HID_USAGE2(HUP_BUTTON, (i + 1)),
-		    hid_input, tlc_index, index, &info->sc_loc_btn[i], NULL,
-		    &info->sc_iid_btn[i], NULL)) {
-			break;
-		}
-	}
-
-	/* detect other buttons */
-
-	for (j = 0; (i < HMS_BUTTON_MAX) && (j < 2); i++, j++) {
-		if (!hid_tlc_locate(buf, len,
-		    HID_USAGE2(HUP_MICROSOFT, (j + 1)), hid_input, tlc_index,
-		    index, &info->sc_loc_btn[i], NULL, &info->sc_iid_btn[i],
-		    NULL)) {
-			break;
-		}
-	}
-
-	info->sc_buttons = i;
-
-	if (i > sc->sc_buttons)
-		sc->sc_buttons = i;
-
-	if (info->sc_flags == 0)
-		return;
-
-	/* announce information about the mouse in ums(4) style */
-	device_printf(dev, "%d buttons and [%s%s%s%s%s] coordinates ID=%u\n",
-	    (info->sc_buttons),
-	    (info->sc_flags & HMS_FLAG_X_AXIS) ? "X" : "",
-	    (info->sc_flags & HMS_FLAG_Y_AXIS) ? "Y" : "",
-	    (info->sc_flags & HMS_FLAG_WHEEL) ?  "Z" : "",
-	    (info->sc_flags & HMS_FLAG_HWHEEL) ? "T" : "",
-	    (info->sc_flags & HMS_FLAG_Z_AXIS) ? "W" : "",
-	    info->sc_iid_x);
+	return (BUS_PROBE_DEFAULT);
 }
 
 static int
 hms_attach(device_t dev)
 {
 	struct hms_softc *sc = device_get_softc(dev);
-	const struct hid_device_info *hw = hid_get_device_info(dev);
-	struct hms_info *info;
-	void *d_ptr = NULL;
-	int isize;
-	int err;
-	uint16_t d_len;
-	uint8_t i;
-#ifdef USB_DEBUG
-	uint8_t j;
-#endif
-
-	DPRINTFN(11, "sc=%p\n", sc);
-
-	device_set_desc(dev, hw->name);
+	int error, nbuttons;
 
 	/*
          * Force the report (non-boot) protocol.
@@ -345,259 +196,54 @@ hms_attach(device_t dev)
          * Mice without boot protocol support may choose not to implement
          * Set_Protocol at all; Ignore any error.
          */
-	err = hid_set_protocol(dev, 1);
-
-	/* Get HID descriptor */
-	err = hid_get_report_descr(dev, &d_ptr, &d_len);
-	if (err) {
-		device_printf(dev, "error reading report description\n");
-		goto detach;
-	}
-
-	isize = hid_report_size(d_ptr, d_len, hid_input, &sc->sc_iid);
-
-	/* Search the HID descriptor and announce device */
-	for (i = 0; i < HMS_INFO_MAX; i++) {
-		hms_hid_parse(sc, dev, d_ptr, d_len, i);
-	}
+	(void)hid_set_protocol(dev, 1);
 
 #ifdef NOT_YET
 	if (usb_test_quirk(uaa, UQ_MS_REVZ)) {
-		info = &sc->sc_info[0];
 		/* Some wheels need the Z axis reversed. */
-		info->sc_flags |= HMS_FLAG_REVZ;
+		sc->rev_wheel = true;
 	}
 #endif
 
-#ifdef USB_DEBUG
-	for (j = 0; j < HMS_INFO_MAX; j++) {
-		info = &sc->sc_info[j];
+	if (hmap_test_cap(sc->caps, HMT_ABS_X) ||
+	    hmap_test_cap(sc->caps, HMT_ABS_Y))
+		hmap_set_evdev_prop(dev, INPUT_PROP_DIRECT);
+	else
+		hmap_set_evdev_prop(dev, INPUT_PROP_POINTER);
 
-		DPRINTF("sc=%p, index=%d\n", sc, j);
-		DPRINTF("X\t%d/%d id=%d\n", info->sc_loc_x.pos,
-		    info->sc_loc_x.size, info->sc_iid_x);
-		DPRINTF("Y\t%d/%d id=%d\n", info->sc_loc_y.pos,
-		    info->sc_loc_y.size, info->sc_iid_y);
-		DPRINTF("Z\t%d/%d id=%d\n", info->sc_loc_wh.pos,
-		    info->sc_loc_wh.size, info->sc_iid_wh);
-		DPRINTF("T\t%d/%d id=%d\n", info->sc_loc_hwh.pos,
-		    info->sc_loc_hwh.size, info->sc_iid_hwh);
-		DPRINTF("W\t%d/%d id=%d\n", info->sc_loc_z.pos,
-		    info->sc_loc_z.size, info->sc_iid_z);
+	error = hmap_attach(dev);
+	if (error)
+		return (error);
 
-		for (i = 0; i < info->sc_buttons; i++) {
-			DPRINTF("B%d\t%d/%d id=%d\n",
-			    i + 1, info->sc_loc_btn[i].pos,
-			    info->sc_loc_btn[i].size, info->sc_iid_btn[i]);
-		}
-	}
-	DPRINTF("size=%d, id=%d\n", isize, sc->sc_iid);
-#endif
-
-	hidbus_set_intr(dev, hms_intr);
-
-	for (info = sc->sc_info; info != &sc->sc_info[HMS_INFO_MAX]; info++) {
-
-		if (info->sc_flags == 0)
-			continue;
-
-		info->sc_dev = dev;
-
-		info->sc_evdev = evdev_alloc();
-		evdev_set_name(info->sc_evdev, device_get_desc(dev));
-		evdev_set_phys(info->sc_evdev, device_get_nameunit(dev));
-		evdev_set_id(info->sc_evdev, hw->idBus, hw->idVendor,
-		    hw->idProduct, hw->idVersion);
-		evdev_set_serial(info->sc_evdev, hw->serial);
-		evdev_set_methods(info->sc_evdev, info, &hms_evdev_methods);
-		if ((info->sc_flags & (HMS_FLAG_ABSX | HMS_FLAG_ABSY)) == 0) {
-			evdev_support_event(info->sc_evdev, EV_REL);
-			evdev_support_prop(info->sc_evdev, INPUT_PROP_POINTER);
-		} else {
-			evdev_support_event(info->sc_evdev, EV_ABS);
-			evdev_support_prop(info->sc_evdev, INPUT_PROP_DIRECT);
-		}
-		evdev_support_event(info->sc_evdev, EV_SYN);
-		if (info->sc_flags &
-		    (HMS_FLAG_Z_AXIS | HMS_FLAG_WHEEL | HMS_FLAG_HWHEEL))
-			evdev_support_event(info->sc_evdev, EV_REL);
-		evdev_support_event(info->sc_evdev, EV_KEY);
-
-		if (info->sc_flags & HMS_FLAG_X_AXIS) {
-			if (info->sc_flags & HMS_FLAG_ABSX)
-				evdev_support_abs(info->sc_evdev, ABS_X, 0,
-				    info->sc_ai_x.min, info->sc_ai_x.max, 0, 0,
-				    info->sc_ai_x.res);
-			else
-				evdev_support_rel(info->sc_evdev, REL_X);
-		}
-
-		if (info->sc_flags & HMS_FLAG_Y_AXIS) {
-			if (info->sc_flags & HMS_FLAG_ABSY)
-				evdev_support_abs(info->sc_evdev, ABS_Y, 0,
-				    info->sc_ai_y.min, info->sc_ai_y.max, 0, 0,
-				    info->sc_ai_y.res);
-			else
-				evdev_support_rel(info->sc_evdev, REL_Y);
-		}
-
-		if (info->sc_flags & HMS_FLAG_Z_AXIS)
-			evdev_support_rel(info->sc_evdev, REL_Z);
-
-		if (info->sc_flags & HMS_FLAG_WHEEL)
-			evdev_support_rel(info->sc_evdev, REL_WHEEL);
-
-		if (info->sc_flags & HMS_FLAG_HWHEEL)
-			evdev_support_rel(info->sc_evdev, REL_HWHEEL);
-
-		for (i = 0; i < info->sc_buttons; i++)
-			evdev_support_key(info->sc_evdev, HMS_BUT(i));
-
-		err = evdev_register_mtx(info->sc_evdev, hidbus_get_lock(dev));
-		if (err)
-			goto detach;
-	}
-
-	SYSCTL_ADD_PROC(device_get_sysctl_ctx(dev),
-	    SYSCTL_CHILDREN(device_get_sysctl_tree(dev)),
-	    OID_AUTO, "parseinfo", CTLTYPE_STRING|CTLFLAG_RD,
-	    sc, 0, hms_sysctl_handler_parseinfo,
-	    "", "Dump of parsed HID report descriptor");
+	/* announce information about the mouse */
+	nbuttons = hmap_count_caps(sc->caps, HMT_BTN_LEFT, HMT_BTN_MS2);
+	device_printf(dev, "%d buttons and [%s%s%s%s%s] coordinates ID=%u\n",
+	    nbuttons,
+	    (hmap_test_cap(sc->caps, HMT_REL_X) ||
+	     hmap_test_cap(sc->caps, HMT_ABS_X)) ? "X" : "",
+	    (hmap_test_cap(sc->caps, HMT_REL_Y) ||
+	     hmap_test_cap(sc->caps, HMT_ABS_Y)) ? "Y" : "",
+	    (hmap_test_cap(sc->caps, HMT_REL_Z) ||
+	     hmap_test_cap(sc->caps, HMT_ABS_Z)) ? "Z" : "",
+	    hmap_test_cap(sc->caps, HMT_WHEEL) ? "W" : "",
+	    hmap_test_cap(sc->caps, HMT_HWHEEL) ? "H" : "",
+	    sc->super_sc.hid_items[0].id);
 
 	return (0);
-
-detach:
-	hms_detach(dev);
-	return (ENOMEM);
-}
-
-static int
-hms_detach(device_t self)
-{
-	struct hms_softc *sc = device_get_softc(self);
-	int i;
-
-	DPRINTF("sc=%p\n", sc);
-
-	for (i = 0; i < HMS_INFO_MAX; i++)
-		evdev_free(sc->sc_info[i].sc_evdev);
-
-	return (0);
-}
-
-static int
-hms_ev_open(struct evdev_dev *evdev)
-{
-	struct hms_info *info = evdev_get_softc(evdev);
-	struct hms_softc *sc = device_get_softc(info->sc_dev);
-	uint32_t flags = 0;
-	int i;
-
-	for (i = 0; i < HMS_INFO_MAX; i++)
-		flags |= (sc->sc_info[i].sc_flags & HMS_FLAG_OPEN);
-
-	info->sc_flags |= HMS_FLAG_OPEN;
-
-	return (flags == 0 ? hidbus_intr_start(info->sc_dev) : 0);
-}
-
-static int
-hms_ev_close(struct evdev_dev *evdev)
-{
-	struct hms_info *info = evdev_get_softc(evdev);
-	struct hms_softc *sc = device_get_softc(info->sc_dev);
-	uint32_t flags = 0;
-	int i;
-
-	info->sc_flags &= ~HMS_FLAG_OPEN;
-
-	for (i = 0; i < HMS_INFO_MAX; i++)
-		flags |= (sc->sc_info[i].sc_flags & HMS_FLAG_OPEN);
-
-	return (flags == 0 ? hidbus_intr_stop(info->sc_dev) : 0);
-}
-
-static int
-hms_sysctl_handler_parseinfo(SYSCTL_HANDLER_ARGS)
-{
-	struct hms_softc *sc = arg1;
-	struct hms_info *info;
-	struct sbuf *sb;
-	int i, j, err, had_output;
-
-	sb = sbuf_new_auto();
-	for (i = 0, had_output = 0; i < HMS_INFO_MAX; i++) {
-		info = &sc->sc_info[i];
-
-		/* Don't emit empty info */
-		if ((info->sc_flags &
-		    (HMS_FLAG_X_AXIS | HMS_FLAG_Y_AXIS | HMS_FLAG_Z_AXIS |
-		     HMS_FLAG_WHEEL | HMS_FLAG_HWHEEL)) == 0 &&
-		    info->sc_buttons == 0)
-			continue;
-
-		if (had_output)
-			sbuf_printf(sb, "\n");
-		had_output = 1;
-		sbuf_printf(sb, "i%d:", i + 1);
-		if (info->sc_flags & HMS_FLAG_X_AXIS)
-			sbuf_printf(sb, " X:r%d, p%d, s%d;",
-			    (int)info->sc_iid_x,
-			    (int)info->sc_loc_x.pos,
-			    (int)info->sc_loc_x.size);
-		if (info->sc_flags & HMS_FLAG_Y_AXIS)
-			sbuf_printf(sb, " Y:r%d, p%d, s%d;",
-			    (int)info->sc_iid_y,
-			    (int)info->sc_loc_y.pos,
-			    (int)info->sc_loc_y.size);
-		if (info->sc_flags & HMS_FLAG_WHEEL)
-			sbuf_printf(sb, " Z:r%d, p%d, s%d;",
-			    (int)info->sc_iid_wh,
-			    (int)info->sc_loc_wh.pos,
-			    (int)info->sc_loc_wh.size);
-		if (info->sc_flags & HMS_FLAG_HWHEEL)
-			sbuf_printf(sb, " T:r%d, p%d, s%d;",
-			    (int)info->sc_iid_hwh,
-			    (int)info->sc_loc_hwh.pos,
-			    (int)info->sc_loc_hwh.size);
-		if (info->sc_flags & HMS_FLAG_Z_AXIS)
-			sbuf_printf(sb, " W:r%d, p%d, s%d;",
-			    (int)info->sc_iid_z,
-			    (int)info->sc_loc_z.pos,
-			    (int)info->sc_loc_z.size);
-
-		for (j = 0; j < info->sc_buttons; j++) {
-			sbuf_printf(sb, " B%d:r%d, p%d, s%d;", j + 1,
-			    (int)info->sc_iid_btn[j],
-			    (int)info->sc_loc_btn[j].pos,
-			    (int)info->sc_loc_btn[j].size);
-		}
-	}
-	sbuf_finish(sb);
-	err = SYSCTL_OUT(req, sbuf_data(sb), sbuf_len(sb) + 1);
-	sbuf_delete(sb);
-
-	return (err);
 }
 
 static devclass_t hms_devclass;
-
 static device_method_t hms_methods[] = {
 	DEVMETHOD(device_probe, hms_probe),
 	DEVMETHOD(device_attach, hms_attach),
-	DEVMETHOD(device_detach, hms_detach),
-
 	DEVMETHOD_END
 };
 
-static driver_t hms_driver = {
-	.name = "hms",
-	.methods = hms_methods,
-	.size = sizeof(struct hms_softc),
-};
-
+DEFINE_CLASS_1(hms, hms_driver, hms_methods, sizeof(struct hms_softc),
+    hmap_driver);
 DRIVER_MODULE(hms, hidbus, hms_driver, hms_devclass, NULL, 0);
 MODULE_DEPEND(hms, hid, 1, 1, 1);
+MODULE_DEPEND(hms, hmap, 1, 1, 1);
 MODULE_DEPEND(hms, evdev, 1, 1, 1);
 MODULE_VERSION(hms, 1);
-USB_PNP_HOST_INFO(hms_devs);
+/* USB_PNP_HOST_INFO(hms_devs); */

@@ -12,17 +12,17 @@
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
  *
- * THIS SOFTWARE IS PROVIDED BY THE NETBSD FOUNDATION, INC. AND CONTRIBUTORS
- * ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
- * TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE FOUNDATION OR CONTRIBUTORS
- * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
  */
 
 #include <sys/cdefs.h>
@@ -52,15 +52,13 @@ __FBSDID("$FreeBSD$");
 #include "hmap.h"
 
 #ifdef HID_DEBUG
-#define DPRINTFN(sc, n, fmt, ...) do {			\
-	if ((*(sc)->debug_var) >= (n)) {		\
-		device_printf((sc)->dev, "%s: " fmt,	\
-		    __FUNCTION__ ,##__VA_ARGS__);	\
-  }							\
+#define DPRINTFN(sc, n, fmt, ...) do {					\
+	if ((sc)->debug_var != NULL && *(sc)->debug_var >= (n)) {	\
+		device_printf((sc)->dev, "%s: " fmt,			\
+		    __FUNCTION__ ,##__VA_ARGS__);			\
+	}								\
 } while (0)
-#define DPRINTF(dev, fmt, ...)				\
-		device_printf((dev), "%s: " fmt,	\
-		    __FUNCTION__ ,##__VA_ARGS__)
+#define DPRINTF(sc, ...)    DPRINTFN(sc, 1, __VA_ARGS__)
 #else
 #define DPRINTF(...) do { } while (0)
 #define DPRINTFN(...) do { } while (0)
@@ -76,6 +74,16 @@ static const struct evdev_methods hmap_evdev_methods = {
 	.ev_open = &hmap_ev_open,
 	.ev_close = &hmap_ev_close,
 };
+
+void
+hmap_set_debug_var(device_t dev, int *debug_var)
+{
+#ifdef HID_DEBUG
+	struct hmap_softc *sc = device_get_softc(dev);
+
+	sc->debug_var = debug_var;
+#endif
+}
 
 static int
 hmap_ev_close(struct evdev_dev *evdev)
@@ -132,10 +140,17 @@ hmap_intr(void *context, void *buf, uint16_t len)
 		    ? hid_get_data(buf, len, &hi->loc)
 		    : hid_get_udata(buf, len, &hi->loc);
 
-		if (hi->flags & HIO_VARIABLE) {
+		switch (hi->type) {
+		case HMAP_TYPE_CALLBACK:
+			hi->map->cb(sc, hi, data);
+			break;
+
+		case HMAP_TYPE_VARIABLE:
 			evdev_push_event(sc->evdev, hi->map->type,
 			    hi->map->code, data);
-		} else {
+			break;
+
+		case HMAP_TYPE_ARR_RANGE:
 			if (hi->last_key != 0)
 				evdev_push_key(sc->evdev, hi->last_key, 0);
 			hi->last_key = 0;
@@ -148,14 +163,20 @@ hmap_intr(void *context, void *buf, uint16_t len)
 			 * an index in the usage range list.
 			 */
 			usage = hi->offset + data;
-			for (mi = sc->map; mi < sc->map+sc->nmap_items; mi++) {
+			HMAP_FOREACH_ITEM(sc, mi) {
 				if (usage == mi->usage && mi->type == EV_KEY) {
+					evdev_push_key(sc->evdev, mi->code, 1);
 					hi->last_key = mi->code;
-					evdev_push_key(sc->evdev,
-					    hi->last_key, 1);
 					break;
 				}
 			}
+			break;
+
+		case HMAP_TYPE_ARR_LIST:
+			/* XXX: Not supported yet */
+			/* FALLTHROUGH */
+		default:
+			KASSERT(0, ("Unknown map type (%d)", hi->type));
 		}
 		do_sync = true;
 	}
@@ -165,42 +186,49 @@ hmap_intr(void *context, void *buf, uint16_t len)
 }
 
 static inline bool
-can_map_variable(struct hid_item *hi, const struct hmap_item *mi)
+can_map_callback(struct hid_item *hi, const struct hmap_item *mi)
 {
 
-	return (hi->usage == mi->usage && (mi->type == EV_KEY ||
-	    !(hi->flags & HIO_RELATIVE) == !mi->relative));
+	return (mi->has_cb && hi->usage == mi->usage &&
+	    (mi->relabs == HMAP_RELABS_ANY ||
+	    !(hi->flags & HIO_RELATIVE) == !(mi->relabs == HMAP_RELATIVE)));
 }
 
 static inline bool
-can_map_array(struct hid_item *hi, const struct hmap_item *mi)
+can_map_variable(struct hid_item *hi, const struct hmap_item *mi)
 {
 
-	return (hi->usage_minimum <= mi->usage &&
+	return ((hi->flags & HIO_VARIABLE) != 0 && !mi->has_cb &&
+	    hi->usage == mi->usage &&
+	    (mi->relabs == HMAP_RELABS_ANY ||
+	    !(hi->flags & HIO_RELATIVE) == !(mi->relabs == HMAP_RELATIVE)));
+}
+
+static inline bool
+can_map_arr_range(struct hid_item *hi, const struct hmap_item *mi)
+{
+
+	return ((hi->flags & HIO_VARIABLE) == 0 && !mi->has_cb &&
+	    hi->usage_minimum <= mi->usage &&
 	    hi->usage_maximum >= mi->usage &&
 	    (hi->flags & HIO_RELATIVE) == 0 &&
 	    mi->type == EV_KEY);
 }
 
-uint32_t
-hmap_hid_probe(device_t dev, const struct hmap_item *map, int nmap_items,
-    bitstr_t *caps)
+static uint32_t
+hmap_hid_probe_descr(void *d_ptr, uint16_t d_len, uint8_t tlc_index,
+    const struct hmap_item *map, int nmap_items, bitstr_t *caps)
 {
-	uint8_t tlc_index = hidbus_get_index(dev);
 	struct hid_item hi;
 	struct hid_data *hd;
 	uint32_t i, items = 0;
-	void *d_ptr;
-	uint16_t d_len;
-	bool found;
-	int error;
+	bool found, do_free = false;
 
-	error = hid_get_report_descr(dev, &d_ptr, &d_len);
-	if (error != 0) {
-		DPRINTF(dev, "could not retrieve report descriptor from "
-		     "device: %d\n", error);
-		return (0);
-	}
+	if (caps == NULL) {
+		caps = bit_alloc(nmap_items, M_DEVBUF, M_WAITOK);
+		do_free = true;
+	} else
+		bzero (caps, bitstr_size(nmap_items));
 
 	/* Parse inputs */
 	hd = hid_start_parse(d_ptr, d_len, 1 << hid_input);
@@ -209,44 +237,85 @@ hmap_hid_probe(device_t dev, const struct hmap_item *map, int nmap_items,
 			continue;
 		if (hi.flags & HIO_CONST)
 			continue;
-		if (hi.flags & HIO_VARIABLE) {
-			for (i = 0; i < nmap_items; i++) {
-				if (can_map_variable(&hi, map + i)) {
-					KASSERT(map[i].type == EV_KEY ||
-					    map[i].type == EV_REL ||
-					    map[i].type == EV_ABS,
-					    ("Unsupported event type"));
-					bit_set(caps, i);
-					items++;
-					break;
-				}
-			}
-		} else {
-			for (i = 0; i < nmap_items; i++) {
-				found = false;
-				if (can_map_array(&hi, map + i)) {
-					bit_set(caps, i);
-					found = true;
-				}
-				if (found)
-					items++;
+		for (i = 0; i < nmap_items; i++) {
+			if (can_map_callback(&hi, map + i)) {
+				bit_set(caps, i);
+				items++;
+				continue;
 			}
 		}
+		for (i = 0; i < nmap_items; i++) {
+			if (can_map_variable(&hi, map + i)) {
+				KASSERT(map[i].type == EV_KEY ||
+				    map[i].type == EV_REL ||
+				    map[i].type == EV_ABS,
+				    ("Unsupported event type"));
+				bit_set(caps, i);
+				items++;
+				continue;
+			}
+		}
+		found = false;
+		for (i = 0; i < nmap_items; i++) {
+			if (can_map_arr_range(&hi, map + i)) {
+				bit_set(caps, i);
+				found = true;
+			}
+		}
+		if (found)
+			items++;
 	}
 	hid_end_parse(hd);
 
-	if (items == 0)
-		return (0);
-
-	for (i = 0; i < nmap_items; i++) {
-		if (map[i].required && !bit_test(caps, i)) {
-			DPRINTF(dev, "required usage %s not found\n",
-			    map[i].name);
-			return (0);
+	/* Check that all mandatory usages are present in report descriptor */
+	if (items != 0) {
+		for (i = 0; i < nmap_items; i++) {
+			if (map[i].required && !bit_test(caps, i)) {
+//				DPRINTF(dev, "required usage %s not found\n",
+//				    map[i].name);
+				items = 0;
+				break;
+			}
 		}
 	}
 
+	if (do_free)
+		free(caps, M_DEVBUF);
+
 	return (items);
+}
+
+uint32_t
+hmap_add_map(device_t dev, const struct hmap_item *map, int nmap_items,
+    bitstr_t *caps)
+{
+	struct hmap_softc *sc = device_get_softc(dev);
+	uint8_t tlc_index = hidbus_get_index(dev);
+	uint32_t items;
+	void *d_ptr;
+	uint16_t d_len;
+	int error;
+
+	error = hid_get_report_descr(dev, &d_ptr, &d_len);
+	if (error != 0) {
+		DPRINTF(sc, "could not retrieve report descriptor from "
+		     "device: %d\n", error);
+		return (error);
+	}
+
+	items = hmap_hid_probe_descr(d_ptr, d_len, tlc_index, map, nmap_items,
+	    caps);
+	if (items == 0)
+		return (ENXIO);
+
+	/* Avoid double-adding of map in probe() handler */
+	if (sc->map != map) {
+		sc->nhid_items += items;
+		sc->map = map;
+		sc->nmap_items = nmap_items;
+	}
+
+	return (0);
 }
 
 static int
@@ -254,7 +323,8 @@ hmap_hid_parse(struct hmap_softc *sc, uint8_t tlc_index)
 {
 	struct hid_item hi;
 	struct hid_data *hd;
-	size_t i, item = 0;
+	const struct hmap_item *mi;
+	uint32_t item = 0;
 	void *d_ptr;
 	uint16_t d_len;
 	bool found;
@@ -262,7 +332,7 @@ hmap_hid_parse(struct hmap_softc *sc, uint8_t tlc_index)
 
 	error = hid_get_report_descr(sc->dev, &d_ptr, &d_len);
 	if (error != 0) {
-		DPRINTF(sc->dev, "could not retrieve report descriptor from "
+		DPRINTF(sc, "could not retrieve report descriptor from "
 		     "device: %d\n", error);
 		return (error);
 	}
@@ -274,55 +344,58 @@ hmap_hid_parse(struct hmap_softc *sc, uint8_t tlc_index)
 			continue;
 		if (hi.flags & HIO_CONST)
 			continue;
-		found = false;
-		if (hi.flags & HIO_VARIABLE) {
-			for (i = 0; i < sc->nmap_items; i++) {
-				if (!can_map_variable(&hi, sc->map + i))
-					continue;
-				sc->hid_items[item].map = sc->map + i;
-				switch (sc->map[i].type) {
+		HMAP_FOREACH_ITEM(sc, mi) {
+			if (can_map_callback(&hi, mi)) {
+				sc->hid_items[item].map = mi;
+				sc->hid_items[item].type = HMAP_TYPE_CALLBACK;
+				mi->cb(sc, NULL, (intptr_t)&hi);
+				goto mapped;
+			}
+		}
+		HMAP_FOREACH_ITEM(sc, mi) {
+			if (can_map_variable(&hi, mi)) {
+				sc->hid_items[item].map = mi;
+				sc->hid_items[item].type = HMAP_TYPE_VARIABLE;
+				switch (mi->type) {
 				case EV_KEY:
 					evdev_support_event(sc->evdev, EV_KEY);
-					evdev_support_key(sc->evdev,
-					    sc->map[i].code);
+					evdev_support_key(sc->evdev, mi->code);
 					break;
 				case EV_REL:
 					evdev_support_event(sc->evdev, EV_REL);
-					evdev_support_rel(sc->evdev,
-					    sc->map[i].code);
+					evdev_support_rel(sc->evdev, mi->code);
 					break;
 				case EV_ABS:
 					evdev_support_event(sc->evdev, EV_ABS);
-					evdev_support_abs(sc->evdev,
-					    sc->map[i].code, 0,
-					    hi.logical_minimum,
+					evdev_support_abs(sc->evdev, mi->code,
+					    0, hi.logical_minimum,
 					    hi.logical_maximum, 0, 0,
 					    hid_item_resolution(&hi));
 					break;
 				default:
 					KASSERT(0, ("Unsupported event type"));
 				}
-				found = true;
-				break;
+				goto mapped;
 			}
-		} else {
-			for (i = 0; i < sc->nmap_items; i++) {
-				if (!can_map_array(&hi, sc->map + i))
-					continue;
-				evdev_support_key(sc->evdev, sc->map[i].code);
-				sc->hid_items[item].last_key = 0;
-				sc->hid_items[item].offset =
-				    hi.usage_minimum - hi.logical_minimum;
-				found = true;
-			}
-			if (found)
-				evdev_support_event(sc->evdev, EV_KEY);
 		}
-		if (!found)
+		found = false;
+		HMAP_FOREACH_ITEM(sc, mi) {
+			if (can_map_arr_range(&hi, mi)) {
+				evdev_support_key(sc->evdev, mi->code);
+				found = true;
+			}
+		}
+		if (found) {
+			sc->hid_items[item].last_key = 0;
+			sc->hid_items[item].offset =
+			    hi.usage_minimum - hi.logical_minimum;
+			sc->hid_items[item].type = HMAP_TYPE_ARR_RANGE;
+			evdev_support_event(sc->evdev, EV_KEY);
+		} else
 			continue;
+mapped:
 		sc->hid_items[item].id = hi.report_ID;
 		sc->hid_items[item].loc = hi.loc;
-		sc->hid_items[item].flags = hi.flags;
 		sc->hid_items[item].is_signed = hi.logical_minimum < 0;
 		item++;
 		KASSERT(item > sc->nitems, ("Parsed HID item array overflow"));
@@ -359,13 +432,13 @@ hmap_attach(device_t dev)
 	sc->evdev = evdev_alloc();
 	evdev_set_name(sc->evdev, device_get_desc(dev));
 	evdev_set_phys(sc->evdev, device_get_nameunit(dev));
-	evdev_set_id(sc->evdev, hw->idBus, hw->idVendor,
-			hw->idProduct, hw->idVersion);
+	evdev_set_id(sc->evdev, hw->idBus, hw->idVendor, hw->idProduct,
+	    hw->idVersion);
 	evdev_set_serial(sc->evdev, hw->serial);
 	evdev_support_event(sc->evdev, EV_SYN);
 	for (i = 0; i < INPUT_PROP_CNT; i++)
 		if (bit_test(sc->evdev_props, i))
-			evdev_set_flag(sc->evdev, i);
+			evdev_support_prop(sc->evdev, i);
 	evdev_set_methods(sc->evdev, dev, &hmap_evdev_methods);
 	error = hmap_hid_parse(sc, hidbus_get_index(dev));
 	if (error) {
@@ -383,9 +456,9 @@ hmap_attach(device_t dev)
 }
 
 int
-hmap_detach(device_t self)
+hmap_detach(device_t dev)
 {
-	struct hmap_softc *sc = device_get_softc(self);
+	struct hmap_softc *sc = device_get_softc(dev);
 
 	evdev_free(sc->evdev);
 	free(sc->hid_items, M_DEVBUF);

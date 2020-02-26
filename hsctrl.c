@@ -3,10 +3,6 @@
  *
  * Copyright (c) 2020 Vladimir Kondratyev <wulf@FreeBSD.org>
  *
- * This code is derived from software contributed to The NetBSD Foundation
- * by Lennart Augustsson (lennart@augustsson.net) at
- * Carlstedt Research & Technology.
- *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
  * are met:
@@ -16,17 +12,17 @@
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
  *
- * THIS SOFTWARE IS PROVIDED BY THE NETBSD FOUNDATION, INC. AND CONTRIBUTORS
- * ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
- * TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE FOUNDATION OR CONTRIBUTORS
- * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
  */
 
 #include <sys/cdefs.h>
@@ -66,16 +62,10 @@ SYSCTL_INT(_hw_hid_hsctrl, OID_AUTO, debug, CTLFLAG_RWTUN,
 #define HUG_SYSTEM_POWER_UP	0x008e
 #define HUG_SYSTEM_RESTART	0x008f
 
-#define	HSCTRL_MAP(usg, event)	{					\
-	.name = # usg,							\
-	.usage = HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_SYSTEM_ ## usg),	\
-	.type = EV_KEY,							\
-	.code = event,							\
-	.required = false,						\
-	.relative = false,						\
-}
+#define	HSCTRL_MAP(u, c)	\
+    { HMAP_KEY(#u, HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_SYSTEM_##u), c) }
 
-static const struct hmap_item hsctrl_hid_map[] = {
+static const struct hmap_item hsctrl_map[] = {
 	HSCTRL_MAP(POWER_DOWN,		KEY_POWER),
 	HSCTRL_MAP(SLEEP,		KEY_SLEEP),
 	HSCTRL_MAP(WAKEUP,		KEY_WAKEUP),
@@ -93,8 +83,6 @@ static const struct hmap_item hsctrl_hid_map[] = {
 	HSCTRL_MAP(RESTART,		KEY_RESTART),
 };
 
-#define	HSCTRL_NITEMS	nitems(hsctrl_hid_map)
-
 static const struct hid_device_id hsctrl_devs[] = {
 	{ HID_TLC(HUP_GENERIC_DESKTOP, HUG_SYSTEM_CONTROL) },
 };
@@ -102,27 +90,19 @@ static const struct hid_device_id hsctrl_devs[] = {
 static int
 hsctrl_probe(device_t dev)
 {
-	struct hmap_softc *sc = device_get_softc(dev);
-	bitstr_t bit_decl(caps, HSCTRL_NITEMS);
-	size_t nhid_items;
 	int error;
 
 	error = hidbus_lookup_driver_info(dev, hsctrl_devs, sizeof(hsctrl_devs));
 	if (error != 0)
 		return (error);
 
-	/* Check if report descriptor belongs to a System control TLC */
-	bzero (caps, bitstr_size(HSCTRL_NITEMS));
-	nhid_items = hmap_hid_probe(dev, hsctrl_hid_map, HSCTRL_NITEMS, caps);
-	if (nhid_items == 0)
-		return (ENXIO);
+	hmap_set_debug_var(dev, &HID_DEBUG_VAR);
 
-	sc->nhid_items = nhid_items;
-	sc->map = hsctrl_hid_map;
-	sc->nmap_items = HSCTRL_NITEMS;
-#ifdef HID_DEBUG
-	sc->debug_var = &HID_DEBUG_VAR;
-#endif
+	/* Check if report descriptor belongs to a System control TLC */
+	error = hmap_add_map(dev, hsctrl_map, nitems(hsctrl_map), NULL);
+	if (error != 0)
+		return (error);
+
 	return (BUS_PROBE_DEFAULT);
 }
 
@@ -137,4 +117,5 @@ DEFINE_CLASS_1(hsctrl, hsctrl_driver, hsctrl_methods,
 DRIVER_MODULE(hsctrl, hidbus, hsctrl_driver, hsctrl_devclass, NULL, 0);
 MODULE_DEPEND(hsctrl, hid, 1, 1, 1);
 MODULE_DEPEND(hsctrl, hmap, 1, 1, 1);
+MODULE_DEPEND(hsctrl, evdev, 1, 1, 1);
 MODULE_VERSION(hsctrl, 1);
