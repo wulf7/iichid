@@ -46,8 +46,8 @@ enum hmap_relabs {
 };
 
 struct hmap_item {
-	char		*name;
-	int32_t 	usage;			/* HID usage */
+	char			*name;
+	int32_t 		usage;		/* HID usage */
 	union {
 		struct {
 			uint16_t	type;	/* Evdev event type */
@@ -55,23 +55,20 @@ struct hmap_item {
 		};
 		hmap_cb_t		*cb;	/* Reporting callback */
 	};
-	struct {
-		bool			required:1;	/* Required by driver */
-		enum hmap_relabs	relabs:2;
-		bool			has_cb:1;
-		u_int			reserved:4;
-	};
+	bool			required:1;	/* Required by driver */
+	enum hmap_relabs	relabs:2;
+	bool			has_cb:1;
+	u_int			reserved:4;
 };
 
+#define	HMAP_ANY(_name, _usage, _type, _code)				\
+    .name = _name, .usage = _usage, .type = _type, .code = _code
 #define	HMAP_KEY(_name, _usage, _code)					\
-    .name = _name, .usage = _usage, .type = EV_KEY, .code = _code,	\
-    .relabs = HMAP_RELABS_ANY
+    HMAP_ANY(_name, _usage, EV_KEY, _code), .relabs = HMAP_RELABS_ANY
 #define	HMAP_REL(_name, _usage, _code)					\
-    .name = _name, .usage = _usage, .type = EV_REL, .code = _code,	\
-    .relabs = HMAP_RELATIVE
+    HMAP_ANY(_name, _usage, EV_REL, _code), .relabs = HMAP_RELATIVE
 #define	HMAP_ABS(_name, _usage, _code)					\
-    .name = _name, .usage = _usage, .type = EV_ABS, .code = _code,	\
-    .relabs = HMAP_ABSOLUTE
+    HMAP_ANY(_name, _usage, EV_ABS, _code), .relabs = HMAP_ABSOLUTE
 #define HMAP_ANY_CB(_name, _usage, _callback)				\
     .name = _name, .usage = _usage, .cb = &_callback, .has_cb = true
 #define HMAP_REL_CB(_name, _usage, _callback)				\
@@ -93,17 +90,15 @@ struct hmap_hid_item {
 	union {
 		const struct hmap_item	*map;	/* Callback & variable */
 		struct {			/* Array map type */
-			uint32_t	offset;
+			uint32_t	base;
 			int32_t		last_key;
 		};
 	};
 	uint8_t			id;
 	struct hid_location	loc;
-	struct {
-		enum hmap_type	type:2;
-		bool		is_signed:1;	/* Data can be negative */
-		u_int		reserved:5;
-	};
+	enum hmap_type		type:2;
+	bool			is_signed:1;	/* Data can be negative */
+	u_int			reserved:5;
 };
 
 struct hmap_softc {

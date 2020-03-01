@@ -162,7 +162,7 @@ hmap_intr(void *context, void *buf, uint16_t len)
 			 * derive the actual usage by using the item value as
 			 * an index in the usage range list.
 			 */
-			usage = hi->offset + data;
+			usage = hi->base + data;
 			HMAP_FOREACH_ITEM(sc, mi) {
 				if (usage == mi->usage && mi->type == EV_KEY) {
 					evdev_push_key(sc->evdev, mi->code, 1);
@@ -240,30 +240,38 @@ hmap_hid_probe_descr(void *d_ptr, uint16_t d_len, uint8_t tlc_index,
 		for (i = 0; i < nmap_items; i++) {
 			if (can_map_callback(&hi, map + i)) {
 				bit_set(caps, i);
-				items++;
-				continue;
+				goto next;
 			}
 		}
-		for (i = 0; i < nmap_items; i++) {
-			if (can_map_variable(&hi, map + i)) {
-				KASSERT(map[i].type == EV_KEY ||
-				    map[i].type == EV_REL ||
-				    map[i].type == EV_ABS,
-				    ("Unsupported event type"));
-				bit_set(caps, i);
-				items++;
-				continue;
+		if (hi.flags & HIO_VARIABLE) {
+			for (i = 0; i < nmap_items; i++) {
+				if (can_map_variable(&hi, map + i)) {
+					KASSERT(map[i].type == EV_KEY ||
+					    map[i].type == EV_REL ||
+					    map[i].type == EV_ABS,
+					    ("Unsupported event type"));
+					bit_set(caps, i);
+					goto next;
+				}
 			}
+			continue;
 		}
-		found = false;
-		for (i = 0; i < nmap_items; i++) {
-			if (can_map_arr_range(&hi, map + i)) {
-				bit_set(caps, i);
-				found = true;
+		if (hi.usage_minimum != 0 || hi.usage_maximum != 0) {
+			found = false;
+			for (i = 0; i < nmap_items; i++) {
+				if (can_map_arr_range(&hi, map + i)) {
+					bit_set(caps, i);
+					found = true;
+				}
 			}
+			if (found)
+				goto next;
+			continue;
 		}
-		if (found)
-			items++;
+		/* Arrays with list of usages are not supported yet */
+		continue;
+next:
+		items++;
 	}
 	hid_end_parse(hd);
 
@@ -324,7 +332,7 @@ hmap_hid_parse(struct hmap_softc *sc, uint8_t tlc_index)
 	struct hid_item hi;
 	struct hid_data *hd;
 	const struct hmap_item *mi;
-	uint32_t item = 0;
+	struct hmap_hid_item *item = sc->hid_items;
 	void *d_ptr;
 	uint16_t d_len;
 	bool found;
@@ -346,16 +354,18 @@ hmap_hid_parse(struct hmap_softc *sc, uint8_t tlc_index)
 			continue;
 		HMAP_FOREACH_ITEM(sc, mi) {
 			if (can_map_callback(&hi, mi)) {
-				sc->hid_items[item].map = mi;
-				sc->hid_items[item].type = HMAP_TYPE_CALLBACK;
+				item->map = mi;
+				item->type = HMAP_TYPE_CALLBACK;
 				mi->cb(sc, NULL, (intptr_t)&hi);
 				goto mapped;
 			}
 		}
-		HMAP_FOREACH_ITEM(sc, mi) {
-			if (can_map_variable(&hi, mi)) {
-				sc->hid_items[item].map = mi;
-				sc->hid_items[item].type = HMAP_TYPE_VARIABLE;
+		if (hi.flags & HIO_VARIABLE) {
+			HMAP_FOREACH_ITEM(sc, mi) {
+				if (!can_map_variable(&hi, mi))
+					continue;
+				item->map = mi;
+				item->type = HMAP_TYPE_VARIABLE;
 				switch (mi->type) {
 				case EV_KEY:
 					evdev_support_event(sc->evdev, EV_KEY);
@@ -377,28 +387,36 @@ hmap_hid_parse(struct hmap_softc *sc, uint8_t tlc_index)
 				}
 				goto mapped;
 			}
-		}
-		found = false;
-		HMAP_FOREACH_ITEM(sc, mi) {
-			if (can_map_arr_range(&hi, mi)) {
-				evdev_support_key(sc->evdev, mi->code);
-				found = true;
-			}
-		}
-		if (found) {
-			sc->hid_items[item].last_key = 0;
-			sc->hid_items[item].offset =
-			    hi.usage_minimum - hi.logical_minimum;
-			sc->hid_items[item].type = HMAP_TYPE_ARR_RANGE;
-			evdev_support_event(sc->evdev, EV_KEY);
-		} else
 			continue;
+		}
+		if (hi.usage_minimum != 0 || hi.usage_maximum != 0) {
+			found = false;
+			HMAP_FOREACH_ITEM(sc, mi) {
+				if (can_map_arr_range(&hi, mi)) {
+					evdev_support_key(sc->evdev, mi->code);
+					found = true;
+				}
+			}
+			if (found) {
+				item->last_key = 0;
+				item->base =
+				    hi.usage_minimum - hi.logical_minimum;
+				item->type = HMAP_TYPE_ARR_RANGE;
+				evdev_support_event(sc->evdev, EV_KEY);
+				goto mapped;
+			}
+			continue;
+		}
+		/* Arrays with list of usages are not supported yet */
+		//item->type = HMAP_TYPE_ARR_LIST;
+		continue;
 mapped:
-		sc->hid_items[item].id = hi.report_ID;
-		sc->hid_items[item].loc = hi.loc;
-		sc->hid_items[item].is_signed = hi.logical_minimum < 0;
+		item->id = hi.report_ID;
+		item->loc = hi.loc;
+		item->is_signed = hi.logical_minimum < 0;
 		item++;
-		KASSERT(item > sc->nitems, ("Parsed HID item array overflow"));
+		KASSERT(item <= sc->hid_items + sc->nitems,
+		    ("Parsed HID item array overflow"));
 	}
 	hid_end_parse(hd);
 
