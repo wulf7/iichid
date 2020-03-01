@@ -16,10 +16,12 @@ Current drivers and respective HID devices supported by them are following:
 * **hconf** - Mouse/touchpad mode switches on precission touchpads.
 * **hkbd** - HID keyboards. AT-key subset.
 * **hpen**  - Generic / MS Windows compatible HID pen tablets.
+* **hcons** - Consumer page AKA Multimedia keys.
+* **hsctrl** - System Controls page (Power/Sleep keys).
 
 ## System requirements
 
-FreeBSD 12.1+. Recent CURRENT or 12-STABLE are preferred.
+FreeBSD 12.1+. Recent (any from 2020) CURRENT or 12-STABLE are preferred.
 
 ## Downloading
 
@@ -65,8 +67,8 @@ iichid_load="YES"
 
 Generally speaking, it is a bad idea to use static Xorg configuration for
 evdev devices due to dynamic unit number assignment. The simplest way
-to get new devices recognized by Xorg-server is to rebuild it with UDEV
-autoconfiguration backend enabled.
+to get new devices recognized by Xorg-server is to rebuild it with DEVD
+(since 1.20.7) or UDEV autoconfiguration backend enabled.
 
 Static configuration is still possible. Add following snippet to a file under
 **/usr/local/etc/X11/xorg.conf.d/**
@@ -82,3 +84,10 @@ EndSection
 
 You may need to run **sudo libinput list-devices** to find out unit number
 belonging to given device. Note that it can change across reboots.
+
+## Bug reporting
+
+You can report bugs at 'Project Issues' page
+https://github.com/wulf7/iichid/issues
+It is recommended to enclose console output of 'kldload iichid.ko' command
+with your report.
