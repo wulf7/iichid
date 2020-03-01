@@ -94,11 +94,11 @@ struct hmap_hid_item {
 			int32_t		last_key;
 		};
 	};
-	uint8_t			id;
-	struct hid_location	loc;
-	enum hmap_type		type:2;
-	bool			is_signed:1;	/* Data can be negative */
-	u_int			reserved:5;
+	uint8_t			id;		/* Report ID */
+	struct hid_location	loc;		/* HID item location */
+	int32_t			lmin;		/* HID item logical minimum */
+	int32_t			lmax;		/* HID item logical maximum */
+	enum hmap_type		type;
 };
 
 struct hmap_softc {

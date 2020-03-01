@@ -113,7 +113,7 @@ hmap_intr(void *context, void *buf, uint16_t len)
 	struct hmap_hid_item *hi;
 	const struct hmap_item *mi;
 	uint32_t usage;
-	int32_t data;
+	int32_t data, key;
 	uint8_t id = 0;
 	bool do_sync = false;
 
@@ -136,7 +136,7 @@ hmap_intr(void *context, void *buf, uint16_t len)
 			continue;
 
 		/* Try to avoid sign extension effects */
-		data = hi->is_signed
+		data = hi->lmin < 0
 		    ? hid_get_data(buf, len, &hi->loc)
 		    : hid_get_udata(buf, len, &hi->loc);
 
@@ -151,25 +151,35 @@ hmap_intr(void *context, void *buf, uint16_t len)
 			break;
 
 		case HMAP_TYPE_ARR_RANGE:
-			if (hi->last_key != 0)
-				evdev_push_key(sc->evdev, hi->last_key, 0);
-			hi->last_key = 0;
-			if (data == 0)
-				continue;
-			/*
-			 * When the input field is an array and the usage is
-			 * specified with a range instead of an ID, we have to
-			 * derive the actual usage by using the item value as
-			 * an index in the usage range list.
-			 */
-			usage = hi->base + data;
-			HMAP_FOREACH_ITEM(sc, mi) {
-				if (usage == mi->usage && mi->type == EV_KEY) {
-					evdev_push_key(sc->evdev, mi->code, 1);
-					hi->last_key = mi->code;
-					break;
+			key = KEY_RESERVED;
+			/* Release key on out-of-range (Null) value */
+			if (data >= hi->lmin && data <= hi->lmax) {
+				/*
+				 * When the input field is an array and the
+				 * usage is specified with a range instead of
+				 * an ID, we have to derive the actual usage by
+				 * using the item value as an index in the
+				 * usage range list.
+				 */
+				usage = hi->base + data;
+				HMAP_FOREACH_ITEM(sc, mi) {
+					if (usage == mi->usage &&
+					    mi->type == EV_KEY) {
+						key = mi->code;
+						break;
+					}
 				}
+				if (key == KEY_RESERVED)
+					DPRINTF(sc, "Can not map unknown HID "
+					    "usage: %08x\n", usage);
 			}
+			if (key == hi->last_key)
+				continue;
+			if (hi->last_key != KEY_RESERVED)
+				evdev_push_key(sc->evdev, hi->last_key, 0);
+			if (key != KEY_RESERVED)
+				evdev_push_key(sc->evdev, key, 1);
+			hi->last_key = key;
 			break;
 
 		case HMAP_TYPE_ARR_LIST:
@@ -398,7 +408,7 @@ hmap_hid_parse(struct hmap_softc *sc, uint8_t tlc_index)
 				}
 			}
 			if (found) {
-				item->last_key = 0;
+				item->last_key = KEY_RESERVED;
 				item->base =
 				    hi.usage_minimum - hi.logical_minimum;
 				item->type = HMAP_TYPE_ARR_RANGE;
@@ -413,7 +423,8 @@ hmap_hid_parse(struct hmap_softc *sc, uint8_t tlc_index)
 mapped:
 		item->id = hi.report_ID;
 		item->loc = hi.loc;
-		item->is_signed = hi.logical_minimum < 0;
+		item->lmin = hi.logical_minimum;
+		item->lmax = hi.logical_maximum;
 		item++;
 		KASSERT(item <= sc->hid_items + sc->nitems,
 		    ("Parsed HID item array overflow"));
