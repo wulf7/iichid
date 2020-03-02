@@ -91,3 +91,13 @@ You can report bugs at 'Project Issues' page
 https://github.com/wulf7/iichid/issues
 It is recommended to enclose console output of 'kldload iichid.ko' command
 with your report.
+
+Some additional information that can be helpful especially if device has not
+been detected at all can be obtained with following commands:
+
+```
+$ devinfo -rv	# Very verbose
+$ pciconf -lv
+$ sudo usbconfig
+$ dmesg
+```
