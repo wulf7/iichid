@@ -122,6 +122,7 @@ hpen_probe(device_t dev)
 		return (error);
 
 	hmap_set_evdev_prop(dev, INPUT_PROP_DIRECT);
+	hidbus_set_desc(dev, "Pen");
 
 	return (BUS_PROBE_DEFAULT);
 }

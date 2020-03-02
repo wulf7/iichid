@@ -163,6 +163,7 @@ struct mtx *	hidbus_get_lock(device_t);
 int		hidbus_intr_start(device_t);
 int		hidbus_intr_stop(device_t);
 void		hidbus_intr_poll(device_t);
+void		hidbus_set_desc(device_t, const char *);
 
 /* hidbus HID interface */
 int	hid_get_report_descr(device_t, void **, uint16_t *);

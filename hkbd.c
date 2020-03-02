@@ -866,7 +866,7 @@ hkbd_attach(device_t dev)
 
 	kbd->kb_data = (void *)sc;
 
-	device_set_desc(dev, hw->name);
+	hidbus_set_desc(dev, "Keyboard");
 
 	sc->sc_mode = K_XLATE;
 

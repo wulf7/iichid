@@ -208,10 +208,13 @@ hms_attach(device_t dev)
 #endif
 
 	if (hmap_test_cap(sc->caps, HMT_ABS_X) ||
-	    hmap_test_cap(sc->caps, HMT_ABS_Y))
+	    hmap_test_cap(sc->caps, HMT_ABS_Y)) {
+		hidbus_set_desc(dev, "Tablet");
 		hmap_set_evdev_prop(dev, INPUT_PROP_DIRECT);
-	else
+	} else {
+		hidbus_set_desc(dev, "Mouse");
 		hmap_set_evdev_prop(dev, INPUT_PROP_POINTER);
+	}
 
 	error = hmap_attach(dev);
 	if (error)

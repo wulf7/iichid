@@ -547,8 +547,6 @@ hmap_attach(device_t dev)
 	sc->hid_items = malloc(sc->nhid_items * sizeof(struct hid_item),
 	    M_DEVBUF, M_WAITOK | M_ZERO);
 
-	device_set_desc(dev, hw->name);
-
 	hidbus_set_intr(dev, hmap_intr);
 
 	sc->evdev = evdev_alloc();

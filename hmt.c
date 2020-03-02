@@ -318,7 +318,8 @@ hmt_attach(device_t dev)
 	size_t i;
 	int error;
 
-	device_set_desc(dev, hw->name);
+	hidbus_set_desc(dev,
+	    sc->type == HMT_TYPE_TOUCHPAD ? "TouchPad" : "TouchScreen");
 
 	error = hid_get_report_descr(dev, &d_ptr, &d_len);
 	if (error) {

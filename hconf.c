@@ -167,14 +167,13 @@ hconf_attach(device_t dev)
 	struct hconf_softc *sc = device_get_softc(dev);
 	struct sysctl_ctx_list *ctx = device_get_sysctl_ctx(dev);
 	struct sysctl_oid *tree = device_get_sysctl_tree(dev);
-	const struct hid_device_info *hw = hid_get_device_info(dev);
 	uint32_t flags;
 	void *d_ptr;
 	uint16_t d_len;
 	uint8_t tlc_index;
 	int error;
 
-	device_set_desc(dev, hw->name);
+	hidbus_set_desc(dev, "Configuration");
 
 	error = hid_get_report_descr(dev, &d_ptr, &d_len);
 	if (error) {
