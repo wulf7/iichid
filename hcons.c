@@ -257,20 +257,21 @@ static const struct hid_device_id hcons_devs[] = {
 static void
 hcons_rel_volume_cb(HMAP_CB_ARGS)
 {
+	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV;
 	int32_t data;
 	int32_t code;
 	int nrepeats;
 
-	if (HMAP_IS_ATTACHING) {
-		evdev_support_event(sc->evdev, EV_KEY);
-		evdev_support_key(sc->evdev, KEY_VOLUMEUP);
-		evdev_support_key(sc->evdev, KEY_VOLUMEDOWN);
+	if (HMAP_CB_IS_ATTACHING) {
+		evdev_support_event(evdev, EV_KEY);
+		evdev_support_key(evdev, KEY_VOLUMEUP);
+		evdev_support_key(evdev, KEY_VOLUMEDOWN);
 	} else {
 		data = ctx;
 		code = data > 0 ? KEY_VOLUMEUP : KEY_VOLUMEDOWN;
 		for (nrepeats = abs(data); nrepeats > 0; nrepeats--) {
-			evdev_push_key(sc->evdev, code, 1);
-			evdev_push_key(sc->evdev, code, 0);
+			evdev_push_key(evdev, code, 1);
+			evdev_push_key(evdev, code, 0);
 		}
 	}
 }

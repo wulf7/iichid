@@ -35,8 +35,10 @@ struct hmap_hid_item;
 struct hmap_softc;
 
 #define	HMAP_CB_ARGS	\
-	struct hmap_softc *sc, struct hmap_hid_item *hi, intptr_t ctx
-#define	HMAP_IS_ATTACHING	(hi == NULL)
+	struct hmap_softc *super_sc, struct hmap_hid_item *hi, intptr_t ctx
+#define	HMAP_CB_IS_ATTACHING	(hi == NULL)
+#define	HMAP_CB_GET_SOFTC	((void *)super_sc)
+#define	HMAP_CB_GET_EVDEV	(super_sc->evdev)
 typedef void hmap_cb_t(HMAP_CB_ARGS);
 
 enum hmap_relabs {

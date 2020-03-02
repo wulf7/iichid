@@ -144,16 +144,18 @@ struct hms_softc {
 static void
 hms_wheel_cb(HMAP_CB_ARGS)
 {
+	struct hms_softc *sc = HMAP_CB_GET_SOFTC;
+	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV;
 	int32_t data;
 
-	if (HMAP_IS_ATTACHING) {
-		evdev_support_event(sc->evdev, EV_REL);
-		evdev_support_rel(sc->evdev, REL_WHEEL);
+	if (HMAP_CB_IS_ATTACHING) {
+		evdev_support_event(evdev, EV_REL);
+		evdev_support_rel(evdev, REL_WHEEL);
 	} else {
 		data = ctx;
-		if (((struct hms_softc *)sc)->rev_wheel)
+		if (sc->rev_wheel)
 			data = -data;
-		evdev_push_rel(sc->evdev, REL_WHEEL, data);
+		evdev_push_rel(evdev, REL_WHEEL, data);
 	}
 }
 

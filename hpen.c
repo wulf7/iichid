@@ -93,10 +93,11 @@ static const struct hid_device_id hpen_devs[] = {
 static void
 hpen_battery_strenght_cb(HMAP_CB_ARGS)
 {
+	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV;
 	int32_t data;
 
-	if (HMAP_IS_ATTACHING) {
-		evdev_support_event(sc->evdev, EV_PWR);
+	if (HMAP_CB_IS_ATTACHING) {
+		evdev_support_event(evdev, EV_PWR);
 		/* TODO */
 	} else {
 		data = ctx;
