@@ -476,14 +476,12 @@ hmap_hid_parse(struct hmap_softc *sc, uint8_t tlc_index)
 					found = true;
 				}
 			}
-			if (found) {
-				item->base =
-				    hi.usage_minimum - hi.logical_minimum;
-				item->type = HMAP_TYPE_ARR_RANGE;
-				evdev_support_event(sc->evdev, EV_KEY);
-				goto mapped;
-			}
-			continue;
+			if (!found)
+				continue;
+			item->base = hi.usage_minimum - hi.logical_minimum;
+			item->type = HMAP_TYPE_ARR_RANGE;
+			evdev_support_event(sc->evdev, EV_KEY);
+			goto mapped;
 		}
 		arr_size = hi.logical_maximum - hi.logical_minimum + 1;
 		if (arr_size < 1 || arr_size > MAXUSAGE)
