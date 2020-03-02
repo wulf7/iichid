@@ -146,8 +146,15 @@ hmap_intr(void *context, void *buf, uint16_t len)
 			break;
 
 		case HMAP_TYPE_VARIABLE:
+			/*
+			 * Ignore reports for absolute data if the data did not
+			 * change. Evdev layer filters out them anyway.
+			 */
+			if (hi->map->type != EV_REL && hi->last_val == data)
+				continue;
 			evdev_push_event(sc->evdev, hi->map->type,
 			    hi->map->code, data);
+			hi->last_val = data;
 			break;
 
 		case HMAP_TYPE_ARR_RANGE:
@@ -173,13 +180,13 @@ hmap_intr(void *context, void *buf, uint16_t len)
 					DPRINTF(sc, "Can not map unknown HID "
 					    "usage: %08x\n", usage);
 			}
-			if (key == hi->last_key)
+			if (key == hi->last_val)
 				continue;
-			if (hi->last_key != KEY_RESERVED)
-				evdev_push_key(sc->evdev, hi->last_key, 0);
+			if (hi->last_val != KEY_RESERVED)
+				evdev_push_key(sc->evdev, hi->last_val, 0);
 			if (key != KEY_RESERVED)
 				evdev_push_key(sc->evdev, key, 1);
-			hi->last_key = key;
+			hi->last_val = key;
 			break;
 
 		case HMAP_TYPE_ARR_LIST:
@@ -408,7 +415,6 @@ hmap_hid_parse(struct hmap_softc *sc, uint8_t tlc_index)
 				}
 			}
 			if (found) {
-				item->last_key = KEY_RESERVED;
 				item->base =
 				    hi.usage_minimum - hi.logical_minimum;
 				item->type = HMAP_TYPE_ARR_RANGE;
@@ -425,6 +431,7 @@ mapped:
 		item->loc = hi.loc;
 		item->lmin = hi.logical_minimum;
 		item->lmax = hi.logical_maximum;
+		item->last_val = 0; /* KEY_RESERVED */
 		item++;
 		KASSERT(item <= sc->hid_items + sc->nitems,
 		    ("Parsed HID item array overflow"));

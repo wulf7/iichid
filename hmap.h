@@ -89,18 +89,16 @@ enum hmap_type {
 };
 
 struct hmap_hid_item {
+	enum hmap_type		type;
 	union {
 		const struct hmap_item	*map;	/* Callback & variable */
-		struct {			/* Array map type */
-			uint32_t	base;
-			int32_t		last_key;
-		};
+		uint32_t		base;	/* Array range map type */
 	};
 	uint8_t			id;		/* Report ID */
 	struct hid_location	loc;		/* HID item location */
 	int32_t			lmin;		/* HID item logical minimum */
 	int32_t			lmax;		/* HID item logical maximum */
-	enum hmap_type		type;
+	int32_t			last_val;	/* Last reported value */
 };
 
 struct hmap_softc {
