@@ -29,7 +29,7 @@
 __FBSDID("$FreeBSD$");
 
 /*
- * Abstract 1 to 1 HID usage to evdev event mapper driver.
+ * Abstract 1 to 1 HID input usage to evdev event mapper driver.
  */
 
 #include <sys/param.h>
@@ -137,8 +137,13 @@ hmap_intr(void *context, void *buf, uint16_t len)
 		if (id != hi->id)
 			continue;
 
-		/* Try to avoid sign extension effects */
-		data = hi->lmin < 0
+		/*
+		 * 5.8. If Logical Minimum and Logical Maximum are both
+		 * positive values then the contents of a field can be assumed
+		 * to be an unsigned value. Otherwise, all integer values are
+		 * signed values represented in 2’s complement format.
+		 */
+		data = hi->lmin < 0 || hi->lmax < 0
 		    ? hid_get_data(buf, len, &hi->loc)
 		    : hid_get_udata(buf, len, &hi->loc);
 
