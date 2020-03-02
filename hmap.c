@@ -64,6 +64,8 @@ __FBSDID("$FreeBSD$");
 #define DPRINTFN(...) do { } while (0)
 #endif
 
+/* HID report descriptor parser limit hardcoded in usbhid.h */
+#define	MAXUSAGE	64
 
 static device_probe_t hmap_probe;
 
@@ -157,9 +159,33 @@ hmap_intr(void *context, void *buf, uint16_t len)
 			hi->last_val = data;
 			break;
 
+		case HMAP_TYPE_ARR_LIST:
+			key = KEY_RESERVED;
+			/*
+			 * 6.2.2.5. An out-of range value in an array field
+			 * is considered no controls asserted.
+			 */
+			if (data >= hi->lmin && data <= hi->lmax) {
+				/*
+				 * 6.2.2.5. Rather than returning a single bit
+				 * for each button in the group, an array
+				 * returns an index in each field that
+				 * corresponds to the pressed button.
+				 */
+				if (hi->list[data - hi->lmin] == NULL)
+					DPRINTF(sc, "Can not map unknown HID "
+					    "array index: %08x\n", data);
+				else
+					key = hi->list[data - hi->lmin]->code;
+			}
+			goto report_key;
+
 		case HMAP_TYPE_ARR_RANGE:
 			key = KEY_RESERVED;
-			/* Release key on out-of-range (Null) value */
+			/*
+			 * 6.2.2.5. An out-of range value in an array field
+			 * is considered no controls asserted.
+			 */
 			if (data >= hi->lmin && data <= hi->lmax) {
 				/*
 				 * When the input field is an array and the
@@ -180,6 +206,7 @@ hmap_intr(void *context, void *buf, uint16_t len)
 					DPRINTF(sc, "Can not map unknown HID "
 					    "usage: %08x\n", usage);
 			}
+report_key:
 			if (key == hi->last_val)
 				continue;
 			if (hi->last_val != KEY_RESERVED)
@@ -189,9 +216,6 @@ hmap_intr(void *context, void *buf, uint16_t len)
 			hi->last_val = key;
 			break;
 
-		case HMAP_TYPE_ARR_LIST:
-			/* XXX: Not supported yet */
-			/* FALLTHROUGH */
 		default:
 			KASSERT(0, ("Unknown map type (%d)", hi->type));
 		}
@@ -232,13 +256,25 @@ can_map_arr_range(struct hid_item *hi, const struct hmap_item *mi)
 	    mi->type == EV_KEY);
 }
 
+static inline bool
+can_map_arr_list(struct hid_item *hi, const struct hmap_item *mi,
+    uint32_t usage)
+{
+
+	return ((hi->flags & HIO_VARIABLE) == 0 && !mi->has_cb &&
+	    usage == mi->usage &&
+	    (hi->flags & HIO_RELATIVE) == 0 &&
+	    mi->type == EV_KEY);
+}
+
 static uint32_t
 hmap_hid_probe_descr(void *d_ptr, uint16_t d_len, uint8_t tlc_index,
     const struct hmap_item *map, int nmap_items, bitstr_t *caps)
 {
 	struct hid_item hi;
 	struct hid_data *hd;
-	uint32_t i, items = 0;
+	uint32_t i, j, usage, items = 0;
+	int32_t arr_size;
 	bool found, do_free = false;
 
 	if (caps == NULL) {
@@ -273,8 +309,8 @@ hmap_hid_probe_descr(void *d_ptr, uint16_t d_len, uint8_t tlc_index,
 			}
 			continue;
 		}
+		found = false;
 		if (hi.usage_minimum != 0 || hi.usage_maximum != 0) {
-			found = false;
 			for (i = 0; i < nmap_items; i++) {
 				if (can_map_arr_range(&hi, map + i)) {
 					bit_set(caps, i);
@@ -285,8 +321,27 @@ hmap_hid_probe_descr(void *d_ptr, uint16_t d_len, uint8_t tlc_index,
 				goto next;
 			continue;
 		}
-		/* Arrays with list of usages are not supported yet */
-		continue;
+		arr_size = hi.logical_maximum - hi.logical_minimum + 1;
+		if (arr_size < 1 || arr_size > MAXUSAGE)
+			continue;
+		for (j = 0; j < arr_size; j++) {
+			/*
+			 * Due to deficiencies in HID report descriptor parser
+			 * only first usage in array is returned to caller.
+			 * For now bail out instead of processing second one.
+			 */
+			if (j != 0)
+				break;
+			usage = hi.usage;
+			for (i = 0; i < nmap_items; i++) {
+				if (can_map_arr_list(&hi, map + i, usage)) {
+					bit_set(caps, i);
+					found = true;
+				}
+			}
+		}
+		if (!found)
+			continue;
 next:
 		items++;
 	}
@@ -352,6 +407,8 @@ hmap_hid_parse(struct hmap_softc *sc, uint8_t tlc_index)
 	struct hmap_hid_item *item = sc->hid_items;
 	void *d_ptr;
 	uint16_t d_len;
+	int32_t arr_size;
+	uint32_t i, usage;
 	bool found;
 	int error;
 
@@ -406,8 +463,8 @@ hmap_hid_parse(struct hmap_softc *sc, uint8_t tlc_index)
 			}
 			continue;
 		}
+		found = false;
 		if (hi.usage_minimum != 0 || hi.usage_maximum != 0) {
-			found = false;
 			HMAP_FOREACH_ITEM(sc, mi) {
 				if (can_map_arr_range(&hi, mi)) {
 					evdev_support_key(sc->evdev, mi->code);
@@ -423,9 +480,35 @@ hmap_hid_parse(struct hmap_softc *sc, uint8_t tlc_index)
 			}
 			continue;
 		}
-		/* Arrays with list of usages are not supported yet */
-		//item->type = HMAP_TYPE_ARR_LIST;
-		continue;
+		arr_size = hi.logical_maximum - hi.logical_minimum + 1;
+		if (arr_size < 1 || arr_size > MAXUSAGE)
+			continue;
+		for (i = 0; i < arr_size; i++) {
+			/*
+			 * Due to deficiencies in HID report descriptor parser
+			 * only first usage in array is returned to caller.
+			 * For now bail out instead of processing second one.
+			 */
+			if (i != 0)
+				break;
+			usage = hi.usage;
+			HMAP_FOREACH_ITEM(sc, mi) {
+				if (can_map_arr_list(&hi, mi, usage)) {
+					evdev_support_key(sc->evdev, mi->code);
+					if (item->list == NULL)
+						item->list = malloc(arr_size *
+						    sizeof(struct hmap_item *),
+						    M_DEVBUF, M_WAITOK|M_ZERO);
+					item->list[i] = mi;
+					found = true;
+					break;
+				}
+			}
+		}
+		if (!found)
+			continue;
+		item->type = HMAP_TYPE_ARR_LIST;
+		evdev_support_event(sc->evdev, EV_KEY);
 mapped:
 		item->id = hi.report_ID;
 		item->loc = hi.loc;
@@ -495,9 +578,16 @@ int
 hmap_detach(device_t dev)
 {
 	struct hmap_softc *sc = device_get_softc(dev);
+	struct hmap_hid_item *hi;
 
 	evdev_free(sc->evdev);
-	free(sc->hid_items, M_DEVBUF);
+	if (sc->hid_items != NULL) {
+		for (hi = sc->hid_items; hi < sc->hid_items + sc->nhid_items;
+		    hi++)
+			if (hi->type == HMAP_TYPE_ARR_LIST)
+				free(hi->list, M_DEVBUF);
+		free(sc->hid_items, M_DEVBUF);
+	}
 
 	return (0);
 }

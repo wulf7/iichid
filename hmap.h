@@ -92,6 +92,7 @@ struct hmap_hid_item {
 	enum hmap_type		type;
 	union {
 		const struct hmap_item	*map;	/* Callback & variable */
+		const struct hmap_item	**list;	/* Array list map type */
 		uint32_t		base;	/* Array range map type */
 	};
 	uint8_t			id;		/* Report ID */
