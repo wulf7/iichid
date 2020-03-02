@@ -98,7 +98,7 @@ static hmap_cb_t	hms_wheel_cb;
 #define HMS_MAP_REL_CN(usage, code)	\
 	{ HMAP_REL(#usage, HID_USAGE2(HUP_CONSUMER, usage), code) }
 #define HMS_MAP_REL_CB(usage, cb)	\
-	{ HMAP_REL_CB(#usage, HID_USAGE2(HUP_GENERIC_DESKTOP, usage), cb) }
+	{ HMAP_REL_CB(#usage, HID_USAGE2(HUP_GENERIC_DESKTOP, usage), &cb) }
 
 static const struct hmap_item hms_map[] = {
 	[HMT_REL_X]	= HMS_MAP_REL(HUG_X,		REL_X),

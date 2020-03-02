@@ -70,7 +70,7 @@ struct hmap_item {
 #define	HMAP_ABS(_name, _usage, _code)					\
     HMAP_ANY((_name), (_usage), EV_ABS, (_code)), .relabs = HMAP_ABSOLUTE
 #define	HMAP_ANY_CB(_name, _usage, _callback)				\
-    .name = (_name), .usage = (_usage), .cb = &(_callback), .has_cb = true
+    .name = (_name), .usage = (_usage), .cb = (_callback), .has_cb = true
 #define	HMAP_REL_CB(_name, _usage, _callback)				\
     HMAP_ANY_CB((_name), (_usage), (_callback)), .relabs = HMAP_RELATIVE
 #define	HMAP_ABS_CB(_name, _usage, _callback)				\

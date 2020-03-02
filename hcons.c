@@ -80,7 +80,7 @@ static hmap_cb_t	hcons_rel_volume_cb;
 #define	HCONS_MAP_REL(usage, code)	\
 	{ HMAP_REL(#usage, HID_USAGE2(HUP_CONSUMER, usage), code) }
 #define HCONS_MAP_REL_CB(usage, callback)	\
-	{ HMAP_REL_CB(#usage, HID_USAGE2(HUP_CONSUMER, usage), callback) }
+	{ HMAP_REL_CB(#usage, HID_USAGE2(HUP_CONSUMER, usage), &callback) }
 
 static const struct hmap_item hcons_map[] = {
 	HCONS_MAP_KEY(0x030,	KEY_POWER),
