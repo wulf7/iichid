@@ -596,6 +596,7 @@ uhid_attach(device_t dev)
 {
 	struct usb_attach_arg *uaa = device_get_ivars(dev);
 	struct uhid_softc *sc = device_get_softc(dev);
+	char *sep;
 	int error = 0;
 
 	DPRINTFN(10, "sc=%p\n", sc);
@@ -707,6 +708,10 @@ uhid_attach(device_t dev)
 
 	sc->sc_hw.parent = dev;
 	strlcpy(sc->sc_hw.name, device_get_desc(dev), sizeof(sc->sc_hw.name));
+	/* Strip extra parameters from device name created by usb_devinfo */
+	sep = strchr(sc->sc_hw.name, ',');
+	if (sep != NULL)
+		*sep = '\0';
 	strlcpy(sc->sc_hw.serial, usb_get_serial(uaa->device),
 	    sizeof(sc->sc_hw.serial));
 	sc->sc_hw.idBus = BUS_USB;
