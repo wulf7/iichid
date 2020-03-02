@@ -62,22 +62,22 @@ struct hmap_item {
 };
 
 #define	HMAP_ANY(_name, _usage, _type, _code)				\
-    .name = _name, .usage = _usage, .type = _type, .code = _code
+    .name = (_name), .usage = (_usage), .type = (_type), .code = (_code)
 #define	HMAP_KEY(_name, _usage, _code)					\
-    HMAP_ANY(_name, _usage, EV_KEY, _code), .relabs = HMAP_RELABS_ANY
+    HMAP_ANY((_name), (_usage), EV_KEY, (_code)), .relabs = HMAP_RELABS_ANY
 #define	HMAP_REL(_name, _usage, _code)					\
-    HMAP_ANY(_name, _usage, EV_REL, _code), .relabs = HMAP_RELATIVE
+    HMAP_ANY((_name), (_usage), EV_REL, (_code)), .relabs = HMAP_RELATIVE
 #define	HMAP_ABS(_name, _usage, _code)					\
-    HMAP_ANY(_name, _usage, EV_ABS, _code), .relabs = HMAP_ABSOLUTE
-#define HMAP_ANY_CB(_name, _usage, _callback)				\
-    .name = _name, .usage = _usage, .cb = &_callback, .has_cb = true
-#define HMAP_REL_CB(_name, _usage, _callback)				\
-    HMAP_ANY_CB(_name, _usage, _callback), .relabs = HMAP_RELATIVE
-#define HMAP_ABS_CB(_name, _usage, _callback)				\
-    HMAP_ANY_CB(_name, _usage, _callback), .relabs = HMAP_ABSOLUTE
+    HMAP_ANY((_name), (_usage), EV_ABS, (_code)), .relabs = HMAP_ABSOLUTE
+#define	HMAP_ANY_CB(_name, _usage, _callback)				\
+    .name = (_name), .usage = (_usage), .cb = &(_callback), .has_cb = true
+#define	HMAP_REL_CB(_name, _usage, _callback)				\
+    HMAP_ANY_CB((_name), (_usage), (_callback)), .relabs = HMAP_RELATIVE
+#define	HMAP_ABS_CB(_name, _usage, _callback)				\
+    HMAP_ANY_CB((_name), (_usage), (_callback)), .relabs = HMAP_ABSOLUTE
 
 #define	HMAP_FOREACH_ITEM(sc, mi)	\
-    for (mi = (sc)->map; mi < (sc)->map + (sc)->nmap_items; mi++)
+    for ((mi) = (sc)->map; (mi) < (sc)->map + (sc)->nmap_items; (mi)++)
 
 enum hmap_type {
 	HMAP_TYPE_CALLBACK = 0,	/* HID item is reported with user callback */
