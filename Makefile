@@ -30,6 +30,7 @@ SRCS	+= hmap.h hmap.c
 SRCS	+= usbdevs.h usbhid.c
 SRCS	+= acpi_if.h bus_if.h device_if.h iicbus_if.h
 SRCS	+= opt_acpi.h opt_usb.h opt_evdev.h
+SRCS	+= strcasestr.c strcasestr.h
 # Revert 5d3a4a2 for compiling hkbd on pre 1300068 systems
 .if ${OSVERSION} >= 1300068 || \
     (${OSVERSION} >= 1201507 && ${OSVERSION} < 1300000)

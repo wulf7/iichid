@@ -30,9 +30,7 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/bus.h>
-#include <sys/ctype.h>		/* tolower */
 #include <sys/kernel.h>
-//#include <sys/libkern.h>	/* strcasestr */
 #include <sys/lock.h>
 #include <sys/module.h>
 #include <sys/mutex.h>
@@ -43,6 +41,8 @@ __FBSDID("$FreeBSD$");
 #include "hidbus.h"
 
 #include "hid_if.h"
+
+#include "strcasestr.h"
 
 #define	HID_DEBUG_VAR	hid_debug
 #include "hid_debug.h"
@@ -279,29 +279,6 @@ hidbus_get_lock(device_t child)
 	return (sc->lock);
 }
 
-/*
- * Find the first occurrence of find in s, ignore case.
- */
-static char *
-_strcasestr(const char *s, const char *find)
-{
-	char c, sc;
-	size_t len;
-
-	if ((c = *find++) != 0) {
-		c = tolower((unsigned char)c);
-		len = strlen(find);
-		do {
-			do {
-				if ((sc = *s++) == 0)
-					return (NULL);
-			} while ((char)tolower((unsigned char)sc) != c);
-		} while (strncasecmp(s, find, len) != 0);
-		s--;
-	}
-	return (char *)(intptr_t)(s);
-}
-
 void
 hidbus_set_desc(device_t child, const char *suffix)
 {
@@ -310,7 +287,7 @@ hidbus_set_desc(device_t child, const char *suffix)
 	char buf[80];
 
 	/* Do not add NULL suffix or if device name already contains it. */
-	if (suffix != NULL && _strcasestr(devinfo->name, suffix) == NULL) {
+	if (suffix != NULL && strcasestr(devinfo->name, suffix) == NULL) {
 		snprintf(buf, sizeof(buf), "%s %s", devinfo->name, suffix);
 		device_set_desc_copy(child, buf);
 	} else
