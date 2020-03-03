@@ -988,18 +988,21 @@ iichid_attach(device_t dev)
 	DPRINTF(sc, "  IICbus addr       : 0x%02X\n", sc->addr >> 1);
 	DPRINTF(sc, "  HID descriptor reg: 0x%02X\n", sc->config_reg);
 
-	if (device_info->Valid & ACPI_VALID_HID)
-		strlcpy(sc->hw.name, device_info->HardwareId.String,
-		    sizeof(sc->hw.name));
-
-	AcpiOsFree(device_info);
-
 	sc->hw.parent = dev;
 	strlcpy(sc->hw.serial, "", sizeof(sc->hw.serial));
 	sc->hw.idBus = BUS_I2C;
 	sc->hw.idVendor = le16toh(sc->desc.wVendorID);
 	sc->hw.idProduct = le16toh(sc->desc.wProductID);
 	sc->hw.idVersion = le16toh(sc->desc.wVersionID);
+
+	snprintf(sc->hw.name, sizeof(sc->hw.name), "%s:%02lX %04X:%04X",
+	    (device_info->Valid & ACPI_VALID_HID) ?
+	    device_info->HardwareId.String : "Unknown",
+	    (device_info->Valid & ACPI_VALID_UID) ?
+	    strtoul(device_info->UniqueId.String, NULL, 10) : 0UL,
+	    sc->hw.idVendor, sc->hw.idProduct);
+
+	AcpiOsFree(device_info);
 
 	error = iichid_set_power(sc, I2C_HID_POWER_ON);
 	if (error) {
