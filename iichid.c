@@ -532,9 +532,14 @@ iichid_event_task(void *context, int pending)
 	bool locked = false;
 	int error;
 
+	if (!sc->power_on) {
+		return;
+	}
+
 	if (iicbus_request_bus(parent, sc->dev, IIC_WAIT) != 0)
 		goto rearm;
 
+	/* Check again while locked by the request */
 	if (!sc->power_on) {
 		iicbus_release_bus(parent, sc->dev);
 		return;
@@ -586,19 +591,24 @@ iichid_intr(void *context)
 	int error;
 
 	/*
+	 * Ignore interrupts while in SLEEP power state. Reading of
+	 * input reports of I2C devices residing in SLEEP state is not
+	 * allowed and often returns a garbage. If a HOST needs to
+	 * communicate with the DEVICE it MUST issue a SET POWER
+	 * command (to ON) before any other command.
+	 */
+	if (!sc->power_on) {
+		return;
+	}
+
+	/*
 	 * Designware(IG4) driver-specific hack.
 	 * Requesting of an I2C bus with IIC_DONTWAIT parameter enables polled
 	 * mode in the driver, making possible iicbus_transfer execution from
 	 * interrupt handlers and callouts.
 	 */
 	if (iicbus_request_bus(parent, sc->dev, IIC_DONTWAIT) == 0) {
-		/*
-		 * Ignore interrupts while in SLEEP power state. Reading of
-		 * input reports of I2C devices residing in SLEEP state is not
-		 * allowed and often returns a garbage. If a HOST needs to
-		 * communicate with the DEVICE it MUST issue a SET POWER
-		 * command (to ON) before any other command.
-		 */
+		/* Check again while locked by the request */
 		if (!sc->power_on) {
 			iicbus_release_bus(parent, sc->dev);
 			return;
