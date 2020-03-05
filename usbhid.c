@@ -66,7 +66,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/usb/usbdi_util.h>
 #include <dev/usb/usb_ioctl.h>
 
-#define	USB_DEBUG_VAR uhid_debug
+#define	USB_DEBUG_VAR usbhid_debug
 #include <dev/usb/usb_debug.h>
 
 #include <dev/usb/input/usb_rdesc.h>
@@ -77,11 +77,11 @@ __FBSDID("$FreeBSD$");
 #include "hid_if.h"
 
 #ifdef USB_DEBUG
-static int uhid_debug = 0;
+static int usbhid_debug = 0;
 
-static SYSCTL_NODE(_hw_usb, OID_AUTO, uhid, CTLFLAG_RW, 0, "USB uhid");
-SYSCTL_INT(_hw_usb_uhid, OID_AUTO, debug, CTLFLAG_RWTUN,
-    &uhid_debug, 0, "Debug level");
+static SYSCTL_NODE(_hw_usb, OID_AUTO, usbhid, CTLFLAG_RW, 0, "USB usbhid");
+SYSCTL_INT(_hw_usb_usbhid, OID_AUTO, debug, CTLFLAG_RWTUN,
+    &usbhid_debug, 0, "Debug level");
 #endif
 
 #define	UHID_BSIZE	1024		/* bytes, buffer size */
@@ -97,7 +97,7 @@ enum {
 	UHID_N_TRANSFER,
 };
 
-struct uhid_softc {
+struct usbhid_softc {
 	device_t sc_child;
 
 	hid_intr_t *sc_intr_handler;
@@ -131,27 +131,27 @@ struct uhid_softc {
 	int sc_tr_error;
 };
 
-static const uint8_t uhid_xb360gp_report_descr[] = {UHID_XB360GP_REPORT_DESCR()};
-static const uint8_t uhid_graphire_report_descr[] = {UHID_GRAPHIRE_REPORT_DESCR()};
-static const uint8_t uhid_graphire3_4x5_report_descr[] = {UHID_GRAPHIRE3_4X5_REPORT_DESCR()};
+static const uint8_t usbhid_xb360gp_report_descr[] = {UHID_XB360GP_REPORT_DESCR()};
+static const uint8_t usbhid_graphire_report_descr[] = {UHID_GRAPHIRE_REPORT_DESCR()};
+static const uint8_t usbhid_graphire3_4x5_report_descr[] = {UHID_GRAPHIRE3_4X5_REPORT_DESCR()};
 
 /* prototypes */
 
-static device_probe_t uhid_probe;
-static device_attach_t uhid_attach;
-static device_detach_t uhid_detach;
+static device_probe_t usbhid_probe;
+static device_attach_t usbhid_attach;
+static device_detach_t usbhid_detach;
 
-static usb_callback_t uhid_intr_write_callback;
-static usb_callback_t uhid_intr_read_callback;
-static usb_callback_t uhid_write_callback;
+static usb_callback_t usbhid_intr_write_callback;
+static usb_callback_t usbhid_intr_read_callback;
+static usb_callback_t usbhid_write_callback;
 #ifdef NOT_YET
-static usb_callback_t uhid_read_callback;
+static usb_callback_t usbhid_read_callback;
 #endif
 
 static void
-uhid_intr_write_callback(struct usb_xfer *xfer, usb_error_t error)
+usbhid_intr_write_callback(struct usb_xfer *xfer, usb_error_t error)
 {
-	struct uhid_softc *sc = usbd_xfer_softc(xfer);
+	struct usbhid_softc *sc = usbd_xfer_softc(xfer);
 	struct usb_page_cache *pc;
 	uint16_t io_len;
 
@@ -188,9 +188,9 @@ tr_exit:
 }
 
 static void
-uhid_intr_read_callback(struct usb_xfer *xfer, usb_error_t error)
+usbhid_intr_read_callback(struct usb_xfer *xfer, usb_error_t error)
 {
-	struct uhid_softc *sc = usbd_xfer_softc(xfer);
+	struct usbhid_softc *sc = usbd_xfer_softc(xfer);
 	struct usb_page_cache *pc;
 	int actlen;
 
@@ -236,7 +236,7 @@ re_submit:
 }
 
 static void
-uhid_fill_set_report(struct usb_device_request *req, uint8_t iface_no,
+usbhid_fill_set_report(struct usb_device_request *req, uint8_t iface_no,
     uint8_t type, uint8_t id, uint16_t size)
 {
 	req->bmRequestType = UT_WRITE_CLASS_INTERFACE;
@@ -249,7 +249,7 @@ uhid_fill_set_report(struct usb_device_request *req, uint8_t iface_no,
 
 #ifdef NOT_YET
 static void
-uhid_fill_get_report(struct usb_device_request *req, uint8_t iface_no,
+usbhid_fill_get_report(struct usb_device_request *req, uint8_t iface_no,
     uint8_t type, uint8_t id, uint16_t size)
 {
 	req->bmRequestType = UT_READ_CLASS_INTERFACE;
@@ -262,9 +262,9 @@ uhid_fill_get_report(struct usb_device_request *req, uint8_t iface_no,
 #endif
 
 static void
-uhid_write_callback(struct usb_xfer *xfer, usb_error_t error)
+usbhid_write_callback(struct usb_xfer *xfer, usb_error_t error)
 {
-	struct uhid_softc *sc = usbd_xfer_softc(xfer);
+	struct usbhid_softc *sc = usbd_xfer_softc(xfer);
 	struct usb_device_request req;
 	struct usb_page_cache *pc;
 	uint8_t id;
@@ -285,7 +285,7 @@ uhid_write_callback(struct usb_xfer *xfer, usb_error_t error)
 			usbd_xfer_set_frame_len(xfer, 1, sc->sc_tr_len);
 		}
 
-		uhid_fill_set_report(&req, sc->sc_iface_no,
+		usbhid_fill_set_report(&req, sc->sc_iface_no,
 		    UHID_OUTPUT_REPORT, id, sc->sc_tr_len);
 
 		pc = usbd_xfer_get_frame(xfer, 0);
@@ -312,9 +312,9 @@ tr_exit:
 
 #ifdef NOT_YET
 static void
-uhid_read_callback(struct usb_xfer *xfer, usb_error_t error)
+usbhid_read_callback(struct usb_xfer *xfer, usb_error_t error)
 {
-	struct uhid_softc *sc = usbd_xfer_softc(xfer);
+	struct usbhid_softc *sc = usbd_xfer_softc(xfer);
 	struct usb_device_request req;
 	struct usb_page_cache *pc;
 
@@ -330,7 +330,7 @@ uhid_read_callback(struct usb_xfer *xfer, usb_error_t error)
 
 		if (usb_fifo_put_bytes_max(sc->sc_fifo.fp[USB_FIFO_RX]) > 0) {
 
-			uhid_fill_get_report
+			usbhid_fill_get_report
 			    (&req, sc->sc_iface_no, UHID_INPUT_REPORT,
 			    sc->sc_iid, sc->sc_isize);
 
@@ -351,7 +351,7 @@ uhid_read_callback(struct usb_xfer *xfer, usb_error_t error)
 }
 #endif
 
-static const struct usb_config uhid_config[UHID_N_TRANSFER] = {
+static const struct usb_config usbhid_config[UHID_N_TRANSFER] = {
 
 	[UHID_INTR_DT_WR] = {
 		.type = UE_INTERRUPT,
@@ -359,7 +359,7 @@ static const struct usb_config uhid_config[UHID_N_TRANSFER] = {
 		.direction = UE_DIR_OUT,
 		.flags = {.pipe_bof = 1,.no_pipe_ok = 1, },
 		.bufsize = UHID_BSIZE,
-		.callback = &uhid_intr_write_callback,
+		.callback = &usbhid_intr_write_callback,
 	},
 	[UHID_INTR_DT_RD] = {
 		.type = UE_INTERRUPT,
@@ -367,14 +367,14 @@ static const struct usb_config uhid_config[UHID_N_TRANSFER] = {
 		.direction = UE_DIR_IN,
 		.flags = {.pipe_bof = 1,.short_xfer_ok = 1,},
 		.bufsize = UHID_BSIZE,
-		.callback = &uhid_intr_read_callback,
+		.callback = &usbhid_intr_read_callback,
 	},
 	[UHID_CTRL_DT_WR] = {
 		.type = UE_CONTROL,
 		.endpoint = 0x00,	/* Control pipe */
 		.direction = UE_DIR_ANY,
 		.bufsize = sizeof(struct usb_device_request) + UHID_BSIZE,
-		.callback = &uhid_write_callback,
+		.callback = &usbhid_write_callback,
 		.timeout = 1000,	/* 1 second */
 	},
 #ifdef NOT_YET
@@ -383,7 +383,7 @@ static const struct usb_config uhid_config[UHID_N_TRANSFER] = {
 		.endpoint = 0x00,	/* Control pipe */
 		.direction = UE_DIR_ANY,
 		.bufsize = sizeof(struct usb_device_request) + UHID_BSIZE,
-		.callback = &uhid_read_callback,
+		.callback = &usbhid_read_callback,
 		.timeout = 1000,	/* 1 second */
 	},
 #endif
@@ -393,7 +393,7 @@ static void
 usbhid_intr_setup(device_t dev, struct mtx *mtx, hid_intr_t intr,
     void *context)
 {
-	struct uhid_softc* sc = device_get_softc(dev);
+	struct usbhid_softc* sc = device_get_softc(dev);
 	int error;
 
 	sc->sc_intr_handler = intr;
@@ -401,7 +401,7 @@ usbhid_intr_setup(device_t dev, struct mtx *mtx, hid_intr_t intr,
 	sc->sc_intr_mtx = mtx;
 
 	error = usbd_transfer_setup(sc->sc_udev,
-	    &sc->sc_iface_index, sc->sc_xfer, uhid_config,
+	    &sc->sc_iface_index, sc->sc_xfer, usbhid_config,
 	    UHID_N_TRANSFER, sc, sc->sc_intr_mtx);
 
 	if (error)
@@ -411,7 +411,7 @@ usbhid_intr_setup(device_t dev, struct mtx *mtx, hid_intr_t intr,
 static void
 usbhid_intr_unsetup(device_t dev)
 {
-	struct uhid_softc* sc = device_get_softc(dev);
+	struct usbhid_softc* sc = device_get_softc(dev);
 
 	usbd_transfer_unsetup(sc->sc_xfer, UHID_N_TRANSFER);
 }
@@ -419,7 +419,7 @@ usbhid_intr_unsetup(device_t dev)
 static int
 usbhid_intr_start(device_t dev)
 {
-	struct uhid_softc* sc = device_get_softc(dev);
+	struct usbhid_softc* sc = device_get_softc(dev);
 
 	mtx_assert(sc->sc_intr_mtx, MA_OWNED);
 
@@ -431,7 +431,7 @@ usbhid_intr_start(device_t dev)
 static int
 usbhid_intr_stop(device_t dev)
 {
-	struct uhid_softc* sc = device_get_softc(dev);
+	struct usbhid_softc* sc = device_get_softc(dev);
 
 	mtx_assert(sc->sc_intr_mtx, MA_OWNED);
 
@@ -443,7 +443,7 @@ usbhid_intr_stop(device_t dev)
 static void
 usbhid_intr_poll(device_t dev)
 {
-	struct uhid_softc* sc = device_get_softc(dev);
+	struct usbhid_softc* sc = device_get_softc(dev);
 
 	usbd_transfer_poll(sc->sc_xfer, UHID_N_TRANSFER);
 }
@@ -454,7 +454,7 @@ usbhid_intr_poll(device_t dev)
 static int
 usbhid_get_report_desc(device_t dev, void **buf, uint16_t *len)
 {
-	struct uhid_softc* sc = device_get_softc(dev);
+	struct usbhid_softc* sc = device_get_softc(dev);
 
 	*buf = sc->sc_repdesc_ptr;
 	*len = sc->sc_repdesc_size;
@@ -472,7 +472,7 @@ usbhid_read(device_t dev, void *buf, uint16_t maxlen, uint16_t *actlen)
 static int
 usbhid_write(device_t dev, void *buf, uint16_t len)
 {
-	struct uhid_softc* sc = device_get_softc(dev);
+	struct usbhid_softc* sc = device_get_softc(dev);
 	int error = 0;
 
 	HID_MTX_LOCK(sc->sc_intr_mtx);
@@ -485,7 +485,7 @@ usbhid_write(device_t dev, void *buf, uint16_t len)
 		usbd_transfer_start(sc->sc_xfer[UHID_INTR_DT_WR]);
 
 	if (!HID_IN_POLLING_MODE_FUNC() &&
-	    msleep_sbt(sc, sc->sc_intr_mtx, 0, "uhid wr",
+	    msleep_sbt(sc, sc->sc_intr_mtx, 0, "usbhid wr",
 	    SBT_1MS * USB_DEFAULT_TIMEOUT, 0, C_HARDCLOCK) == EWOULDBLOCK) {
 		DPRINTF("USB write timed out\n");
 		usbd_transfer_stop(sc->sc_xfer[UHID_CTRL_DT_WR]);
@@ -503,7 +503,7 @@ static int
 usbhid_get_report(device_t dev, void *buf, uint16_t maxlen, uint16_t *actlen,
     uint8_t type, uint8_t id)
 {
-	struct uhid_softc* sc = device_get_softc(dev);
+	struct usbhid_softc* sc = device_get_softc(dev);
 	int err;
 
 	err = usbd_req_get_report(sc->sc_udev, NULL, buf,
@@ -521,7 +521,7 @@ static int
 usbhid_set_report(device_t dev, void *buf, uint16_t len, uint8_t type,
     uint8_t id)
 {
-	struct uhid_softc* sc = device_get_softc(dev);
+	struct usbhid_softc* sc = device_get_softc(dev);
 	int err;
 
 	err = usbd_req_set_report(sc->sc_udev, NULL, buf,
@@ -535,7 +535,7 @@ usbhid_set_report(device_t dev, void *buf, uint16_t len, uint8_t type,
 static int
 usbhid_set_idle(device_t dev, uint16_t duration, uint8_t id)
 {
-	struct uhid_softc* sc = device_get_softc(dev);
+	struct usbhid_softc* sc = device_get_softc(dev);
 	int err;
 
 	/* Duration is measured in 4 milliseconds per unit. */
@@ -550,7 +550,7 @@ usbhid_set_idle(device_t dev, uint16_t duration, uint8_t id)
 static int
 usbhid_set_protocol(device_t dev, uint16_t protocol)
 {
-	struct uhid_softc* sc = device_get_softc(dev);
+	struct usbhid_softc* sc = device_get_softc(dev);
 	int err;
 
 	err = usbd_req_set_protocol(sc->sc_udev, NULL, sc->sc_iface_index,
@@ -571,7 +571,7 @@ static const STRUCT_USB_HOST_ID usbhid_devs[] = {
 };
 
 static int
-uhid_probe(device_t dev)
+usbhid_probe(device_t dev)
 {
 	struct usb_attach_arg *uaa = device_get_ivars(dev);
 	int error;
@@ -592,10 +592,10 @@ uhid_probe(device_t dev)
 }
 
 static int
-uhid_attach(device_t dev)
+usbhid_attach(device_t dev)
 {
 	struct usb_attach_arg *uaa = device_get_ivars(dev);
-	struct uhid_softc *sc = device_get_softc(dev);
+	struct usbhid_softc *sc = device_get_softc(dev);
 	char *sep;
 	int error = 0;
 
@@ -614,8 +614,8 @@ uhid_attach(device_t dev)
 
 		if (uaa->info.idProduct == USB_PRODUCT_WACOM_GRAPHIRE) {
 
-			sc->sc_repdesc_size = sizeof(uhid_graphire_report_descr);
-			sc->sc_repdesc_ptr = __DECONST(void *, &uhid_graphire_report_descr);
+			sc->sc_repdesc_size = sizeof(usbhid_graphire_report_descr);
+			sc->sc_repdesc_ptr = __DECONST(void *, &usbhid_graphire_report_descr);
 			sc->sc_flags |= UHID_FLAG_STATIC_DESC;
 
 		} else if (uaa->info.idProduct == USB_PRODUCT_WACOM_GRAPHIRE3_4X5) {
@@ -635,8 +635,8 @@ uhid_attach(device_t dev)
 				DPRINTF("set report failed, error=%s (ignored)\n",
 				    usbd_errstr(error));
 			}
-			sc->sc_repdesc_size = sizeof(uhid_graphire3_4x5_report_descr);
-			sc->sc_repdesc_ptr = __DECONST(void *, &uhid_graphire3_4x5_report_descr);
+			sc->sc_repdesc_size = sizeof(usbhid_graphire3_4x5_report_descr);
+			sc->sc_repdesc_ptr = __DECONST(void *, &usbhid_graphire3_4x5_report_descr);
 			sc->sc_flags |= UHID_FLAG_STATIC_DESC;
 		}
 	} else if ((uaa->info.bInterfaceClass == UICLASS_VENDOR) &&
@@ -655,8 +655,8 @@ uhid_attach(device_t dev)
 			    usbd_errstr(error));
 		}
 		/* the Xbox 360 gamepad has no report descriptor */
-		sc->sc_repdesc_size = sizeof(uhid_xb360gp_report_descr);
-		sc->sc_repdesc_ptr = __DECONST(void *, &uhid_xb360gp_report_descr);
+		sc->sc_repdesc_size = sizeof(usbhid_xb360gp_report_descr);
+		sc->sc_repdesc_ptr = __DECONST(void *, &usbhid_xb360gp_report_descr);
 		sc->sc_flags |= UHID_FLAG_STATIC_DESC;
 	}
 	if (sc->sc_repdesc_ptr == NULL) {
@@ -734,14 +734,14 @@ uhid_attach(device_t dev)
 	return (0);			/* success */
 
 detach:
-	uhid_detach(dev);
+	usbhid_detach(dev);
 	return (ENOMEM);
 }
 
 static int
-uhid_detach(device_t dev)
+usbhid_detach(device_t dev)
 {
-	struct uhid_softc *sc = device_get_softc(dev);
+	struct usbhid_softc *sc = device_get_softc(dev);
 
 	if (device_is_attached(dev))
 		bus_generic_detach(dev);
@@ -761,9 +761,9 @@ uhid_detach(device_t dev)
 static devclass_t usbhid_devclass;
 
 static device_method_t usbhid_methods[] = {
-	DEVMETHOD(device_probe, uhid_probe),
-	DEVMETHOD(device_attach, uhid_attach),
-	DEVMETHOD(device_detach, uhid_detach),
+	DEVMETHOD(device_probe, usbhid_probe),
+	DEVMETHOD(device_attach, usbhid_attach),
+	DEVMETHOD(device_detach, usbhid_detach),
 
 	DEVMETHOD(hid_intr_setup,	usbhid_intr_setup),
 	DEVMETHOD(hid_intr_unsetup,	usbhid_intr_unsetup),
@@ -786,7 +786,7 @@ static device_method_t usbhid_methods[] = {
 static driver_t usbhid_driver = {
 	.name = "usbhid",
 	.methods = usbhid_methods,
-	.size = sizeof(struct uhid_softc),
+	.size = sizeof(struct usbhid_softc),
 };
 
 DRIVER_MODULE(usbhid, uhub, usbhid_driver, usbhid_devclass, NULL, 0);
