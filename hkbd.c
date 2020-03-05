@@ -899,8 +899,6 @@ hkbd_attach(device_t dev)
 		    (int)hid_len);
 
 		hkbd_parse_hid(sc, hid_ptr, hid_len, tlc_index);
-
-		free(hid_ptr, M_TEMP);
 	}
 
 #ifdef NOT_YET
