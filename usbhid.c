@@ -146,15 +146,15 @@ static device_probe_t usbhid_probe;
 static device_attach_t usbhid_attach;
 static device_detach_t usbhid_detach;
 
-static usb_callback_t usbhid_intr_write_callback;
-static usb_callback_t usbhid_intr_read_callback;
 static usb_callback_t usbhid_write_callback;
-#ifdef NOT_YET
 static usb_callback_t usbhid_read_callback;
+static usb_callback_t usbhid_set_report_callback;
+#ifdef NOT_YET
+static usb_callback_t usbhid_get_report_callback;
 #endif
 
 static void
-usbhid_intr_write_callback(struct usb_xfer *xfer, usb_error_t error)
+usbhid_write_callback(struct usb_xfer *xfer, usb_error_t error)
 {
 	struct usbhid_softc *sc = usbd_xfer_softc(xfer);
 	struct usb_page_cache *pc;
@@ -193,7 +193,7 @@ tr_exit:
 }
 
 static void
-usbhid_intr_read_callback(struct usb_xfer *xfer, usb_error_t error)
+usbhid_read_callback(struct usb_xfer *xfer, usb_error_t error)
 {
 	struct usbhid_softc *sc = usbd_xfer_softc(xfer);
 	struct usb_page_cache *pc;
@@ -267,7 +267,7 @@ usbhid_fill_get_report(struct usb_device_request *req, uint8_t iface_no,
 #endif
 
 static void
-usbhid_write_callback(struct usb_xfer *xfer, usb_error_t error)
+usbhid_set_report_callback(struct usb_xfer *xfer, usb_error_t error)
 {
 	struct usbhid_softc *sc = usbd_xfer_softc(xfer);
 	struct usb_device_request req;
@@ -317,7 +317,7 @@ tr_exit:
 
 #ifdef NOT_YET
 static void
-usbhid_read_callback(struct usb_xfer *xfer, usb_error_t error)
+usbhid_get_report_callback(struct usb_xfer *xfer, usb_error_t error)
 {
 	struct usbhid_softc *sc = usbd_xfer_softc(xfer);
 	struct usb_device_request req;
@@ -364,7 +364,7 @@ static const struct usb_config usbhid_config[USBHID_N_TRANSFER] = {
 		.direction = UE_DIR_OUT,
 		.flags = {.pipe_bof = 1,.no_pipe_ok = 1, },
 		.bufsize = USBHID_BSIZE,
-		.callback = &usbhid_intr_write_callback,
+		.callback = &usbhid_write_callback,
 	},
 	[USBHID_INTR_DT_RD] = {
 		.type = UE_INTERRUPT,
@@ -372,14 +372,14 @@ static const struct usb_config usbhid_config[USBHID_N_TRANSFER] = {
 		.direction = UE_DIR_IN,
 		.flags = {.pipe_bof = 1,.short_xfer_ok = 1,},
 		.bufsize = USBHID_BSIZE,
-		.callback = &usbhid_intr_read_callback,
+		.callback = &usbhid_read_callback,
 	},
 	[USBHID_CTRL_DT_WR] = {
 		.type = UE_CONTROL,
 		.endpoint = 0x00,	/* Control pipe */
 		.direction = UE_DIR_ANY,
 		.bufsize = sizeof(struct usb_device_request) + USBHID_BSIZE,
-		.callback = &usbhid_write_callback,
+		.callback = &usbhid_set_report_callback,
 		.timeout = 1000,	/* 1 second */
 	},
 #ifdef NOT_YET
@@ -388,7 +388,7 @@ static const struct usb_config usbhid_config[USBHID_N_TRANSFER] = {
 		.endpoint = 0x00,	/* Control pipe */
 		.direction = UE_DIR_ANY,
 		.bufsize = sizeof(struct usb_device_request) + USBHID_BSIZE,
-		.callback = &usbhid_read_callback,
+		.callback = &usbhid_get_report_callback,
 		.timeout = 1000,	/* 1 second */
 	},
 #endif
