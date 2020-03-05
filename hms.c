@@ -190,7 +190,7 @@ static int
 hms_attach(device_t dev)
 {
 	struct hms_softc *sc = device_get_softc(dev);
-	int error, nbuttons;
+	int error;
 
 	/*
          * Force the report (non-boot) protocol.
@@ -221,9 +221,8 @@ hms_attach(device_t dev)
 		return (error);
 
 	/* announce information about the mouse */
-	nbuttons = hmap_count_caps(sc->caps, HMT_BTN_LEFT, HMT_BTN_MS2);
 	device_printf(dev, "%d buttons and [%s%s%s%s%s] coordinates ID=%u\n",
-	    nbuttons,
+	    hmap_count_caps(sc->caps, HMT_BTN_LEFT, HMT_BTN_MS2),
 	    (hmap_test_cap(sc->caps, HMT_REL_X) ||
 	     hmap_test_cap(sc->caps, HMT_ABS_X)) ? "X" : "",
 	    (hmap_test_cap(sc->caps, HMT_REL_Y) ||
