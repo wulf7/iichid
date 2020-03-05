@@ -76,6 +76,11 @@ __FBSDID("$FreeBSD$");
 #include "hidbus.h"
 #include "hid_if.h"
 
+/* Set default probe priority lesser than other USB device drivers have */
+#ifndef USBHID_BUS_PROBE_PRIO
+#define	USBHID_BUS_PROBE_PRIO	(BUS_PROBE_GENERIC - 1)
+#endif
+
 #ifdef USB_DEBUG
 static int usbhid_debug = 0;
 
@@ -588,7 +593,7 @@ usbhid_probe(device_t dev)
 	if (usb_test_quirk(uaa, UQ_HID_IGNORE))
 		return (ENXIO);
 
-	return (BUS_PROBE_GENERIC);
+	return (USBHID_BUS_PROBE_PRIO);
 }
 
 static int
