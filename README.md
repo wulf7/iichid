@@ -85,6 +85,35 @@ EndSection
 You may need to run **sudo libinput list-devices** to find out unit number
 belonging to given device. Note that it can change across reboots.
 
+## usbhid
+
+USB transport backend is still experimental. That is why it has low device
+probe priority by default and always loses probe to OS built-in USB HID drivers
+like **uhid**, **ukbd**, **ums** and **wmt**. It is possible to raise it's
+priority at build time with passing extra CFLAGS via e.g. environment
+variable to the Makefile:
+
+```
+$ CFLAGS=-DUSBHID_BUS_PROBE_PRIO=-10 make
+```
+
+Another way is to uncomment the same parameter in the Makefile itself.
+
+After that you should load **iichid.ko** from bootloader.
+In the case if such an 'high priority' module is loaded with **kldload** it
+is necessary to issue 
+
+```
+$ sudo usbconfig -d ugenX.X reset
+```
+
+command to force ugenX.X device reprobe at operating system run time. ugenX.X
+to reprobe can be found with issuing of simple **usbconfig** command:
+
+```
+$ sudo usbconfig
+```
+
 ## Bug reporting
 
 You can report bugs at 'Project Issues' page
