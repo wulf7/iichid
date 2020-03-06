@@ -1077,8 +1077,8 @@ iichid_attach(device_t dev)
 	    &sc->irq_rid, RF_ACTIVE);
 
 	if (sc->irq_res != NULL) {
-		DPRINTF(sc, "allocated irq at 0x%lx and rid %d\n",
-		    (uint64_t)sc->irq_res, sc->irq_rid);
+		DPRINTF(sc, "allocated irq at %p and rid %d\n",
+		    sc->irq_res, sc->irq_rid);
 		error = iichid_setup_interrupt(sc);
 	}
 
