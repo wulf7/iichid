@@ -89,7 +89,7 @@ hid_tlc_locate(const void *desc, hid_size_t size, int32_t u, enum hid_kind k,
 
 	d = hid_start_parse(desc, size, 1 << k);
 	HID_TLC_FOREACH_ITEM(d, &h, tlc_index) {
-		if (h.kind == k && !(h.flags & HIO_CONST) && h.usage == u) {
+		if (h.kind == k && h.usage == u) {
 			if (index--)
 				continue;
 			if (loc != NULL)
