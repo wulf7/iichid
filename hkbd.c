@@ -485,19 +485,20 @@ hkbd_interrupt(struct hkbd_softc *sc)
 
 	HKBD_LOCK_ASSERT(sc);
 
-	/* Check for key changes, handle modifier keys first */
+	/* Check for key changes, the order is:
+	 * 1. Modifier keys down
+	 * 2. Regular keys up/down
+	 * 3. Modifier keys up
+	 *
+	 * This allows devices which send events changing the state of
+	 * both a modifier key and a regular key, to be correctly
+	 * translated. */
 	for (key = MOD_MIN; key <= MOD_MAX; key++) {
 		const uint64_t mask = 1ULL << (key % 64);
-		const uint64_t delta =
-		    sc->sc_odata.bitmap[key / 64] ^
-		    sc->sc_ndata.bitmap[key / 64];
 
-		if (delta & mask) {
-			if (sc->sc_odata.bitmap[key / 64] & mask) {
-				hkbd_put_key(sc, key | KEY_RELEASE);
-			} else {
-				hkbd_put_key(sc, key | KEY_PRESS);
-			}
+		if (!(sc->sc_odata.bitmap[key / 64] & mask) &&
+		    (sc->sc_ndata.bitmap[key / 64] & mask)) {
+			hkbd_put_key(sc, key | KEY_PRESS);
 		}
 	}
 	for (key = 0; key != HKBD_NKEYCODE; key++) {
@@ -530,6 +531,14 @@ hkbd_interrupt(struct hkbd_softc *sc)
 				sc->sc_repeat_time = now + sc->sc_kbd.kb_delay1;
 				sc->sc_repeat_key = key;
 			}
+		}
+	}
+	for (key = MOD_MIN; key <= MOD_MAX; key++) {
+		const uint64_t mask = 1ULL << (key % 64);
+
+		if ((sc->sc_odata.bitmap[key / 64] & mask) &&
+		    !(sc->sc_ndata.bitmap[key / 64] & mask)) {
+			hkbd_put_key(sc, key | KEY_RELEASE);
 		}
 	}
 
