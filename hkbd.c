@@ -119,6 +119,9 @@ SYSCTL_INT(_hw_hid_hkbd, OID_AUTO, no_leds, CTLFLAG_RWTUN,
 #define	MOD_EJECT	0x01
 #define	MOD_FN		0x02
 
+#define MOD_MIN     0xe0
+#define MOD_MAX     0xe7
+
 struct hkbd_data {
 	uint64_t bitmap[howmany(HKBD_NKEYCODE, 64)];
 };
@@ -341,7 +344,7 @@ static bool
 hkbd_is_modifier_key(uint32_t key)
 {
 
-	return (key >= 0xe0 && key <= 0xe7);
+	return (key >= MOD_MIN && key <= MOD_MAX);
 }
 
 static void
@@ -482,12 +485,29 @@ hkbd_interrupt(struct hkbd_softc *sc)
 
 	HKBD_LOCK_ASSERT(sc);
 
-	/* Check for key changes */
+	/* Check for key changes, handle modifier keys first */
+	for (key = MOD_MIN; key <= MOD_MAX; key++) {
+		const uint64_t mask = 1ULL << (key % 64);
+		const uint64_t delta =
+		    sc->sc_odata.bitmap[key / 64] ^
+		    sc->sc_ndata.bitmap[key / 64];
+
+		if (delta & mask) {
+			if (sc->sc_odata.bitmap[key / 64] & mask) {
+				hkbd_put_key(sc, key | KEY_RELEASE);
+			} else {
+				hkbd_put_key(sc, key | KEY_PRESS);
+			}
+		}
+	}
 	for (key = 0; key != HKBD_NKEYCODE; key++) {
 		const uint64_t mask = 1ULL << (key % 64);
 		const uint64_t delta =
 		    sc->sc_odata.bitmap[key / 64] ^
 		    sc->sc_ndata.bitmap[key / 64];
+
+		if (hkbd_is_modifier_key(key))
+			continue;
 
 		if (mask == 1 && delta == 0) {
 			key += 63;
@@ -501,9 +521,6 @@ hkbd_interrupt(struct hkbd_softc *sc)
 					sc->sc_repeat_key = 0;
 			} else {
 				hkbd_put_key(sc, key | KEY_PRESS);
-
-				if (hkbd_is_modifier_key(key))
-					continue;
 
 				sc->sc_co_basetime = sbinuptime();
 				sc->sc_delay = sc->sc_kbd.kb_delay1;
