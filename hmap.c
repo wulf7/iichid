@@ -149,7 +149,7 @@ hmap_intr(void *context, void *buf, uint16_t len)
 
 		switch (hi->type) {
 		case HMAP_TYPE_CALLBACK:
-			hi->map->cb(sc, hi, data);
+			hi->map->cb(sc, hi->map, hi, data);
 			break;
 
 		case HMAP_TYPE_VARIABLE:
@@ -435,7 +435,7 @@ hmap_hid_parse(struct hmap_softc *sc, uint8_t tlc_index)
 			if (can_map_callback(&hi, mi)) {
 				item->map = mi;
 				item->type = HMAP_TYPE_CALLBACK;
-				mi->cb(sc, NULL, (intptr_t)&hi);
+				mi->cb(sc, mi, NULL, (intptr_t)&hi);
 				goto mapped;
 			}
 		}
