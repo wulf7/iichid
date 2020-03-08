@@ -290,7 +290,7 @@ iichid_cmd_read(struct iichid_softc* sc, void *buf, uint16_t maxlen,
 		return (error);
 
 	actlen = actbuf[0] | actbuf[1] << 8;
-	if (actlen <= 2 || actlen == 0xFFFF) {
+	if (actlen <= 2 || actlen == 0xFFFF || maxlen == 0) {
 		/* Read and discard 1 byte to send I2C STOP condition */
 		msgs[0] = (struct iic_msg)
 		    { sc->addr, IIC_M_RD | IIC_M_NOSTART, 1, actbuf };
@@ -528,29 +528,23 @@ iichid_event_task(void *context, int pending)
 {
 	struct iichid_softc *sc = context;
 	device_t parent = device_get_parent(sc->dev);
-	uint16_t actual = 0;
+	uint16_t maxlen, actual = 0;
 	bool locked = false;
 	int error;
-
-	if (!sc->power_on) {
-		return;
-	}
 
 	if (iicbus_request_bus(parent, sc->dev, IIC_WAIT) != 0)
 		goto rearm;
 
-	/* Check again while locked by the request */
-	if (!sc->power_on) {
-		iicbus_release_bus(parent, sc->dev);
-		return;
-	}
-
-	error = iichid_cmd_read(sc, sc->ibuf, sc->isize, &actual);
+	maxlen = sc->power_on ? sc->isize : 0;
+	error = iichid_cmd_read(sc, sc->ibuf, maxlen, &actual);
 	iicbus_release_bus(parent, sc->dev);
 	if (error != 0) {
 		DPRINTF(sc, "read error occured: %d\n", error);
 		goto rearm;
 	}
+
+	if (!sc->power_on)
+		goto rearm;
 
 	mtx_lock(sc->intr_mtx);
 	locked = true;
@@ -587,19 +581,8 @@ iichid_intr(void *context)
 	struct iichid_softc *sc = context;
 #ifdef HAVE_IG4_POLLING
 	device_t parent = device_get_parent(sc->dev);
-	uint16_t actual = 0;
+	uint16_t maxlen, actual = 0;
 	int error;
-
-	/*
-	 * Ignore interrupts while in SLEEP power state. Reading of
-	 * input reports of I2C devices residing in SLEEP state is not
-	 * allowed and often returns a garbage. If a HOST needs to
-	 * communicate with the DEVICE it MUST issue a SET POWER
-	 * command (to ON) before any other command.
-	 */
-	if (!sc->power_on) {
-		return;
-	}
 
 	/*
 	 * Designware(IG4) driver-specific hack.
@@ -607,32 +590,39 @@ iichid_intr(void *context)
 	 * mode in the driver, making possible iicbus_transfer execution from
 	 * interrupt handlers and callouts.
 	 */
-	if (iicbus_request_bus(parent, sc->dev, IIC_DONTWAIT) == 0) {
-		/* Check again while locked by the request */
-		if (!sc->power_on) {
-			iicbus_release_bus(parent, sc->dev);
-			return;
-		}
+	if (iicbus_request_bus(parent, sc->dev, IIC_DONTWAIT) != 0)
+		return;
 
-		error = iichid_cmd_read(sc, sc->ibuf, sc->isize, &actual);
-		iicbus_release_bus(parent, sc->dev);
-		if (error != 0) {
-			DPRINTF(sc, "read error occured: %d\n", error);
-			return;
-		}
+	/*
+	 * Reading of input reports of I2C devices residing in SLEEP state is
+	 * not allowed and often returns a garbage. If a HOST needs to
+	 * communicate with the DEVICE it MUST issue a SET POWER command
+	 * (to ON) before any other command. As some hardware requires reads to
+	 * acknoledge interrupts we fetch only length header and discard it.
+	 */
+	maxlen = sc->power_on ? sc->isize : 0;
+	error = iichid_cmd_read(sc, sc->ibuf, maxlen, &actual);
+	iicbus_release_bus(parent, sc->dev);
+	if (error != 0) {
+		DPRINTF(sc, "read error occured: %d\n", error);
+		return;
+	}
 
-		if (actual <= (sc->iid != 0 ? 1 : 0)) {
-			DPRINTF(sc, "no data received\n");
-			return;
-		}
+	if (!sc->power_on)
+		return;
 
-		mtx_lock(sc->intr_mtx);
-		if (sc->open)
-			sc->intr_handler(sc->intr_context, sc->ibuf, actual);
-		mtx_unlock(sc->intr_mtx);
-	} else
+	if (actual <= (sc->iid != 0 ? 1 : 0)) {
+		DPRINTF(sc, "no data received\n");
+		return;
+	}
+
+	mtx_lock(sc->intr_mtx);
+	if (sc->open)
+		sc->intr_handler(sc->intr_context, sc->ibuf, actual);
+	mtx_unlock(sc->intr_mtx);
+#else
+	taskqueue_enqueue(sc->taskqueue, &sc->event_task);
 #endif
-		taskqueue_enqueue(sc->taskqueue, &sc->event_task);
 }
 
 static int
