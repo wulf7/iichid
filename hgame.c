@@ -45,6 +45,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/evdev/input.h>
 #include <dev/evdev/evdev.h>
 
+#include "usbdevs.h"
 #include "hid.h"
 #include "hidbus.h"
 #include "hmap.h"
@@ -65,6 +66,8 @@ static hmap_cb_t hgame_dpad_cb;
 
 #define HGAME_MAP_BUT(base, number)	\
 	HMAP_KEY(#number, HID_USAGE2(HUP_BUTTON, number), base + number - 1)
+#define HGAME_MAP_BUT_CUSTOM(number, code)	\
+	HMAP_KEY(#number, HID_USAGE2(HUP_BUTTON, number), code)
 #define HGAME_MAP_ABS(usage, code)        \
 	HMAP_ABS(#usage, HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_##usage), code)
 #define HGAME_MAP_ABS_CB(usage, callback)        \
@@ -140,8 +143,28 @@ static const struct hmap_item hgame_gamepad_map[] = {
 	COMMON_ITEMS
 };
 
+/* Customized to match usbhid's XBox 360 descriptor */
+static const struct hmap_item hgame_xb360_map[] = {
+	{ HGAME_MAP_BUT_CUSTOM(1, BTN_SOUTH) },
+	{ HGAME_MAP_BUT_CUSTOM(2, BTN_EAST) },
+	{ HGAME_MAP_BUT_CUSTOM(3, BTN_WEST) },
+	{ HGAME_MAP_BUT_CUSTOM(4, BTN_NORTH) },
+	{ HGAME_MAP_BUT_CUSTOM(5, BTN_TL) },
+	{ HGAME_MAP_BUT_CUSTOM(6, BTN_TR) },
+	{ HGAME_MAP_BUT_CUSTOM(7, BTN_SELECT) },
+	{ HGAME_MAP_BUT_CUSTOM(8, BTN_START) },
+	{ HGAME_MAP_BUT_CUSTOM(9, BTN_THUMBL) },
+	{ HGAME_MAP_BUT_CUSTOM(10, BTN_THUMBR) },
+	{ HGAME_MAP_BUT_CUSTOM(11, BTN_MODE) },
+	COMMON_ITEMS
+};
+
+#define XBOX_360 360
+
 static const struct hid_device_id hgame_devs[] = {
 	{ HID_TLC(HUP_GENERIC_DESKTOP, HUG_JOYSTICK), HID_DRIVER_INFO(HUG_JOYSTICK) },
+	{ HID_TLC(HUP_GENERIC_DESKTOP, HUG_GAME_PAD),
+	  HID_VENDOR(USB_VENDOR_MICROSOFT), HID_DRIVER_INFO(XBOX_360) },
 	{ HID_TLC(HUP_GENERIC_DESKTOP, HUG_GAME_PAD), HID_DRIVER_INFO(HUG_GAME_PAD) },
 };
 
@@ -208,6 +231,8 @@ hgame_probe(device_t dev)
 
 	if (hidbus_get_driver_info(dev) == HUG_GAME_PAD)
 		error = hmap_add_map(dev, hgame_gamepad_map, nitems(hgame_gamepad_map), NULL);
+	else if (hidbus_get_driver_info(dev) == XBOX_360)
+		error = hmap_add_map(dev, hgame_xb360_map, nitems(hgame_xb360_map), NULL);
 	else
 		error = hmap_add_map(dev, hgame_joystick_map, nitems(hgame_joystick_map), NULL);
 	if (error != 0)
