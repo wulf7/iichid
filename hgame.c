@@ -30,8 +30,10 @@
 __FBSDID("$FreeBSD$");
 
 /*
- * Generic HID game controller (joystick/gamepad) driver
- *
+ * Generic HID game controller (joystick/gamepad) driver,
+ * also supports XBox 360 gamepads thanks to the custom descriptor in usbhid.
+ * 
+ * Tested on: SVEN GC-5070 in both XInput (XBox 360) and DirectInput modes
  */
 
 #include <sys/param.h>
@@ -59,10 +61,21 @@ SYSCTL_INT(_hw_hid_hgame, OID_AUTO, debug, CTLFLAG_RWTUN,
 		&hgame_debug, 0, "Debug level");
 #endif
 
+static hmap_cb_t hgame_dpad_cb;
+
 #define HGAME_MAP_BUT(base, number)	\
 	HMAP_KEY(#number, HID_USAGE2(HUP_BUTTON, number), base + number - 1)
 #define HGAME_MAP_ABS(usage, code)        \
 	HMAP_ABS(#usage, HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_##usage), code)
+#define HGAME_MAP_ABS_CB(usage, callback)        \
+	HMAP_ABS_CB(#usage, HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_##usage), callback)
+
+#ifndef HUG_D_PAD_UP
+#define HUG_D_PAD_UP 0x90
+#define HUG_D_PAD_DOWN 0x91
+#define HUG_D_PAD_RIGHT 0x92
+#define HUG_D_PAD_LEFT 0x93
+#endif
 
 #define BASE_OVERFLOW (BTN_TRIGGER_HAPPY - 0x10)
 
@@ -81,7 +94,11 @@ SYSCTL_INT(_hw_hid_hgame, OID_AUTO, debug, CTLFLAG_RWTUN,
 	{ HGAME_MAP_ABS(RX, ABS_RX) }, \
 	{ HGAME_MAP_ABS(RY, ABS_RY) }, \
 	{ HGAME_MAP_ABS(RZ, ABS_RZ) }, \
-	{ HGAME_MAP_ABS(HAT_SWITCH, ABS_HAT0X) },
+	{ HGAME_MAP_ABS(HAT_SWITCH, ABS_HAT0X) }, \
+	{ HGAME_MAP_ABS_CB(D_PAD_UP, hgame_dpad_cb) }, \
+	{ HGAME_MAP_ABS_CB(D_PAD_DOWN, hgame_dpad_cb) }, \
+	{ HGAME_MAP_ABS_CB(D_PAD_RIGHT, hgame_dpad_cb) }, \
+	{ HGAME_MAP_ABS_CB(D_PAD_LEFT, hgame_dpad_cb) },
 
 static const struct hmap_item hgame_joystick_map[] = {
 	{ HGAME_MAP_BUT(BTN_TRIGGER, 1) },
@@ -128,6 +145,56 @@ static const struct hid_device_id hgame_devs[] = {
 	{ HID_TLC(HUP_GENERIC_DESKTOP, HUG_GAME_PAD), HID_DRIVER_INFO(HUG_GAME_PAD) },
 };
 
+struct hgame_softc {
+	struct hmap_softc	super_sc;
+	int			dpad_up;
+	int			dpad_down;
+	int			dpad_right;
+	int			dpad_left;
+};
+
+/* Emulate the hat switch report via the D-pad usages
+ * found on XInput/XBox style devices */
+static void
+hgame_dpad_cb(HMAP_CB_ARGS)
+{
+	struct hgame_softc *sc = HMAP_CB_GET_SOFTC;
+	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV;
+
+	if (HMAP_CB_IS_ATTACHING) {
+		evdev_support_event(evdev, EV_ABS);
+		evdev_support_abs(evdev, ABS_HAT0X, 0, -1, 1, 0, 0, 0);
+		evdev_support_abs(evdev, ABS_HAT0Y, 0, -1, 1, 0, 0, 0);
+	} else {
+		switch (HMAP_CB_GET_MAP_ITEM->usage) {
+		case HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_D_PAD_UP):
+			if (sc->dpad_down)
+				break;
+			evdev_push_abs(evdev, ABS_HAT0Y, (ctx == 0) ? 0 : -1);
+			sc->dpad_up = (ctx != 0);
+			break;
+		case HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_D_PAD_DOWN):
+			if (sc->dpad_up)
+				break;
+			evdev_push_abs(evdev, ABS_HAT0Y, (ctx == 0) ? 0 : 1);
+			sc->dpad_down = (ctx != 0);
+			break;
+		case HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_D_PAD_RIGHT):
+			if (sc->dpad_left)
+				break;
+			evdev_push_abs(evdev, ABS_HAT0X, (ctx == 0) ? 0 : 1);
+			sc->dpad_right = (ctx != 0);
+			break;
+		case HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_D_PAD_LEFT):
+			if (sc->dpad_right)
+				break;
+			evdev_push_abs(evdev, ABS_HAT0X, (ctx == 0) ? 0 : -1);
+			sc->dpad_left = (ctx != 0);
+			break;
+		}
+	}
+}
+
 static int
 hgame_probe(device_t dev)
 {
@@ -161,7 +228,7 @@ static device_method_t hgame_methods[] = {
 };
 
 DEFINE_CLASS_1(hgame, hgame_driver, hgame_methods,
-    sizeof(struct hmap_softc), hmap_driver);
+    sizeof(struct hgame_softc), hmap_driver);
 DRIVER_MODULE(hgame, hidbus, hgame_driver, hgame_devclass, NULL, 0);
 MODULE_DEPEND(hgame, hid, 1, 1, 1);
 MODULE_DEPEND(hgame, hmap, 1, 1, 1);
