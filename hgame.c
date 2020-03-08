@@ -59,77 +59,74 @@ SYSCTL_INT(_hw_hid_hgame, OID_AUTO, debug, CTLFLAG_RWTUN,
 		&hgame_debug, 0, "Debug level");
 #endif
 
-static hmap_cb_t	hgame_button_cb;
-
-#define HGAME_MAP_BUT(usage)	\
-	HMAP_ABS_CB(#usage, HID_USAGE2(HUP_BUTTON, usage), hgame_button_cb)
+#define HGAME_MAP_BUT(base, number)	\
+	HMAP_KEY(#number, HID_USAGE2(HUP_BUTTON, number), base + number - 1)
 #define HGAME_MAP_ABS(usage, code)        \
 	HMAP_ABS(#usage, HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_##usage), code)
 
-static const struct hmap_item hgame_map[] = {
-	{ HGAME_MAP_BUT(1) },
-	{ HGAME_MAP_BUT(2) },
-	{ HGAME_MAP_BUT(3) },
-	{ HGAME_MAP_BUT(4) },
-	{ HGAME_MAP_BUT(5) },
-	{ HGAME_MAP_BUT(6) },
-	{ HGAME_MAP_BUT(7) },
-	{ HGAME_MAP_BUT(8) },
-	{ HGAME_MAP_BUT(9) },
-	{ HGAME_MAP_BUT(10) },
-	{ HGAME_MAP_BUT(11) },
-	{ HGAME_MAP_BUT(12) },
-	{ HGAME_MAP_BUT(13) },
-	{ HGAME_MAP_BUT(14) },
-	{ HGAME_MAP_BUT(15) },
-	{ HGAME_MAP_BUT(16) },
-	{ HGAME_MAP_BUT(17) },
-	{ HGAME_MAP_BUT(18) },
-	{ HGAME_MAP_BUT(19) },
-	{ HGAME_MAP_BUT(20) },
-	{ HGAME_MAP_BUT(21) },
-	{ HGAME_MAP_BUT(22) },
-	{ HGAME_MAP_BUT(23) },
-	{ HGAME_MAP_BUT(24) },
+#define BASE_OVERFLOW (BTN_TRIGGER_HAPPY - 0x10)
 
-	{ HGAME_MAP_ABS(X, ABS_X) },
-	{ HGAME_MAP_ABS(Y, ABS_Y) },
-	{ HGAME_MAP_ABS(Z, ABS_Z) },
-	{ HGAME_MAP_ABS(RX, ABS_RX) },
-	{ HGAME_MAP_ABS(RY, ABS_RY) },
-	{ HGAME_MAP_ABS(RZ, ABS_RZ) },
+#define COMMON_ITEMS \
+	{ HGAME_MAP_BUT(BASE_OVERFLOW, 17) }, \
+	{ HGAME_MAP_BUT(BASE_OVERFLOW, 18) }, \
+	{ HGAME_MAP_BUT(BASE_OVERFLOW, 19) }, \
+	{ HGAME_MAP_BUT(BASE_OVERFLOW, 20) }, \
+	{ HGAME_MAP_BUT(BASE_OVERFLOW, 21) }, \
+	{ HGAME_MAP_BUT(BASE_OVERFLOW, 22) }, \
+	{ HGAME_MAP_BUT(BASE_OVERFLOW, 23) }, \
+	{ HGAME_MAP_BUT(BASE_OVERFLOW, 24) }, \
+	{ HGAME_MAP_ABS(X, ABS_X) }, \
+	{ HGAME_MAP_ABS(Y, ABS_Y) }, \
+	{ HGAME_MAP_ABS(Z, ABS_Z) }, \
+	{ HGAME_MAP_ABS(RX, ABS_RX) }, \
+	{ HGAME_MAP_ABS(RY, ABS_RY) }, \
+	{ HGAME_MAP_ABS(RZ, ABS_RZ) }, \
 	{ HGAME_MAP_ABS(HAT_SWITCH, ABS_HAT0X) },
+
+static const struct hmap_item hgame_joystick_map[] = {
+	{ HGAME_MAP_BUT(BTN_TRIGGER, 1) },
+	{ HGAME_MAP_BUT(BTN_TRIGGER, 2) },
+	{ HGAME_MAP_BUT(BTN_TRIGGER, 3) },
+	{ HGAME_MAP_BUT(BTN_TRIGGER, 4) },
+	{ HGAME_MAP_BUT(BTN_TRIGGER, 5) },
+	{ HGAME_MAP_BUT(BTN_TRIGGER, 6) },
+	{ HGAME_MAP_BUT(BTN_TRIGGER, 7) },
+	{ HGAME_MAP_BUT(BTN_TRIGGER, 8) },
+	{ HGAME_MAP_BUT(BTN_TRIGGER, 9) },
+	{ HGAME_MAP_BUT(BTN_TRIGGER, 10) },
+	{ HGAME_MAP_BUT(BTN_TRIGGER, 11) },
+	{ HGAME_MAP_BUT(BTN_TRIGGER, 12) },
+	{ HGAME_MAP_BUT(BTN_TRIGGER, 13) },
+	{ HGAME_MAP_BUT(BTN_TRIGGER, 14) },
+	{ HGAME_MAP_BUT(BTN_TRIGGER, 15) },
+	{ HGAME_MAP_BUT(BTN_TRIGGER, 16) },
+	COMMON_ITEMS
+};
+
+static const struct hmap_item hgame_gamepad_map[] = {
+	{ HGAME_MAP_BUT(BTN_GAMEPAD, 1) },
+	{ HGAME_MAP_BUT(BTN_GAMEPAD, 2) },
+	{ HGAME_MAP_BUT(BTN_GAMEPAD, 3) },
+	{ HGAME_MAP_BUT(BTN_GAMEPAD, 4) },
+	{ HGAME_MAP_BUT(BTN_GAMEPAD, 5) },
+	{ HGAME_MAP_BUT(BTN_GAMEPAD, 6) },
+	{ HGAME_MAP_BUT(BTN_GAMEPAD, 7) },
+	{ HGAME_MAP_BUT(BTN_GAMEPAD, 8) },
+	{ HGAME_MAP_BUT(BTN_GAMEPAD, 9) },
+	{ HGAME_MAP_BUT(BTN_GAMEPAD, 10) },
+	{ HGAME_MAP_BUT(BTN_GAMEPAD, 11) },
+	{ HGAME_MAP_BUT(BTN_GAMEPAD, 12) },
+	{ HGAME_MAP_BUT(BTN_GAMEPAD, 13) },
+	{ HGAME_MAP_BUT(BTN_GAMEPAD, 14) },
+	{ HGAME_MAP_BUT(BTN_GAMEPAD, 15) },
+	{ HGAME_MAP_BUT(BTN_GAMEPAD, 16) },
+	COMMON_ITEMS
 };
 
 static const struct hid_device_id hgame_devs[] = {
 	{ HID_TLC(HUP_GENERIC_DESKTOP, HUG_JOYSTICK), HID_DRIVER_INFO(HUG_JOYSTICK) },
 	{ HID_TLC(HUP_GENERIC_DESKTOP, HUG_GAME_PAD), HID_DRIVER_INFO(HUG_GAME_PAD) },
 };
-
-static void
-hgame_button_cb(HMAP_CB_ARGS)
-{
-	struct hmap_softc *sc = HMAP_CB_GET_SOFTC;
-	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV;
-	const uint16_t btn = (HMAP_CB_GET_MAP_ITEM->usage & 0xffff) - 1;
-	uint16_t base = BTN_TRIGGER; /* == BTN_JOYSTICK */
-	int32_t data;
-
-	if (hidbus_get_driver_info(sc->dev) == HUG_GAME_PAD)
-		base = BTN_GAMEPAD;
-
-	/* First button over 16 is BTN_TRIGGER_HAPPY */
-	if (btn >= 0x10)
-		base = BTN_TRIGGER_HAPPY - 0x10;
-
-	if (HMAP_CB_IS_ATTACHING) {
-		evdev_support_event(evdev, EV_KEY);
-		evdev_support_key(evdev, base + btn);
-	} else {
-		data = ctx;
-		evdev_push_key(evdev, base + btn, data);
-	}
-}
 
 static int
 hgame_probe(device_t dev)
@@ -142,8 +139,10 @@ hgame_probe(device_t dev)
 
 	hmap_set_debug_var(dev, &HID_DEBUG_VAR);
 
-	/* Check if report descriptor belongs to a HID joystick device */
-	error = hmap_add_map(dev, hgame_map, nitems(hgame_map), NULL);
+	if (hidbus_get_driver_info(dev) == HUG_GAME_PAD)
+		error = hmap_add_map(dev, hgame_gamepad_map, nitems(hgame_gamepad_map), NULL);
+	else
+		error = hmap_add_map(dev, hgame_joystick_map, nitems(hgame_joystick_map), NULL);
 	if (error != 0)
 		return (error);
 
