@@ -86,6 +86,7 @@ struct hmap_item {
 enum hmap_type {
 	HMAP_TYPE_CALLBACK = 0,	/* HID item is reported with user callback */
 	HMAP_TYPE_VARIABLE,	/* HID item is variable (single usage) */
+	HMAP_TYPE_VAR_NULLST,	/* HID item is null state variable */
 	HMAP_TYPE_ARR_LIST,	/* HID item is array with list of usages */
 	HMAP_TYPE_ARR_RANGE,	/* Array with range (min;max) of usages */
 };

@@ -152,6 +152,15 @@ hmap_intr(void *context, void *buf, uint16_t len)
 			hi->map->cb(sc, hi->map, hi, data);
 			break;
 
+		case HMAP_TYPE_VAR_NULLST:
+			/*
+			 * 5.10. If the host or the device receives an
+			 * out-of-range value then the current value for the
+			 * respective control will not be modified.
+			 */
+			if (data < hi->lmin || data > hi->lmax)
+				continue;
+			/* FALLTROUGH */
 		case HMAP_TYPE_VARIABLE:
 			/*
 			 * Ignore reports for absolute data if the data did not
@@ -444,7 +453,8 @@ hmap_hid_parse(struct hmap_softc *sc, uint8_t tlc_index)
 				if (!can_map_variable(&hi, mi))
 					continue;
 				item->map = mi;
-				item->type = HMAP_TYPE_VARIABLE;
+				item->type = hi.flags & HIO_NULLSTATE ?
+				    HMAP_TYPE_VAR_NULLST : HMAP_TYPE_VARIABLE;
 				switch (mi->type) {
 				case EV_KEY:
 					evdev_support_event(sc->evdev, EV_KEY);
