@@ -383,11 +383,9 @@ hkbd_put_key(struct hkbd_softc *sc, uint32_t key)
 	    (key & KEY_RELEASE) ? "released" : "pressed");
 
 #ifdef EVDEV_SUPPORT
-	if (evdev_rcpt_mask & EVDEV_RCPT_HW_KBD && sc->sc_evdev != NULL) {
+	if (evdev_rcpt_mask & EVDEV_RCPT_HW_KBD && sc->sc_evdev != NULL)
 		evdev_push_event(sc->sc_evdev, EV_KEY,
 		    evdev_hid2key(KEY_INDEX(key)), !(key & KEY_RELEASE));
-		evdev_sync(sc->sc_evdev);
-	}
 #endif
 
 	if (sc->sc_inputs < HKBD_IN_BUF_SIZE) {
@@ -572,6 +570,11 @@ hkbd_event_keyinput(struct hkbd_softc *sc)
 
 	if (sc->sc_inputs == 0)
 		return;
+
+#ifdef EVDEV_SUPPORT
+	if (evdev_rcpt_mask & EVDEV_RCPT_HW_KBD && sc->sc_evdev != NULL)
+		evdev_sync(sc->sc_evdev);
+#endif
 
 	if (KBD_IS_ACTIVE(&sc->sc_kbd) &&
 	    KBD_IS_BUSY(&sc->sc_kbd)) {
