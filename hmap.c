@@ -77,6 +77,28 @@ static const struct evdev_methods hmap_evdev_methods = {
 	.ev_close = &hmap_ev_close,
 };
 
+#define HMAP_FOREACH_ITEM(sc, mi)       \
+	for (u_int _map = 0, _item = 0;	\
+	    ((mi) = hmap_get_next_map_item((sc), &_map, &_item)) != NULL;)
+
+static const struct hmap_item *
+hmap_get_next_map_item(struct hmap_softc *sc, u_int *map, u_int *item)
+{
+	const struct hmap_item *hi;
+
+	if (*item >= sc->nmap_items[*map]) {
+		++*map;
+		*item = 0;
+		if (*map >= sc->nmaps)
+			return (NULL);
+	}
+
+	hi = sc->map[*map] + *item;
+	++*item;
+
+	return (hi);
+}
+
 void
 hmap_set_debug_var(device_t dev, int *debug_var)
 {
@@ -408,12 +430,12 @@ hmap_add_map(device_t dev, const struct hmap_item *map, int nmap_items,
 	if (items == 0)
 		return (ENXIO);
 
-	/* Avoid double-adding of map in probe() handler */
-	if (sc->map != map) {
-		sc->nhid_items += items;
-		sc->map = map;
-		sc->nmap_items = nmap_items;
-	}
+	KASSERT(sc->nmaps < HMAP_MAX_MAPS,
+	    ("Not more than %d maps is supported", HMAP_MAX_MAPS));
+	sc->nhid_items += items;
+	sc->map[sc->nmaps] = map;
+	sc->nmap_items[sc->nmaps] = nmap_items;
+	sc->nmaps++;
 
 	return (0);
 }
@@ -544,10 +566,19 @@ mapped:
 		item->lmin = hi.logical_minimum;
 		item->lmax = hi.logical_maximum;
 		item++;
-		KASSERT(item <= sc->hid_items + sc->nitems,
+		KASSERT(item <= sc->hid_items + sc->nhid_items,
 		    ("Parsed HID item array overflow"));
 	}
 	hid_end_parse(hd);
+
+	/*
+	 * Resulting number of parsed HID items can be less than expected as
+	 * map items might be duplicated in different maps. Save real number.
+	 */
+	if (sc->nhid_items != item - sc->hid_items)
+		DPRINTF(sc, "Parsed HID item number mismatch: expected=%u "
+		    "result=%ld\n", sc->nhid_items, item - sc->hid_items);
+	sc->nhid_items = item - sc->hid_items;
 
 	return (0);
 }

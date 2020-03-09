@@ -31,6 +31,8 @@
 #include <sys/param.h>
 #include <sys/bitstring.h>
 
+#define	HMAP_MAX_MAPS	4
+
 struct hmap_hid_item;
 struct hmap_item;
 struct hmap_softc;
@@ -89,9 +91,6 @@ struct hmap_item {
 #define	HMAP_ABS_CB(_name, _usage, _callback)				\
     HMAP_ANY_CB((_name), (_usage), (_callback)), .relabs = HMAP_ABSOLUTE
 
-#define	HMAP_FOREACH_ITEM(sc, mi)	\
-    for ((mi) = (sc)->map; (mi) < (sc)->map + (sc)->nmap_items; (mi)++)
-
 enum hmap_type {
 	HMAP_TYPE_CALLBACK = 0,	/* HID item is reported with user callback */
 	HMAP_TYPE_VARIABLE,	/* HID item is variable (single usage) */
@@ -123,10 +122,15 @@ struct hmap_softc {
 
 	struct evdev_dev	*evdev;
 
-	uint32_t		nmap_items;
-	const struct hmap_item	*map;
+	/* Scatter-gather list of maps */
+	int			nmaps;
+	uint32_t		nmap_items[HMAP_MAX_MAPS];
+	const struct hmap_item	*map[HMAP_MAX_MAPS];
+
+	/* List of preparsed HID items */
 	uint32_t		nhid_items;
 	struct hmap_hid_item	*hid_items;
+
 	uint32_t		isize;
 	int			*debug_var;
 	enum hmap_cb_state	cb_state;
