@@ -218,13 +218,13 @@ hmap_intr(void *context, void *buf, uint16_t len)
 				DPRINTF(sc, "Can not map unknown HID "
 				    "usage: %08x\n", usage);
 report_key:
-			if (key == hi->last_val)
+			if (key == hi->last_key)
 				continue;
 			if (hi->last_val != KEY_RESERVED)
-				evdev_push_key(sc->evdev, hi->last_val, 0);
+				evdev_push_key(sc->evdev, hi->last_key, 0);
 			if (key != KEY_RESERVED)
 				evdev_push_key(sc->evdev, key, 1);
-			hi->last_val = key;
+			hi->last_key = key;
 			break;
 
 		default:
@@ -455,6 +455,7 @@ hmap_hid_parse(struct hmap_softc *sc, uint8_t tlc_index)
 				item->map = mi;
 				item->type = hi.flags & HIO_NULLSTATE ?
 				    HMAP_TYPE_VAR_NULLST : HMAP_TYPE_VARIABLE;
+				item->last_val = 0;
 				switch (mi->type) {
 				case EV_KEY:
 					evdev_support_event(sc->evdev, EV_KEY);
@@ -490,6 +491,7 @@ hmap_hid_parse(struct hmap_softc *sc, uint8_t tlc_index)
 				continue;
 			item->base = hi.usage_minimum - hi.logical_minimum;
 			item->type = HMAP_TYPE_ARR_RANGE;
+			item->last_key = KEY_RESERVED;
 			evdev_support_event(sc->evdev, EV_KEY);
 			goto mapped;
 		}
@@ -521,13 +523,13 @@ hmap_hid_parse(struct hmap_softc *sc, uint8_t tlc_index)
 		if (!found)
 			continue;
 		item->type = HMAP_TYPE_ARR_LIST;
+		item->last_key = KEY_RESERVED;
 		evdev_support_event(sc->evdev, EV_KEY);
 mapped:
 		item->id = hi.report_ID;
 		item->loc = hi.loc;
 		item->lmin = hi.logical_minimum;
 		item->lmax = hi.logical_maximum;
-		item->last_val = 0; /* KEY_RESERVED */
 		item++;
 		KASSERT(item <= sc->hid_items + sc->nitems,
 		    ("Parsed HID item array overflow"));

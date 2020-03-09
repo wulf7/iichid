@@ -48,6 +48,7 @@ enum hmap_cb_state {
 #define	HMAP_CB_GET_SOFTC	((void *)super_sc)
 #define	HMAP_CB_GET_EVDEV	(super_sc->evdev)
 #define	HMAP_CB_GET_MAP_ITEM	(hi->map)
+#define	HMAP_CB_UDATA		(hi->udata)
 typedef void hmap_cb_t(HMAP_CB_ARGS);
 
 enum hmap_relabs {
@@ -109,7 +110,11 @@ struct hmap_hid_item {
 	struct hid_location	loc;		/* HID item location */
 	int32_t			lmin;		/* HID item logical minimum */
 	int32_t			lmax;		/* HID item logical maximum */
-	int32_t			last_val;	/* Last reported value */
+	union {
+		intptr_t	udata;		/* Callback private context */
+		int32_t		last_val;	/* Last reported value (var) */
+		int32_t		last_key;	/* Last reported key (array) */
+	};
 };
 
 struct hmap_softc {
