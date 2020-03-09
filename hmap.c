@@ -179,19 +179,18 @@ hmap_intr(void *context, void *buf, uint16_t len)
 			 * 6.2.2.5. An out-of range value in an array field
 			 * is considered no controls asserted.
 			 */
-			if (data >= hi->lmin && data <= hi->lmax) {
-				/*
-				 * 6.2.2.5. Rather than returning a single bit
-				 * for each button in the group, an array
-				 * returns an index in each field that
-				 * corresponds to the pressed button.
-				 */
-				if (hi->list[data - hi->lmin] == NULL)
-					DPRINTF(sc, "Can not map unknown HID "
-					    "array index: %08x\n", data);
-				else
-					key = hi->list[data - hi->lmin]->code;
-			}
+			if (data < hi->lmin || data > hi->lmax)
+				goto report_key;
+			/*
+			 * 6.2.2.5. Rather than returning a single bit for each
+			 * button in the group, an array returns an index in
+			 * each field that corresponds to the pressed button.
+			 */
+			if (hi->list[data - hi->lmin] == NULL)
+				DPRINTF(sc, "Can not map unknown HID "
+				    "array index: %08x\n", data);
+			else
+				key = hi->list[data - hi->lmin]->code;
 			goto report_key;
 
 		case HMAP_TYPE_ARR_RANGE:
@@ -200,26 +199,24 @@ hmap_intr(void *context, void *buf, uint16_t len)
 			 * 6.2.2.5. An out-of range value in an array field
 			 * is considered no controls asserted.
 			 */
-			if (data >= hi->lmin && data <= hi->lmax) {
-				/*
-				 * When the input field is an array and the
-				 * usage is specified with a range instead of
-				 * an ID, we have to derive the actual usage by
-				 * using the item value as an index in the
-				 * usage range list.
-				 */
-				usage = hi->base + data;
-				HMAP_FOREACH_ITEM(sc, mi) {
-					if (usage == mi->usage &&
-					    mi->type == EV_KEY) {
-						key = mi->code;
-						break;
-					}
+			if (data < hi->lmin || data > hi->lmax)
+				goto report_key;
+			/*
+			 * When the input field is an array and the usage is
+			 * specified with a range instead of an ID, we have to
+			 * derive the actual usage by using the item value as
+			 * an index in the usage range list.
+			 */
+			usage = hi->base + data;
+			HMAP_FOREACH_ITEM(sc, mi) {
+				if (usage == mi->usage && mi->type == EV_KEY) {
+					key = mi->code;
+					break;
 				}
-				if (key == KEY_RESERVED)
-					DPRINTF(sc, "Can not map unknown HID "
-					    "usage: %08x\n", usage);
 			}
+			if (key == KEY_RESERVED)
+				DPRINTF(sc, "Can not map unknown HID "
+				    "usage: %08x\n", usage);
 report_key:
 			if (key == hi->last_val)
 				continue;
