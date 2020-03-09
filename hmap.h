@@ -35,9 +35,16 @@ struct hmap_hid_item;
 struct hmap_item;
 struct hmap_softc;
 
+enum hmap_cb_state {
+	HMAP_CB_IS_PROBING,
+	HMAP_CB_IS_ATTACHING,
+	HMAP_CB_IS_RUNNING,
+};
+
 #define	HMAP_CB_ARGS	\
 	struct hmap_softc *super_sc, const struct hmap_item *mi, struct hmap_hid_item *hi, intptr_t ctx
-#define	HMAP_CB_IS_ATTACHING	(hi == NULL)
+#define	HMAP_CB_GET_STATE(...)	((super_sc == NULL) ? HMAP_CB_IS_PROBING : \
+    ((hi == NULL) ? HMAP_CB_IS_ATTACHING : HMAP_CB_IS_RUNNING))
 #define	HMAP_CB_GET_SOFTC	((void *)super_sc)
 #define	HMAP_CB_GET_EVDEV	(super_sc->evdev)
 #define	HMAP_CB_GET_MAP_ITEM	(mi)

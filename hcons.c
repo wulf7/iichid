@@ -262,11 +262,13 @@ hcons_rel_volume_cb(HMAP_CB_ARGS)
 	int32_t code;
 	int nrepeats;
 
-	if (HMAP_CB_IS_ATTACHING) {
+	switch (HMAP_CB_GET_STATE()) {
+	case HMAP_CB_IS_ATTACHING:
 		evdev_support_event(evdev, EV_KEY);
 		evdev_support_key(evdev, KEY_VOLUMEUP);
 		evdev_support_key(evdev, KEY_VOLUMEDOWN);
-	} else {
+		break;
+	case HMAP_CB_IS_RUNNING:
 		data = ctx;
 		code = data > 0 ? KEY_VOLUMEUP : KEY_VOLUMEDOWN;
 		for (nrepeats = abs(data); nrepeats > 0; nrepeats--) {

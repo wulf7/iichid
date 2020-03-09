@@ -184,11 +184,13 @@ hgame_dpad_cb(HMAP_CB_ARGS)
 	struct hgame_softc *sc = HMAP_CB_GET_SOFTC;
 	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV;
 
-	if (HMAP_CB_IS_ATTACHING) {
+	switch (HMAP_CB_GET_STATE()) {
+	case HMAP_CB_IS_ATTACHING:
 		evdev_support_event(evdev, EV_ABS);
 		evdev_support_abs(evdev, ABS_HAT0X, 0, -1, 1, 0, 0, 0);
 		evdev_support_abs(evdev, ABS_HAT0Y, 0, -1, 1, 0, 0, 0);
-	} else {
+		break;
+	case HMAP_CB_IS_RUNNING:
 		switch (HMAP_CB_GET_MAP_ITEM->usage) {
 		case HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_D_PAD_UP):
 			if (sc->dpad_down)

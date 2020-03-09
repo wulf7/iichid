@@ -148,10 +148,12 @@ hms_wheel_cb(HMAP_CB_ARGS)
 	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV;
 	int32_t data;
 
-	if (HMAP_CB_IS_ATTACHING) {
+	switch (HMAP_CB_GET_STATE()) {
+	case HMAP_CB_IS_ATTACHING:
 		evdev_support_event(evdev, EV_REL);
 		evdev_support_rel(evdev, REL_WHEEL);
-	} else {
+		break;
+	case HMAP_CB_IS_RUNNING:
 		data = ctx;
 		if (sc->rev_wheel)
 			data = -data;
