@@ -42,12 +42,12 @@ enum hmap_cb_state {
 };
 
 #define	HMAP_CB_ARGS	\
-	struct hmap_softc *super_sc, const struct hmap_item *mi, struct hmap_hid_item *hi, intptr_t ctx
+    struct hmap_softc *super_sc, struct hmap_hid_item *hi, intptr_t ctx
 #define	HMAP_CB_GET_STATE(...)	\
     ((super_sc == NULL) ? HMAP_CB_IS_PROBING : super_sc->cb_state)
 #define	HMAP_CB_GET_SOFTC	((void *)super_sc)
 #define	HMAP_CB_GET_EVDEV	(super_sc->evdev)
-#define	HMAP_CB_GET_MAP_ITEM	(mi)
+#define	HMAP_CB_GET_MAP_ITEM	(hi->map)
 typedef void hmap_cb_t(HMAP_CB_ARGS);
 
 enum hmap_relabs {
