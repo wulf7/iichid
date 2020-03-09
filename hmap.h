@@ -39,6 +39,7 @@ enum hmap_cb_state {
 	HMAP_CB_IS_PROBING,
 	HMAP_CB_IS_ATTACHING,
 	HMAP_CB_IS_RUNNING,
+	HMAP_CB_IS_DETACHING,
 };
 
 #define	HMAP_CB_ARGS	\

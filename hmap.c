@@ -431,8 +431,6 @@ hmap_hid_parse(struct hmap_softc *sc, uint8_t tlc_index)
 		return (error);
 	}
 
-	sc->cb_state = HMAP_CB_IS_ATTACHING;
-
 	/* Parse inputs */
 	hd = hid_start_parse(d_ptr, d_len, 1 << hid_input);
 	HID_TLC_FOREACH_ITEM(hd, &hi, tlc_index) {
@@ -536,8 +534,6 @@ mapped:
 	}
 	hid_end_parse(hd);
 
-	sc->cb_state = HMAP_CB_IS_RUNNING;
-
 	return (0);
 }
 
@@ -556,6 +552,8 @@ hmap_attach(device_t dev)
 	const struct hid_device_info *hw = hid_get_device_info(dev);
 	uint16_t i;
 	int error;
+
+	sc->cb_state = HMAP_CB_IS_ATTACHING;
 
 	sc->dev = dev;
 	sc->hid_items = malloc(sc->nhid_items * sizeof(struct hid_item),
@@ -580,6 +578,8 @@ hmap_attach(device_t dev)
 		return (ENXIO);
 	}
 
+	sc->cb_state = HMAP_CB_IS_RUNNING;
+
 	error = evdev_register_mtx(sc->evdev, hidbus_get_lock(dev));
 	if (error) {
 		hmap_detach(dev);
@@ -595,11 +595,15 @@ hmap_detach(device_t dev)
 	struct hmap_softc *sc = device_get_softc(dev);
 	struct hmap_hid_item *hi;
 
+	sc->cb_state = HMAP_CB_IS_DETACHING;
+
 	evdev_free(sc->evdev);
 	if (sc->hid_items != NULL) {
 		for (hi = sc->hid_items; hi < sc->hid_items + sc->nhid_items;
 		    hi++)
-			if (hi->type == HMAP_TYPE_ARR_LIST)
+			if (hi->type == HMAP_TYPE_CALLBACK)
+				hi->map->cb(sc, hi, 0);
+			else if (hi->type == HMAP_TYPE_ARR_LIST)
 				free(hi->list, M_DEVBUF);
 		free(sc->hid_items, M_DEVBUF);
 	}
