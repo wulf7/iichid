@@ -178,7 +178,7 @@ struct hgame_softc {
 
 /* Emulate the hat switch report via the D-pad usages
  * found on XInput/XBox style devices */
-static void
+static int
 hgame_dpad_cb(HMAP_CB_ARGS)
 {
 	struct hgame_softc *sc = HMAP_CB_GET_SOFTC;
@@ -218,6 +218,8 @@ hgame_dpad_cb(HMAP_CB_ARGS)
 			break;
 		}
 	}
+
+	return (0);
 }
 
 static int

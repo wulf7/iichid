@@ -50,7 +50,7 @@ enum hmap_cb_state {
 #define	HMAP_CB_GET_EVDEV	(super_sc->evdev)
 #define	HMAP_CB_GET_MAP_ITEM	(hi->map)
 #define	HMAP_CB_UDATA		(hi->udata)
-typedef void hmap_cb_t(HMAP_CB_ARGS);
+typedef int hmap_cb_t(HMAP_CB_ARGS);
 
 enum hmap_relabs {
 	HMAP_RELABS_ANY = 0,

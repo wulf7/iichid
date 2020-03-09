@@ -254,7 +254,7 @@ static const struct hid_device_id hcons_devs[] = {
  * Emulate relative Consumer volume usage with pressing
  * VOLUMEUP and VOLUMEDOWN keys appropriate number of times
  */
-static void
+static int
 hcons_rel_volume_cb(HMAP_CB_ARGS)
 {
 	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV;
@@ -276,6 +276,8 @@ hcons_rel_volume_cb(HMAP_CB_ARGS)
 			evdev_push_key(evdev, code, 0);
 		}
 	}
+
+	return (0);
 }
 
 static int

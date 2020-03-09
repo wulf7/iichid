@@ -149,7 +149,8 @@ hmap_intr(void *context, void *buf, uint16_t len)
 
 		switch (hi->type) {
 		case HMAP_TYPE_CALLBACK:
-			hi->map->cb(sc, hi, data);
+			if (hi->map->cb(sc, hi, data) != 0)
+				continue;
 			break;
 
 		case HMAP_TYPE_VAR_NULLST:
@@ -284,6 +285,7 @@ hmap_hid_probe_descr(void *d_ptr, uint16_t d_len, uint8_t tlc_index,
 {
 	struct hid_item hi;
 	struct hid_data *hd;
+	struct hmap_hid_item hi_temp;
 	uint32_t i, j, usage, items = 0;
 	int32_t arr_size;
 	bool found, do_free = false;
@@ -303,6 +305,12 @@ hmap_hid_probe_descr(void *d_ptr, uint16_t d_len, uint8_t tlc_index,
 			continue;
 		for (i = 0; i < nmap_items; i++) {
 			if (can_map_callback(&hi, map + i)) {
+				bzero(&hi_temp, sizeof(hi_temp));
+				hi_temp.map = map + i;
+				hi_temp.type = HMAP_TYPE_CALLBACK;
+				if (hi_temp.map->cb(
+				    NULL, &hi_temp, (intptr_t)&hi) != 0)
+					break;
 				bit_set(caps, i);
 				goto next;
 			}
@@ -416,7 +424,7 @@ hmap_hid_parse(struct hmap_softc *sc, uint8_t tlc_index)
 	struct hid_item hi;
 	struct hid_data *hd;
 	const struct hmap_item *mi;
-	struct hmap_hid_item *item = sc->hid_items;
+	struct hmap_hid_item hi_temp, *item = sc->hid_items;
 	void *d_ptr;
 	uint16_t d_len;
 	int32_t arr_size;
@@ -440,9 +448,16 @@ hmap_hid_parse(struct hmap_softc *sc, uint8_t tlc_index)
 			continue;
 		HMAP_FOREACH_ITEM(sc, mi) {
 			if (can_map_callback(&hi, mi)) {
-				item->map = mi;
-				item->type = HMAP_TYPE_CALLBACK;
-				mi->cb(sc, item, (intptr_t)&hi);
+				bzero(&hi_temp, sizeof(hi_temp));
+				hi_temp.map = mi;
+				hi_temp.type = HMAP_TYPE_CALLBACK;
+				/*
+				 * Values returned by probe- and attach-stage
+				 * callbacks MUST be identical.
+				 */
+				if (mi->cb(sc, &hi_temp, (intptr_t)&hi) != 0)
+					break;
+				bcopy(&hi_temp, item, sizeof(hi_temp));
 				goto mapped;
 			}
 		}

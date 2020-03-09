@@ -90,19 +90,23 @@ static const struct hid_device_id hpen_devs[] = {
 	{ HID_TLC(HUP_DIGITIZERS, HUD_PEN) },
 };
 
-static void
+static int
 hpen_battery_strenght_cb(HMAP_CB_ARGS)
 {
 	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV;
 	int32_t data;
 
-	if (HMAP_CB_IS_ATTACHING) {
+	switch (HMAP_CB_GET_STATE()) {
+	case HMAP_CB_IS_ATTACHING:
 		evdev_support_event(evdev, EV_PWR);
 		/* TODO */
-	} else {
+		break;
+	case HMAP_CB_IS_RUNNING:
 		data = ctx;
 		/* TODO */
 	}
+
+	return (0);
 }
 
 static int

@@ -141,7 +141,7 @@ struct hms_softc {
 };
 
 /* Reverse wheel if required. */
-static void
+static int
 hms_wheel_cb(HMAP_CB_ARGS)
 {
 	struct hms_softc *sc = HMAP_CB_GET_SOFTC;
@@ -159,6 +159,8 @@ hms_wheel_cb(HMAP_CB_ARGS)
 			data = -data;
 		evdev_push_rel(evdev, REL_WHEEL, data);
 	}
+
+	return (0);
 }
 
 static int
