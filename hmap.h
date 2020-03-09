@@ -43,8 +43,8 @@ enum hmap_cb_state {
 
 #define	HMAP_CB_ARGS	\
 	struct hmap_softc *super_sc, const struct hmap_item *mi, struct hmap_hid_item *hi, intptr_t ctx
-#define	HMAP_CB_GET_STATE(...)	((super_sc == NULL) ? HMAP_CB_IS_PROBING : \
-    ((hi == NULL) ? HMAP_CB_IS_ATTACHING : HMAP_CB_IS_RUNNING))
+#define	HMAP_CB_GET_STATE(...)	\
+    ((super_sc == NULL) ? HMAP_CB_IS_PROBING : super_sc->cb_state)
 #define	HMAP_CB_GET_SOFTC	((void *)super_sc)
 #define	HMAP_CB_GET_EVDEV	(super_sc->evdev)
 #define	HMAP_CB_GET_MAP_ITEM	(mi)
@@ -123,6 +123,7 @@ struct hmap_softc {
 	struct hmap_hid_item	*hid_items;
 	uint32_t		isize;
 	int			*debug_var;
+	enum hmap_cb_state	cb_state;
 	bitstr_t		bit_decl(evdev_props, INPUT_PROP_CNT);
 };
 

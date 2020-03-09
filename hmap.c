@@ -394,6 +394,7 @@ hmap_add_map(device_t dev, const struct hmap_item *map, int nmap_items,
 		return (error);
 	}
 
+	sc->cb_state = HMAP_CB_IS_PROBING;
 	items = hmap_hid_probe_descr(d_ptr, d_len, tlc_index, map, nmap_items,
 	    caps);
 	if (items == 0)
@@ -430,6 +431,8 @@ hmap_hid_parse(struct hmap_softc *sc, uint8_t tlc_index)
 		return (error);
 	}
 
+	sc->cb_state = HMAP_CB_IS_ATTACHING;
+
 	/* Parse inputs */
 	hd = hid_start_parse(d_ptr, d_len, 1 << hid_input);
 	HID_TLC_FOREACH_ITEM(hd, &hi, tlc_index) {
@@ -441,7 +444,7 @@ hmap_hid_parse(struct hmap_softc *sc, uint8_t tlc_index)
 			if (can_map_callback(&hi, mi)) {
 				item->map = mi;
 				item->type = HMAP_TYPE_CALLBACK;
-				mi->cb(sc, mi, NULL, (intptr_t)&hi);
+				mi->cb(sc, mi, item, (intptr_t)&hi);
 				goto mapped;
 			}
 		}
@@ -530,6 +533,8 @@ mapped:
 		    ("Parsed HID item array overflow"));
 	}
 	hid_end_parse(hd);
+
+	sc->cb_state = HMAP_CB_IS_RUNNING;
 
 	return (0);
 }
