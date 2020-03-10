@@ -233,7 +233,8 @@ hmap_intr(void *context, void *buf, uint16_t len)
 			 */
 			usage = data - hi->lmin + hi->umin;
 			HMAP_FOREACH_ITEM(sc, mi) {
-				if (usage == mi->usage && mi->type == EV_KEY) {
+				if (usage == mi->usage && mi->type == EV_KEY &&
+				    !mi->has_cb) {
 					key = mi->code;
 					break;
 				}
