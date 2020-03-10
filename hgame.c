@@ -82,26 +82,27 @@ static hmap_cb_t hgame_dpad_cb;
 
 #define BASE_OVERFLOW (BTN_TRIGGER_HAPPY - 0x10)
 
-#define COMMON_ITEMS \
-	{ HGAME_MAP_BUT(BASE_OVERFLOW, 17) }, \
-	{ HGAME_MAP_BUT(BASE_OVERFLOW, 18) }, \
-	{ HGAME_MAP_BUT(BASE_OVERFLOW, 19) }, \
-	{ HGAME_MAP_BUT(BASE_OVERFLOW, 20) }, \
-	{ HGAME_MAP_BUT(BASE_OVERFLOW, 21) }, \
-	{ HGAME_MAP_BUT(BASE_OVERFLOW, 22) }, \
-	{ HGAME_MAP_BUT(BASE_OVERFLOW, 23) }, \
-	{ HGAME_MAP_BUT(BASE_OVERFLOW, 24) }, \
-	{ HGAME_MAP_ABS(X, ABS_X) }, \
-	{ HGAME_MAP_ABS(Y, ABS_Y) }, \
-	{ HGAME_MAP_ABS(Z, ABS_Z) }, \
-	{ HGAME_MAP_ABS(RX, ABS_RX) }, \
-	{ HGAME_MAP_ABS(RY, ABS_RY) }, \
-	{ HGAME_MAP_ABS(RZ, ABS_RZ) }, \
-	{ HGAME_MAP_ABS(HAT_SWITCH, ABS_HAT0X) }, \
-	{ HGAME_MAP_ABS_CB(D_PAD_UP, hgame_dpad_cb) }, \
-	{ HGAME_MAP_ABS_CB(D_PAD_DOWN, hgame_dpad_cb) }, \
-	{ HGAME_MAP_ABS_CB(D_PAD_RIGHT, hgame_dpad_cb) }, \
+static const struct hmap_item hgame_common_map[] = {
+	{ HGAME_MAP_BUT(BASE_OVERFLOW, 17) },
+	{ HGAME_MAP_BUT(BASE_OVERFLOW, 18) },
+	{ HGAME_MAP_BUT(BASE_OVERFLOW, 19) },
+	{ HGAME_MAP_BUT(BASE_OVERFLOW, 20) },
+	{ HGAME_MAP_BUT(BASE_OVERFLOW, 21) },
+	{ HGAME_MAP_BUT(BASE_OVERFLOW, 22) },
+	{ HGAME_MAP_BUT(BASE_OVERFLOW, 23) },
+	{ HGAME_MAP_BUT(BASE_OVERFLOW, 24) },
+	{ HGAME_MAP_ABS(X, ABS_X) },
+	{ HGAME_MAP_ABS(Y, ABS_Y) },
+	{ HGAME_MAP_ABS(Z, ABS_Z) },
+	{ HGAME_MAP_ABS(RX, ABS_RX) },
+	{ HGAME_MAP_ABS(RY, ABS_RY) },
+	{ HGAME_MAP_ABS(RZ, ABS_RZ) },
+	{ HGAME_MAP_ABS(HAT_SWITCH, ABS_HAT0X) },
+	{ HGAME_MAP_ABS_CB(D_PAD_UP, hgame_dpad_cb) },
+	{ HGAME_MAP_ABS_CB(D_PAD_DOWN, hgame_dpad_cb) },
+	{ HGAME_MAP_ABS_CB(D_PAD_RIGHT, hgame_dpad_cb) },
 	{ HGAME_MAP_ABS_CB(D_PAD_LEFT, hgame_dpad_cb) },
+};
 
 static const struct hmap_item hgame_joystick_map[] = {
 	{ HGAME_MAP_BUT(BTN_TRIGGER, 1) },
@@ -120,7 +121,6 @@ static const struct hmap_item hgame_joystick_map[] = {
 	{ HGAME_MAP_BUT(BTN_TRIGGER, 14) },
 	{ HGAME_MAP_BUT(BTN_TRIGGER, 15) },
 	{ HGAME_MAP_BUT(BTN_TRIGGER, 16) },
-	COMMON_ITEMS
 };
 
 static const struct hmap_item hgame_gamepad_map[] = {
@@ -140,7 +140,6 @@ static const struct hmap_item hgame_gamepad_map[] = {
 	{ HGAME_MAP_BUT(BTN_GAMEPAD, 14) },
 	{ HGAME_MAP_BUT(BTN_GAMEPAD, 15) },
 	{ HGAME_MAP_BUT(BTN_GAMEPAD, 16) },
-	COMMON_ITEMS
 };
 
 /* Customized to match usbhid's XBox 360 descriptor */
@@ -156,7 +155,6 @@ static const struct hmap_item hgame_xb360_map[] = {
 	{ HGAME_MAP_BUT_CUSTOM(9, BTN_THUMBL) },
 	{ HGAME_MAP_BUT_CUSTOM(10, BTN_THUMBR) },
 	{ HGAME_MAP_BUT_CUSTOM(11, BTN_MODE) },
-	COMMON_ITEMS
 };
 
 #define XBOX_360 360
@@ -225,7 +223,7 @@ hgame_dpad_cb(HMAP_CB_ARGS)
 static int
 hgame_probe(device_t dev)
 {
-	int error;
+	int error, error2;
 
 	error = hidbus_lookup_driver_info(dev, hgame_devs, sizeof(hgame_devs));
 	if (error != 0)
@@ -233,13 +231,15 @@ hgame_probe(device_t dev)
 
 	hmap_set_debug_var(dev, &HID_DEBUG_VAR);
 
+
 	if (hidbus_get_driver_info(dev) == HUG_GAME_PAD)
 		error = hmap_add_map(dev, hgame_gamepad_map, nitems(hgame_gamepad_map), NULL);
 	else if (hidbus_get_driver_info(dev) == XBOX_360)
 		error = hmap_add_map(dev, hgame_xb360_map, nitems(hgame_xb360_map), NULL);
 	else
 		error = hmap_add_map(dev, hgame_joystick_map, nitems(hgame_joystick_map), NULL);
-	if (error != 0)
+	error2 = hmap_add_map(dev, hgame_common_map, nitems(hgame_common_map), NULL);
+	if (error != 0 && error2 != 0)
 		return (error);
 
 	hmap_set_evdev_prop(dev, INPUT_PROP_DIRECT);
