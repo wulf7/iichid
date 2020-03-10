@@ -188,9 +188,10 @@ hmap_intr(void *context, void *buf, uint16_t len)
 		case HMAP_TYPE_VARIABLE:
 			/*
 			 * Ignore reports for absolute data if the data did not
-			 * change. Evdev layer filters out them anyway.
+			 * change and for relative data if data is 0.
+			 * Evdev layer filters out them anyway.
 			 */
-			if (hi->evtype != EV_REL && hi->last_val == data)
+			if (data == (hi->evtype == EV_REL ? 0 : hi->last_val))
 				continue;
 			evdev_push_event(sc->evdev, hi->evtype,
 			    hi->code, data);
