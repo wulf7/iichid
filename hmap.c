@@ -189,10 +189,10 @@ hmap_intr(void *context, void *buf, uint16_t len)
 			 * Ignore reports for absolute data if the data did not
 			 * change. Evdev layer filters out them anyway.
 			 */
-			if (hi->map->type != EV_REL && hi->last_val == data)
+			if (hi->evtype != EV_REL && hi->last_val == data)
 				continue;
-			evdev_push_event(sc->evdev, hi->map->type,
-			    hi->map->code, data);
+			evdev_push_event(sc->evdev, hi->evtype,
+			    hi->code, data);
 			hi->last_val = data;
 			break;
 
@@ -487,7 +487,8 @@ hmap_hid_parse(struct hmap_softc *sc, uint8_t tlc_index)
 			HMAP_FOREACH_ITEM(sc, mi) {
 				if (!can_map_variable(&hi, mi))
 					continue;
-				item->map = mi;
+				item->evtype = mi->type;
+				item->code = mi->code;
 				item->type = hi.flags & HIO_NULLSTATE ?
 				    HMAP_TYPE_VAR_NULLST : HMAP_TYPE_VARIABLE;
 				item->last_val = 0;

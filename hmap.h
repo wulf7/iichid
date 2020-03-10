@@ -66,7 +66,7 @@ struct hmap_item {
 	union {
 		struct {
 			uint16_t	type;	/* Evdev event type */
-			uint32_t	code;	/* Evdev event code */
+			uint16_t	code;	/* Evdev event code */
 		};
 		hmap_cb_t		*cb;	/* Reporting callback */
 	};
@@ -102,7 +102,11 @@ enum hmap_type {
 struct hmap_hid_item {
 	enum hmap_type		type;
 	union {
-		const struct hmap_item	*map;	/* Callback & variable */
+		const struct hmap_item	*map;	/* Callback */
+		struct {			/* Variable */
+			uint16_t	evtype;	/* Evdev event type */
+			uint16_t	code;	/* Evdev event code */
+		};
 		const struct hmap_item	**list;	/* Array list map type */
 		int32_t		umin;		/* Array range map type */
 	};
