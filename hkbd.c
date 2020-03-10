@@ -1078,7 +1078,7 @@ hkbd_resume(device_t dev)
 {
 	struct hkbd_softc *sc = device_get_softc(dev);
 
-	HKBD_LOCK_ASSERT();
+	HKBD_LOCK_ASSERT(sc);
 
 	hkbd_clear_state(&sc->sc_kbd);
 
@@ -1187,7 +1187,7 @@ hkbd_check(keyboard_t *kbd)
 {
 	struct hkbd_softc *sc = kbd->kb_data;
 
-	HKBD_LOCK_ASSERT();
+	HKBD_LOCK_ASSERT(sc);
 
 	if (!KBD_IS_ACTIVE(kbd))
 		return (0);

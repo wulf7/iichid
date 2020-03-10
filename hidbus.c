@@ -189,7 +189,7 @@ hidbus_child_deleted(device_t bus, device_t child)
 	struct hidbus_softc *sc = device_get_softc(bus);
 	struct hidbus_ivars *tlc = device_get_ivars(child);
 
-	KASSERT(!sc->open, ("Child device is running"));
+	KASSERT(!tlc->open, ("Child device is running"));
 
 	mtx_lock(sc->lock);
 	STAILQ_REMOVE(&sc->tlcs, tlc, hidbus_ivars, link);
@@ -345,7 +345,7 @@ hidbus_intr_stop(device_t child)
 	struct hidbus_ivars *tlc;
 	bool open = false;
 
-	mtx_assert(&sc->lock, MA_OWNED);
+	mtx_assert(sc->lock, MA_OWNED);
 
 	STAILQ_FOREACH(tlc, &sc->tlcs, link) {
 		if (tlc->child == child)
