@@ -104,7 +104,7 @@ struct hmap_hid_item {
 	union {
 		const struct hmap_item	*map;	/* Callback & variable */
 		const struct hmap_item	**list;	/* Array list map type */
-		uint32_t		base;	/* Array range map type */
+		int32_t		umin;		/* Array range map type */
 	};
 	uint8_t			id;		/* Report ID */
 	struct hid_location	loc;		/* HID item location */

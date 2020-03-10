@@ -230,7 +230,7 @@ hmap_intr(void *context, void *buf, uint16_t len)
 			 * derive the actual usage by using the item value as
 			 * an index in the usage range list.
 			 */
-			usage = hi->base + data;
+			usage = data - hi->lmin + hi->umin;
 			HMAP_FOREACH_ITEM(sc, mi) {
 				if (usage == mi->usage && mi->type == EV_KEY) {
 					key = mi->code;
@@ -524,7 +524,7 @@ hmap_hid_parse(struct hmap_softc *sc, uint8_t tlc_index)
 			}
 			if (!found)
 				continue;
-			item->base = hi.usage_minimum - hi.logical_minimum;
+			item->umin = hi.usage_minimum;
 			item->type = HMAP_TYPE_ARR_RANGE;
 			item->last_key = KEY_RESERVED;
 			evdev_support_event(sc->evdev, EV_KEY);
