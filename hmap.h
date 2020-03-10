@@ -107,7 +107,7 @@ struct hmap_hid_item {
 			uint16_t	evtype;	/* Evdev event type */
 			uint16_t	code;	/* Evdev event code */
 		};
-		const struct hmap_item	**list;	/* Array list map type */
+		uint16_t	*codes;		/* Array list map type */
 		int32_t		umin;		/* Array range map type */
 	};
 	uint8_t			id;		/* Report ID */
@@ -117,7 +117,7 @@ struct hmap_hid_item {
 	union {
 		intptr_t	udata;		/* Callback private context */
 		int32_t		last_val;	/* Last reported value (var) */
-		int32_t		last_key;	/* Last reported key (array) */
+		uint16_t	last_key;	/* Last reported key (array) */
 	};
 };
 

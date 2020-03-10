@@ -136,8 +136,9 @@ hmap_intr(void *context, void *buf, uint16_t len)
 	struct hmap_softc *sc = device_get_softc(dev);
 	struct hmap_hid_item *hi;
 	const struct hmap_item *mi;
-	uint32_t usage;
-	int32_t data, key;
+	int32_t usage;
+	int32_t data;
+	uint16_t key;
 	uint8_t id = 0;
 	bool do_sync = false;
 
@@ -209,11 +210,10 @@ hmap_intr(void *context, void *buf, uint16_t len)
 			 * button in the group, an array returns an index in
 			 * each field that corresponds to the pressed button.
 			 */
-			if (hi->list[data - hi->lmin] == NULL)
+			key = hi->codes[data - hi->lmin];
+			if (key == KEY_RESERVED)
 				DPRINTF(sc, "Can not map unknown HID "
 				    "array index: %08x\n", data);
-			else
-				key = hi->list[data - hi->lmin]->code;
 			goto report_key;
 
 		case HMAP_TYPE_ARR_RANGE:
@@ -546,11 +546,11 @@ hmap_hid_parse(struct hmap_softc *sc, uint8_t tlc_index)
 			HMAP_FOREACH_ITEM(sc, mi) {
 				if (can_map_arr_list(&hi, mi, usage)) {
 					evdev_support_key(sc->evdev, mi->code);
-					if (item->list == NULL)
-						item->list = malloc(arr_size *
-						    sizeof(struct hmap_item *),
-						    M_DEVBUF, M_WAITOK|M_ZERO);
-					item->list[i] = mi;
+					if (item->codes == NULL)
+						item->codes = malloc(arr_size *
+						    sizeof(uint16_t), M_DEVBUF,
+						    M_WAITOK | M_ZERO);
+					item->codes[i] = mi->code;
 					found = true;
 					break;
 				}
@@ -651,7 +651,7 @@ hmap_detach(device_t dev)
 			if (hi->type == HMAP_TYPE_CALLBACK)
 				hi->map->cb(sc, hi, 0);
 			else if (hi->type == HMAP_TYPE_ARR_LIST)
-				free(hi->list, M_DEVBUF);
+				free(hi->codes, M_DEVBUF);
 		free(sc->hid_items, M_DEVBUF);
 	}
 
