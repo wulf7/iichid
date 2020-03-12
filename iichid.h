@@ -50,14 +50,14 @@ enum {
 /*
  * Since interrupt resource acquisition is not always possible (in case of GPIO
  * interrupts) iichid now supports a sampling_mode.
- * Set dev.iichid.<unit>.sampling_rate_fast to a value greater then 0
+ * Set dev.iichid.<unit>.sampling_rate_slow to a value greater then 0
  * to activate sampling. A value of 0 is possible but will not reset the
  * callout and, thereby, disable further report requests. Do not set the
  * sampling_rate_fast value too high as it may result in periodical lags of
  * cursor motion.
  */
 #define	IICHID_SAMPLING_RATE_FAST	60
-#define	IICHID_SAMPLING_RATE_SLOW	5
+#define	IICHID_SAMPLING_RATE_SLOW	10
 #define	IICHID_SAMPLING_HYSTERESIS	1
 
 /* 5.1.1 - HID Descriptor Format */
