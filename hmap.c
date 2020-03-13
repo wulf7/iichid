@@ -245,7 +245,7 @@ hmap_intr(void *context, void *buf, uint16_t len)
 report_key:
 			if (key == hi->last_key)
 				continue;
-			if (hi->last_val != KEY_RESERVED)
+			if (hi->last_key != KEY_RESERVED)
 				evdev_push_key(sc->evdev, hi->last_key, 0);
 			if (key != KEY_RESERVED)
 				evdev_push_key(sc->evdev, key, 1);
