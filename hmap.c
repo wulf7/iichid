@@ -304,77 +304,75 @@ can_map_arr_list(struct hid_item *hi, const struct hmap_item *mi,
 }
 
 static bool
-hmap_hid_probe_hid_item(struct hid_item *hi, const struct hmap_item *map,
+hmap_probe_hid_item(struct hid_item *hi, const struct hmap_item *map,
     int nmap_items, bitstr_t *caps)
 {
 	struct hmap_hid_item hi_temp;
 	uint32_t i, j, usage;
 	int32_t arr_size;
-	bool found;
+	bool found = false;
 
+	for (i = 0; i < nmap_items; i++) {
+		if (can_map_callback(hi, map + i)) {
+			bzero(&hi_temp, sizeof(hi_temp));
+			hi_temp.map = map + i;
+			hi_temp.type = HMAP_TYPE_CALLBACK;
+			if (hi_temp.map->cb(NULL, &hi_temp, (intptr_t)hi) != 0)
+				break;
+			bit_set(caps, i);
+			return (true);
+		}
+	}
+
+	if (hi->flags & HIO_VARIABLE) {
 		for (i = 0; i < nmap_items; i++) {
-			if (can_map_callback(hi, map + i)) {
-				bzero(&hi_temp, sizeof(hi_temp));
-				hi_temp.map = map + i;
-				hi_temp.type = HMAP_TYPE_CALLBACK;
-				if (hi_temp.map->cb(
-				    NULL, &hi_temp, (intptr_t)hi) != 0)
-					break;
+			if (can_map_variable(hi, map + i)) {
+				KASSERT(map[i].type == EV_KEY ||
+					map[i].type == EV_REL ||
+					map[i].type == EV_ABS,
+				    ("Unsupported event type"));
 				bit_set(caps, i);
 				return (true);
 			}
 		}
-		if (hi->flags & HIO_VARIABLE) {
-			for (i = 0; i < nmap_items; i++) {
-				if (can_map_variable(hi, map + i)) {
-					KASSERT(map[i].type == EV_KEY ||
-					    map[i].type == EV_REL ||
-					    map[i].type == EV_ABS,
-					    ("Unsupported event type"));
-					bit_set(caps, i);
-					return (true);
-				}
-			}
-			return (false);
-		}
-		found = false;
-		if (hi->usage_minimum != 0 || hi->usage_maximum != 0) {
-			for (i = 0; i < nmap_items; i++) {
-				if (can_map_arr_range(hi, map + i)) {
-					bit_set(caps, i);
-					found = true;
-				}
-			}
-			if (found)
-				return (true);
-			return (false);
-		}
-		arr_size = hi->logical_maximum - hi->logical_minimum + 1;
-		if (arr_size < 1 || arr_size > MAXUSAGE)
-			return (false);
-		for (j = 0; j < arr_size; j++) {
-			/*
-			 * Due to deficiencies in HID report descriptor parser
-			 * only first usage in array is returned to caller.
-			 * For now bail out instead of processing second one.
-			 */
-			if (j != 0)
-				break;
-			usage = hi->usage;
-			for (i = 0; i < nmap_items; i++) {
-				if (can_map_arr_list(hi, map + i, usage)) {
-					bit_set(caps, i);
-					found = true;
-				}
+		return (false);
+	}
+
+	if (hi->usage_minimum != 0 || hi->usage_maximum != 0) {
+		for (i = 0; i < nmap_items; i++) {
+			if (can_map_arr_range(hi, map + i)) {
+				bit_set(caps, i);
+				found = true;
 			}
 		}
-		if (!found)
-			return (false);
-	return (true);
+		return (found);
+	}
+
+	arr_size = hi->logical_maximum - hi->logical_minimum + 1;
+	if (arr_size < 1 || arr_size > MAXUSAGE)
+		return (false);
+	for (j = 0; j < arr_size; j++) {
+		/*
+		 * Due to deficiencies in HID report descriptor parser
+		 * only first usage in array is returned to caller.
+		 * For now bail out instead of processing second one.
+		 */
+		if (j != 0)
+			break;
+		usage = hi->usage;
+		for (i = 0; i < nmap_items; i++) {
+			if (can_map_arr_list(hi, map + i, usage)) {
+				bit_set(caps, i);
+				found = true;
+			}
+		}
+	}
+
+	return (found);
 }
 
 static uint32_t
-hmap_hid_probe_descr(void *d_ptr, uint16_t d_len, uint8_t tlc_index,
+hmap_probe_hid_descr(void *d_ptr, uint16_t d_len, uint8_t tlc_index,
     const struct hmap_item *map, int nmap_items, bitstr_t *caps)
 {
 	struct hid_item hi;
@@ -395,7 +393,7 @@ hmap_hid_probe_descr(void *d_ptr, uint16_t d_len, uint8_t tlc_index,
 			continue;
 		if (hi.flags & HIO_CONST)
 			continue;
-		if (hmap_hid_probe_hid_item(&hi, map, nmap_items, caps))
+		if (hmap_probe_hid_item(&hi, map, nmap_items, caps))
 			items++;
 	}
 	hid_end_parse(hd);
@@ -437,7 +435,7 @@ hmap_add_map(device_t dev, const struct hmap_item *map, int nmap_items,
 	}
 
 	sc->cb_state = HMAP_CB_IS_PROBING;
-	items = hmap_hid_probe_descr(d_ptr, d_len, tlc_index, map, nmap_items,
+	items = hmap_probe_hid_descr(d_ptr, d_len, tlc_index, map, nmap_items,
 	    caps);
 	if (items == 0)
 		return (ENXIO);
@@ -453,34 +451,34 @@ hmap_add_map(device_t dev, const struct hmap_item *map, int nmap_items,
 }
 
 static bool
-hmap_hid_item_parse(struct hmap_softc *sc, struct hid_item *hi,
+hmap_parse_hid_item(struct hmap_softc *sc, struct hid_item *hi,
     struct hmap_hid_item *item)
 {
 	const struct hmap_item *mi;
 	struct hmap_hid_item hi_temp;
-	int32_t arr_size;
-	uint32_t i, usage;
-	bool found;
+	int32_t arr_size, usage;
+	uint32_t i;
+	bool found = false;
 
-		HMAP_FOREACH_ITEM(sc, mi) {
-			if (can_map_callback(hi, mi)) {
-				bzero(&hi_temp, sizeof(hi_temp));
-				hi_temp.map = mi;
-				hi_temp.type = HMAP_TYPE_CALLBACK;
-				/*
-				 * Values returned by probe- and attach-stage
-				 * callbacks MUST be identical.
-				 */
-				if (mi->cb(sc, &hi_temp, (intptr_t)hi) != 0)
-					break;
-				bcopy(&hi_temp, item, sizeof(hi_temp));
-				goto mapped;
-			}
+	HMAP_FOREACH_ITEM(sc, mi) {
+		if (can_map_callback(hi, mi)) {
+			bzero(&hi_temp, sizeof(hi_temp));
+			hi_temp.map = mi;
+			hi_temp.type = HMAP_TYPE_CALLBACK;
+			/*
+			 * Values returned by probe- and attach-stage
+			 * callbacks MUST be identical.
+			 */
+			if (mi->cb(sc, &hi_temp, (intptr_t)hi) != 0)
+				break;
+			bcopy(&hi_temp, item, sizeof(hi_temp));
+			goto mapped;
 		}
-		if (hi->flags & HIO_VARIABLE) {
-			HMAP_FOREACH_ITEM(sc, mi) {
-				if (!can_map_variable(hi, mi))
-					continue;
+	}
+
+	if (hi->flags & HIO_VARIABLE) {
+		HMAP_FOREACH_ITEM(sc, mi) {
+			if (can_map_variable(hi, mi)) {
 				item->evtype = mi->type;
 				item->code = mi->code;
 				item->type = hi->flags & HIO_NULLSTATE ?
@@ -507,65 +505,68 @@ hmap_hid_item_parse(struct hmap_softc *sc, struct hid_item *hi,
 				}
 				goto mapped;
 			}
-			return (false);
 		}
-		found = false;
-		if (hi->usage_minimum != 0 || hi->usage_maximum != 0) {
-			HMAP_FOREACH_ITEM(sc, mi) {
-				if (can_map_arr_range(hi, mi)) {
-					evdev_support_key(sc->evdev, mi->code);
-					found = true;
-				}
-			}
-			if (!found)
-				return (false);
-			item->umin = hi->usage_minimum;
-			item->type = HMAP_TYPE_ARR_RANGE;
-			item->last_key = KEY_RESERVED;
-			evdev_support_event(sc->evdev, EV_KEY);
-			goto mapped;
-		}
-		arr_size = hi->logical_maximum - hi->logical_minimum + 1;
-		if (arr_size < 1 || arr_size > MAXUSAGE)
-			return (false);
-		for (i = 0; i < arr_size; i++) {
-			/*
-			 * Due to deficiencies in HID report descriptor parser
-			 * only first usage in array is returned to caller.
-			 * For now bail out instead of processing second one.
-			 */
-			if (i != 0)
-				break;
-			usage = hi->usage;
-			HMAP_FOREACH_ITEM(sc, mi) {
-				if (can_map_arr_list(hi, mi, usage)) {
-					evdev_support_key(sc->evdev, mi->code);
-					if (item->codes == NULL)
-						item->codes = malloc(arr_size *
-						    sizeof(uint16_t), M_DEVBUF,
-						    M_WAITOK | M_ZERO);
-					item->codes[i] = mi->code;
-					found = true;
-					break;
-				}
+		return (false);
+	}
+
+	if (hi->usage_minimum != 0 || hi->usage_maximum != 0) {
+		HMAP_FOREACH_ITEM(sc, mi) {
+			if (can_map_arr_range(hi, mi)) {
+				evdev_support_key(sc->evdev, mi->code);
+				found = true;
 			}
 		}
 		if (!found)
 			return (false);
-		item->type = HMAP_TYPE_ARR_LIST;
+		item->umin = hi->usage_minimum;
+		item->type = HMAP_TYPE_ARR_RANGE;
 		item->last_key = KEY_RESERVED;
 		evdev_support_event(sc->evdev, EV_KEY);
+		goto mapped;
+	}
+
+	arr_size = hi->logical_maximum - hi->logical_minimum + 1;
+	if (arr_size < 1 || arr_size > MAXUSAGE)
+		return (false);
+	for (i = 0; i < arr_size; i++) {
+		/*
+		 * Due to deficiencies in HID report descriptor parser
+		 * only first usage in array is returned to caller.
+		 * For now bail out instead of processing second one.
+		 */
+		if (i != 0)
+			break;
+		usage = hi->usage;
+		HMAP_FOREACH_ITEM(sc, mi) {
+			if (can_map_arr_list(hi, mi, usage)) {
+				evdev_support_key(sc->evdev, mi->code);
+				if (item->codes == NULL)
+					item->codes = malloc(
+					    arr_size * sizeof(uint16_t),
+					    M_DEVBUF, M_WAITOK | M_ZERO);
+				item->codes[i] = mi->code;
+				found = true;
+				break;
+			}
+		}
+	}
+	if (!found)
+		return (false);
+	item->type = HMAP_TYPE_ARR_LIST;
+	item->last_key = KEY_RESERVED;
+	evdev_support_event(sc->evdev, EV_KEY);
+
 mapped:
-		item->id = hi->report_ID;
-		item->loc = hi->loc;
-		item->lmin = hi->logical_minimum;
-		item->lmax = hi->logical_maximum;
+	item->id = hi->report_ID;
+	item->loc = hi->loc;
+	item->lmin = hi->logical_minimum;
+	item->lmax = hi->logical_maximum;
 
 	return (true);
 }
 
 static int
-hmap_hid_parse(struct hmap_softc *sc, uint8_t tlc_index)
+hmap_parse_hid_descr(struct hmap_softc *sc, uint8_t tlc_index)
 {
 	struct hid_item hi;
 	struct hid_data *hd;
@@ -588,7 +589,7 @@ hmap_hid_parse(struct hmap_softc *sc, uint8_t tlc_index)
 			continue;
 		if (hi.flags & HIO_CONST)
 			continue;
-		if (hmap_hid_item_parse(sc, &hi, item))
+		if (hmap_parse_hid_item(sc, &hi, item))
 			item++;
 		KASSERT(item <= sc->hid_items + sc->nhid_items,
 		    ("Parsed HID item array overflow"));
@@ -642,7 +643,7 @@ hmap_attach(device_t dev)
 		if (bit_test(sc->evdev_props, i))
 			evdev_support_prop(sc->evdev, i);
 	evdev_set_methods(sc->evdev, dev, &hmap_evdev_methods);
-	error = hmap_hid_parse(sc, hidbus_get_index(dev));
+	error = hmap_parse_hid_descr(sc, hidbus_get_index(dev));
 	if (error) {
 		hmap_detach(dev);
 		return (ENXIO);
