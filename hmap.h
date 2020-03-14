@@ -62,7 +62,8 @@ enum hmap_relabs {
 
 struct hmap_item {
 	char			*name;
-	int32_t 		usage;		/* HID usage */
+	int32_t 		usage;		/* HID usage (base) */
+	uint16_t		nusages;	/* number of usages */
 	union {
 		struct {
 			uint16_t	type;	/* Evdev event type */
@@ -76,8 +77,8 @@ struct hmap_item {
 	u_int			reserved:4;
 };
 
-#define	HMAP_ANY(_name, _usage, _type, _code)				\
-    .name = (_name), .usage = (_usage), .type = (_type), .code = (_code)
+#define	HMAP_ANY(_name, _usage, _type, _code)	.name = (_name),	\
+    .usage = (_usage), .nusages = 1, .type = (_type), .code = (_code)
 #define	HMAP_KEY(_name, _usage, _code)					\
     HMAP_ANY((_name), (_usage), EV_KEY, (_code)), .relabs = HMAP_RELABS_ANY
 #define	HMAP_REL(_name, _usage, _code)					\

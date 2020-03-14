@@ -77,26 +77,43 @@ static const struct evdev_methods hmap_evdev_methods = {
 	.ev_close = &hmap_ev_close,
 };
 
-#define HMAP_FOREACH_ITEM(sc, mi)       \
-	for (u_int _map = 0, _item = 0;	\
-	    ((mi) = hmap_get_next_map_item((sc), &_map, &_item)) != NULL;)
+#define HMAP_FOREACH_ITEM(sc, mi, uoff)			\
+	for (u_int _map = 0, _item = 0, _uoff_int = -1;	\
+	    ((mi) = hmap_get_next_map_item(		\
+			(sc), &_map, &_item, &_uoff_int, &(uoff))) != NULL;)
+
+static bool
+hmap_get_next_map_index(const struct hmap_item *map, int nmap_items,
+    uint32_t *index, uint16_t *usage_offset)
+{
+
+	++*usage_offset;
+	if ((*index != 0 || *usage_offset != 0) &&
+	    *usage_offset >= map[*index].nusages) {
+		++*index;
+		*usage_offset = 0;
+	}
+
+	return (*index < nmap_items);
+}
 
 static const struct hmap_item *
-hmap_get_next_map_item(struct hmap_softc *sc, u_int *map, u_int *item)
+hmap_get_next_map_item(struct hmap_softc *sc, u_int *map, u_int *item,
+    u_int *uoff_int, uint16_t *uoff)
 {
-	const struct hmap_item *hi;
 
-	if (*item >= sc->nmap_items[*map]) {
+	*uoff = *uoff_int;
+	while (!hmap_get_next_map_index(
+	   sc->map[*map], sc->nmap_items[*map], item, uoff)) {
 		++*map;
 		*item = 0;
+		*uoff = -1;
 		if (*map >= sc->nmaps)
 			return (NULL);
 	}
+	*uoff_int = *uoff;
 
-	hi = sc->map[*map] + *item;
-	++*item;
-
-	return (hi);
+	return (sc->map[*map] + *item);
 }
 
 void
@@ -138,7 +155,7 @@ hmap_intr(void *context, void *buf, uint16_t len)
 	const struct hmap_item *mi;
 	int32_t usage;
 	int32_t data;
-	uint16_t key;
+	uint16_t key, uoff;
 	uint8_t id = 0;
 	bool do_sync = false;
 
@@ -232,9 +249,9 @@ hmap_intr(void *context, void *buf, uint16_t len)
 			 * an index in the usage range list.
 			 */
 			usage = data - hi->lmin + hi->umin;
-			HMAP_FOREACH_ITEM(sc, mi) {
-				if (usage == mi->usage && mi->type == EV_KEY &&
-				    !mi->has_cb) {
+			HMAP_FOREACH_ITEM(sc, mi, uoff) {
+				if (usage == mi->usage + uoff &&
+				    mi->type == EV_KEY && !mi->has_cb) {
 					key = mi->code;
 					break;
 				}
@@ -263,42 +280,45 @@ report_key:
 }
 
 static inline bool
-can_map_callback(struct hid_item *hi, const struct hmap_item *mi)
+can_map_callback(struct hid_item *hi, const struct hmap_item *mi,
+    uint16_t usage_offset)
 {
 
-	return (mi->has_cb && hi->usage == mi->usage &&
+	return (mi->has_cb && hi->usage == mi->usage + usage_offset &&
 	    (mi->relabs == HMAP_RELABS_ANY ||
 	    !(hi->flags & HIO_RELATIVE) == !(mi->relabs == HMAP_RELATIVE)));
 }
 
 static inline bool
-can_map_variable(struct hid_item *hi, const struct hmap_item *mi)
+can_map_variable(struct hid_item *hi, const struct hmap_item *mi,
+    uint16_t usage_offset)
 {
 
 	return ((hi->flags & HIO_VARIABLE) != 0 && !mi->has_cb &&
-	    hi->usage == mi->usage &&
+	    hi->usage == mi->usage + usage_offset &&
 	    (mi->relabs == HMAP_RELABS_ANY ||
 	    !(hi->flags & HIO_RELATIVE) == !(mi->relabs == HMAP_RELATIVE)));
 }
 
 static inline bool
-can_map_arr_range(struct hid_item *hi, const struct hmap_item *mi)
+can_map_arr_range(struct hid_item *hi, const struct hmap_item *mi,
+    uint16_t usage_offset)
 {
 
 	return ((hi->flags & HIO_VARIABLE) == 0 && !mi->has_cb &&
-	    hi->usage_minimum <= mi->usage &&
-	    hi->usage_maximum >= mi->usage &&
+	    hi->usage_minimum <= mi->usage + usage_offset &&
+	    hi->usage_maximum >= mi->usage + usage_offset &&
 	    (hi->flags & HIO_RELATIVE) == 0 &&
 	    mi->type == EV_KEY);
 }
 
 static inline bool
 can_map_arr_list(struct hid_item *hi, const struct hmap_item *mi,
-    uint32_t usage)
+    uint32_t usage, uint16_t usage_offset)
 {
 
 	return ((hi->flags & HIO_VARIABLE) == 0 && !mi->has_cb &&
-	    usage == mi->usage &&
+	    usage == mi->usage + usage_offset &&
 	    (hi->flags & HIO_RELATIVE) == 0 &&
 	    mi->type == EV_KEY);
 }
@@ -308,12 +328,17 @@ hmap_probe_hid_item(struct hid_item *hi, const struct hmap_item *map,
     int nmap_items, bitstr_t *caps)
 {
 	struct hmap_hid_item hi_temp;
-	uint32_t i, j, usage;
-	int32_t arr_size;
+	int32_t arr_size, usage;
+	u_int i, j;
+	uint16_t uoff;
 	bool found = false;
 
-	for (i = 0; i < nmap_items; i++) {
-		if (can_map_callback(hi, map + i)) {
+#define	HMAP_FOREACH_INDEX(map, nitems, idx, uoff)	\
+	for ((idx) = 0, (uoff) = -1;			\
+	     hmap_get_next_map_index((map), (nitems), &(idx), &(uoff));)
+
+	HMAP_FOREACH_INDEX(map, nmap_items, i, uoff) {
+		if (can_map_callback(hi, map + i, uoff)) {
 			bzero(&hi_temp, sizeof(hi_temp));
 			hi_temp.map = map + i;
 			hi_temp.type = HMAP_TYPE_CALLBACK;
@@ -325,8 +350,8 @@ hmap_probe_hid_item(struct hid_item *hi, const struct hmap_item *map,
 	}
 
 	if (hi->flags & HIO_VARIABLE) {
-		for (i = 0; i < nmap_items; i++) {
-			if (can_map_variable(hi, map + i)) {
+		HMAP_FOREACH_INDEX(map, nmap_items, i, uoff) {
+			if (can_map_variable(hi, map + i, uoff)) {
 				KASSERT(map[i].type == EV_KEY ||
 					map[i].type == EV_REL ||
 					map[i].type == EV_ABS,
@@ -339,8 +364,8 @@ hmap_probe_hid_item(struct hid_item *hi, const struct hmap_item *map,
 	}
 
 	if (hi->usage_minimum != 0 || hi->usage_maximum != 0) {
-		for (i = 0; i < nmap_items; i++) {
-			if (can_map_arr_range(hi, map + i)) {
+		HMAP_FOREACH_INDEX(map, nmap_items, i, uoff) {
+			if (can_map_arr_range(hi, map + i, uoff)) {
 				bit_set(caps, i);
 				found = true;
 			}
@@ -360,8 +385,8 @@ hmap_probe_hid_item(struct hid_item *hi, const struct hmap_item *map,
 		if (j != 0)
 			break;
 		usage = hi->usage;
-		for (i = 0; i < nmap_items; i++) {
-			if (can_map_arr_list(hi, map + i, usage)) {
+		HMAP_FOREACH_INDEX(map, nmap_items, i, uoff) {
+			if (can_map_arr_list(hi, map + i, usage, uoff)) {
 				bit_set(caps, i);
 				found = true;
 			}
@@ -458,10 +483,11 @@ hmap_parse_hid_item(struct hmap_softc *sc, struct hid_item *hi,
 	struct hmap_hid_item hi_temp;
 	int32_t arr_size, usage;
 	uint32_t i;
+	uint16_t uoff;
 	bool found = false;
 
-	HMAP_FOREACH_ITEM(sc, mi) {
-		if (can_map_callback(hi, mi)) {
+	HMAP_FOREACH_ITEM(sc, mi, uoff) {
+		if (can_map_callback(hi, mi, uoff)) {
 			bzero(&hi_temp, sizeof(hi_temp));
 			hi_temp.map = mi;
 			hi_temp.type = HMAP_TYPE_CALLBACK;
@@ -477,25 +503,25 @@ hmap_parse_hid_item(struct hmap_softc *sc, struct hid_item *hi,
 	}
 
 	if (hi->flags & HIO_VARIABLE) {
-		HMAP_FOREACH_ITEM(sc, mi) {
-			if (can_map_variable(hi, mi)) {
+		HMAP_FOREACH_ITEM(sc, mi, uoff) {
+			if (can_map_variable(hi, mi, uoff)) {
 				item->evtype = mi->type;
-				item->code = mi->code;
+				item->code = mi->code + uoff;
 				item->type = hi->flags & HIO_NULLSTATE ?
 				    HMAP_TYPE_VAR_NULLST : HMAP_TYPE_VARIABLE;
 				item->last_val = 0;
 				switch (mi->type) {
 				case EV_KEY:
 					evdev_support_event(sc->evdev, EV_KEY);
-					evdev_support_key(sc->evdev, mi->code);
+					evdev_support_key(sc->evdev, item->code);
 					break;
 				case EV_REL:
 					evdev_support_event(sc->evdev, EV_REL);
-					evdev_support_rel(sc->evdev, mi->code);
+					evdev_support_rel(sc->evdev, item->code);
 					break;
 				case EV_ABS:
 					evdev_support_event(sc->evdev, EV_ABS);
-					evdev_support_abs(sc->evdev, mi->code,
+					evdev_support_abs(sc->evdev, item->code,
 					    0, hi->logical_minimum,
 					    hi->logical_maximum, 0, 0,
 					    hid_item_resolution(hi));
@@ -510,9 +536,9 @@ hmap_parse_hid_item(struct hmap_softc *sc, struct hid_item *hi,
 	}
 
 	if (hi->usage_minimum != 0 || hi->usage_maximum != 0) {
-		HMAP_FOREACH_ITEM(sc, mi) {
-			if (can_map_arr_range(hi, mi)) {
-				evdev_support_key(sc->evdev, mi->code);
+		HMAP_FOREACH_ITEM(sc, mi, uoff) {
+			if (can_map_arr_range(hi, mi, uoff)) {
+				evdev_support_key(sc->evdev, mi->code + uoff);
 				found = true;
 			}
 		}
@@ -537,14 +563,14 @@ hmap_parse_hid_item(struct hmap_softc *sc, struct hid_item *hi,
 		if (i != 0)
 			break;
 		usage = hi->usage;
-		HMAP_FOREACH_ITEM(sc, mi) {
-			if (can_map_arr_list(hi, mi, usage)) {
-				evdev_support_key(sc->evdev, mi->code);
+		HMAP_FOREACH_ITEM(sc, mi, uoff) {
+			if (can_map_arr_list(hi, mi, usage, uoff)) {
+				evdev_support_key(sc->evdev, mi->code + uoff);
 				if (item->codes == NULL)
 					item->codes = malloc(
 					    arr_size * sizeof(uint16_t),
 					    M_DEVBUF, M_WAITOK | M_ZERO);
-				item->codes[i] = mi->code;
+				item->codes[i] = mi->code + uoff;
 				found = true;
 				break;
 			}
