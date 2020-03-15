@@ -64,10 +64,10 @@ SYSCTL_INT(_hw_hid_hgame, OID_AUTO, debug, CTLFLAG_RWTUN,
 
 static hmap_cb_t hgame_dpad_cb;
 
-#define HGAME_MAP_BUT(base, number)	\
-	HMAP_KEY(#number, HID_USAGE2(HUP_BUTTON, number), base + number - 1)
-#define HGAME_MAP_BUT_CUSTOM(number, code)	\
+#define HGAME_MAP_BUT(number, code)	\
 	HMAP_KEY(#number, HID_USAGE2(HUP_BUTTON, number), code)
+#define HGAME_MAP_BUT_RG(number_from, number_to, code)	\
+	HMAP_KEY_RANGE(#code, HUP_BUTTON, number_from, number_to, code)
 #define HGAME_MAP_ABS(usage, code)        \
 	HMAP_ABS(#usage, HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_##usage), code)
 #define HGAME_MAP_ABS_CB(usage, callback)        \
@@ -80,17 +80,7 @@ static hmap_cb_t hgame_dpad_cb;
 #define HUG_D_PAD_LEFT 0x93
 #endif
 
-#define BASE_OVERFLOW (BTN_TRIGGER_HAPPY - 0x10)
-
 static const struct hmap_item hgame_common_map[] = {
-	{ HGAME_MAP_BUT(BASE_OVERFLOW, 17) },
-	{ HGAME_MAP_BUT(BASE_OVERFLOW, 18) },
-	{ HGAME_MAP_BUT(BASE_OVERFLOW, 19) },
-	{ HGAME_MAP_BUT(BASE_OVERFLOW, 20) },
-	{ HGAME_MAP_BUT(BASE_OVERFLOW, 21) },
-	{ HGAME_MAP_BUT(BASE_OVERFLOW, 22) },
-	{ HGAME_MAP_BUT(BASE_OVERFLOW, 23) },
-	{ HGAME_MAP_BUT(BASE_OVERFLOW, 24) },
 	{ HGAME_MAP_ABS(X, ABS_X) },
 	{ HGAME_MAP_ABS(Y, ABS_Y) },
 	{ HGAME_MAP_ABS(Z, ABS_Z) },
@@ -102,59 +92,30 @@ static const struct hmap_item hgame_common_map[] = {
 	{ HGAME_MAP_ABS_CB(D_PAD_DOWN, hgame_dpad_cb) },
 	{ HGAME_MAP_ABS_CB(D_PAD_RIGHT, hgame_dpad_cb) },
 	{ HGAME_MAP_ABS_CB(D_PAD_LEFT, hgame_dpad_cb) },
+	{ HGAME_MAP_BUT_RG(17, 57, BTN_TRIGGER_HAPPY) },
 };
 
 static const struct hmap_item hgame_joystick_map[] = {
-	{ HGAME_MAP_BUT(BTN_TRIGGER, 1) },
-	{ HGAME_MAP_BUT(BTN_TRIGGER, 2) },
-	{ HGAME_MAP_BUT(BTN_TRIGGER, 3) },
-	{ HGAME_MAP_BUT(BTN_TRIGGER, 4) },
-	{ HGAME_MAP_BUT(BTN_TRIGGER, 5) },
-	{ HGAME_MAP_BUT(BTN_TRIGGER, 6) },
-	{ HGAME_MAP_BUT(BTN_TRIGGER, 7) },
-	{ HGAME_MAP_BUT(BTN_TRIGGER, 8) },
-	{ HGAME_MAP_BUT(BTN_TRIGGER, 9) },
-	{ HGAME_MAP_BUT(BTN_TRIGGER, 10) },
-	{ HGAME_MAP_BUT(BTN_TRIGGER, 11) },
-	{ HGAME_MAP_BUT(BTN_TRIGGER, 12) },
-	{ HGAME_MAP_BUT(BTN_TRIGGER, 13) },
-	{ HGAME_MAP_BUT(BTN_TRIGGER, 14) },
-	{ HGAME_MAP_BUT(BTN_TRIGGER, 15) },
-	{ HGAME_MAP_BUT(BTN_TRIGGER, 16) },
+	{ HGAME_MAP_BUT_RG(1, 16, BTN_TRIGGER) },
 };
 
 static const struct hmap_item hgame_gamepad_map[] = {
-	{ HGAME_MAP_BUT(BTN_GAMEPAD, 1) },
-	{ HGAME_MAP_BUT(BTN_GAMEPAD, 2) },
-	{ HGAME_MAP_BUT(BTN_GAMEPAD, 3) },
-	{ HGAME_MAP_BUT(BTN_GAMEPAD, 4) },
-	{ HGAME_MAP_BUT(BTN_GAMEPAD, 5) },
-	{ HGAME_MAP_BUT(BTN_GAMEPAD, 6) },
-	{ HGAME_MAP_BUT(BTN_GAMEPAD, 7) },
-	{ HGAME_MAP_BUT(BTN_GAMEPAD, 8) },
-	{ HGAME_MAP_BUT(BTN_GAMEPAD, 9) },
-	{ HGAME_MAP_BUT(BTN_GAMEPAD, 10) },
-	{ HGAME_MAP_BUT(BTN_GAMEPAD, 11) },
-	{ HGAME_MAP_BUT(BTN_GAMEPAD, 12) },
-	{ HGAME_MAP_BUT(BTN_GAMEPAD, 13) },
-	{ HGAME_MAP_BUT(BTN_GAMEPAD, 14) },
-	{ HGAME_MAP_BUT(BTN_GAMEPAD, 15) },
-	{ HGAME_MAP_BUT(BTN_GAMEPAD, 16) },
+	{ HGAME_MAP_BUT_RG(1, 16, BTN_GAMEPAD) },
 };
 
 /* Customized to match usbhid's XBox 360 descriptor */
 static const struct hmap_item hgame_xb360_map[] = {
-	{ HGAME_MAP_BUT_CUSTOM(1, BTN_SOUTH) },
-	{ HGAME_MAP_BUT_CUSTOM(2, BTN_EAST) },
-	{ HGAME_MAP_BUT_CUSTOM(3, BTN_WEST) },
-	{ HGAME_MAP_BUT_CUSTOM(4, BTN_NORTH) },
-	{ HGAME_MAP_BUT_CUSTOM(5, BTN_TL) },
-	{ HGAME_MAP_BUT_CUSTOM(6, BTN_TR) },
-	{ HGAME_MAP_BUT_CUSTOM(7, BTN_SELECT) },
-	{ HGAME_MAP_BUT_CUSTOM(8, BTN_START) },
-	{ HGAME_MAP_BUT_CUSTOM(9, BTN_THUMBL) },
-	{ HGAME_MAP_BUT_CUSTOM(10, BTN_THUMBR) },
-	{ HGAME_MAP_BUT_CUSTOM(11, BTN_MODE) },
+	{ HGAME_MAP_BUT(1, BTN_SOUTH) },
+	{ HGAME_MAP_BUT(2, BTN_EAST) },
+	{ HGAME_MAP_BUT(3, BTN_WEST) },
+	{ HGAME_MAP_BUT(4, BTN_NORTH) },
+	{ HGAME_MAP_BUT(5, BTN_TL) },
+	{ HGAME_MAP_BUT(6, BTN_TR) },
+	{ HGAME_MAP_BUT(7, BTN_SELECT) },
+	{ HGAME_MAP_BUT(8, BTN_START) },
+	{ HGAME_MAP_BUT(9, BTN_THUMBL) },
+	{ HGAME_MAP_BUT(10, BTN_THUMBR) },
+	{ HGAME_MAP_BUT(11, BTN_MODE) },
 };
 
 #define XBOX_360 360
