@@ -135,6 +135,7 @@ struct usbhid_softc {
 	uint8_t *sc_tr_buf;
 	uint16_t sc_tr_len;
 	uint8_t sc_tr_type;
+	uint8_t sc_tr_id;
 	int sc_tr_error;
 };
 
@@ -272,7 +273,6 @@ usbhid_set_report_callback(struct usb_xfer *xfer, usb_error_t error)
 	struct usbhid_softc *sc = usbd_xfer_softc(xfer);
 	struct usb_device_request req;
 	struct usb_page_cache *pc;
-	uint8_t id;
 
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_SETUP:
@@ -281,9 +281,6 @@ usbhid_set_report_callback(struct usb_xfer *xfer, usb_error_t error)
 			goto tr_exit;
 		}
 
-		/* try to extract the ID byte */
-		id = (sc->sc_oid & (sc->sc_tr_len > 0)) ? sc->sc_tr_buf[0] : 0;
-
 		if (sc->sc_tr_len > 0) {
 			pc = usbd_xfer_get_frame(xfer, 1);
 			usbd_copy_in(pc, 0, sc->sc_tr_buf, sc->sc_tr_len);
@@ -291,7 +288,7 @@ usbhid_set_report_callback(struct usb_xfer *xfer, usb_error_t error)
 		}
 
 		usbhid_fill_set_report(&req, sc->sc_iface_no,
-		    sc->sc_tr_type, id, sc->sc_tr_len);
+		    sc->sc_tr_type, sc->sc_tr_id, sc->sc_tr_len);
 
 		pc = usbd_xfer_get_frame(xfer, 0);
 		usbd_copy_in(pc, 0, &req, sizeof(req));
@@ -477,44 +474,6 @@ usbhid_get_report_desc(device_t dev, void **buf, uint16_t *len)
 }
 
 static int
-usbhid_read(device_t dev, void *buf, uint16_t maxlen, uint16_t *actlen)
-{
-
-	return (ENOTSUP);
-}
-
-static int
-usbhid_write(device_t dev, void *buf, uint16_t len)
-{
-	struct usbhid_softc* sc = device_get_softc(dev);
-	int error = 0;
-
-	HID_MTX_LOCK(sc->sc_intr_mtx);
-	sc->sc_tr_buf = buf;
-	sc->sc_tr_len = len;
-	sc->sc_tr_type = UHID_OUTPUT_REPORT;
-
-	if (sc->sc_xfer[USBHID_INTR_DT_WR] == NULL)
-		usbd_transfer_start(sc->sc_xfer[USBHID_CTRL_DT_WR]);
-	else
-		usbd_transfer_start(sc->sc_xfer[USBHID_INTR_DT_WR]);
-
-	if (!HID_IN_POLLING_MODE_FUNC() &&
-	    msleep_sbt(sc, sc->sc_intr_mtx, 0, "usbhid wr",
-	    SBT_1MS * USB_DEFAULT_TIMEOUT, 0, C_HARDCLOCK) == EWOULDBLOCK) {
-		DPRINTF("USB write timed out\n");
-		usbd_transfer_stop(sc->sc_xfer[USBHID_CTRL_DT_WR]);
-		usbd_transfer_stop(sc->sc_xfer[USBHID_INTR_DT_WR]);
-		error = ETIMEDOUT;
-	} else
-		error = sc->sc_tr_error;
-
-	HID_MTX_UNLOCK(sc->sc_intr_mtx);
-
-	return (error);
-}
-
-static int
 usbhid_get_report(device_t dev, void *buf, uint16_t maxlen, uint16_t *actlen,
     uint8_t type, uint8_t id)
 {
@@ -537,14 +496,71 @@ usbhid_set_report(device_t dev, void *buf, uint16_t len, uint8_t type,
     uint8_t id)
 {
 	struct usbhid_softc* sc = device_get_softc(dev);
-	int err;
+	int error;
 
-	err = usbd_req_set_report(sc->sc_udev, NULL, buf,
-	    len, sc->sc_iface_index, type, id);
-	if (err)
-                err = ENXIO;
+	HID_MTX_LOCK(sc->sc_intr_mtx);
 
-	return (err);
+	sc->sc_tr_buf = buf;
+	sc->sc_tr_len = len;
+	sc->sc_tr_type = type;
+	sc->sc_tr_id = id;
+
+	usbd_transfer_start(sc->sc_xfer[USBHID_CTRL_DT_WR]);
+
+	if (!HID_IN_POLLING_MODE_FUNC() &&
+	    msleep_sbt(sc, sc->sc_intr_mtx, 0, "usbhid sr",
+	    SBT_1MS * USB_DEFAULT_TIMEOUT, 0, C_HARDCLOCK) == EWOULDBLOCK) {
+		DPRINTF("USB set_report timed out\n");
+		usbd_transfer_stop(sc->sc_xfer[USBHID_CTRL_DT_WR]);
+		error = ETIMEDOUT;
+	} else
+		error = sc->sc_tr_error;
+
+	HID_MTX_UNLOCK(sc->sc_intr_mtx);
+
+	return (error);
+}
+
+static int
+usbhid_read(device_t dev, void *buf, uint16_t maxlen, uint16_t *actlen)
+{
+
+	return (ENOTSUP);
+}
+
+static int
+usbhid_write(device_t dev, void *buf, uint16_t len)
+{
+	struct usbhid_softc* sc = device_get_softc(dev);
+	uint8_t id;
+	int error = 0;
+
+	if (sc->sc_xfer[USBHID_INTR_DT_WR] == NULL) {
+		/* try to extract the ID byte */
+		id = (sc->sc_oid & (len > 0)) ? *(uint8_t*)buf : 0;
+		return (usbhid_set_report(dev, buf, len, UHID_OUTPUT_REPORT,
+		    id));
+	}
+
+	HID_MTX_LOCK(sc->sc_intr_mtx);
+
+	sc->sc_tr_buf = buf;
+	sc->sc_tr_len = len;
+
+	usbd_transfer_start(sc->sc_xfer[USBHID_INTR_DT_WR]);
+
+	if (!HID_IN_POLLING_MODE_FUNC() &&
+	    msleep_sbt(sc, sc->sc_intr_mtx, 0, "usbhid wr",
+	    SBT_1MS * USB_DEFAULT_TIMEOUT, 0, C_HARDCLOCK) == EWOULDBLOCK) {
+		DPRINTF("USB write timed out\n");
+		usbd_transfer_stop(sc->sc_xfer[USBHID_INTR_DT_WR]);
+		error = ETIMEDOUT;
+	} else
+		error = sc->sc_tr_error;
+
+	HID_MTX_UNLOCK(sc->sc_intr_mtx);
+
+	return (error);
 }
 
 static int
