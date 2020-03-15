@@ -62,8 +62,8 @@ SYSCTL_INT(_hw_hid_hsctrl, OID_AUTO, debug, CTLFLAG_RWTUN,
 #define HUG_SYSTEM_POWER_UP	0x008e
 #define HUG_SYSTEM_RESTART	0x008f
 
-#define	HSCTRL_MAP(u, c)	\
-    { HMAP_KEY(#u, HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_SYSTEM_##u), c) }
+#define	HSCTRL_MAP(usage, code)	\
+	{ HMAP_KEY(#usage, HUP_GENERIC_DESKTOP, HUG_SYSTEM_##usage, code) }
 
 static const struct hmap_item hsctrl_map[] = {
 	HSCTRL_MAP(POWER_DOWN,		KEY_POWER),

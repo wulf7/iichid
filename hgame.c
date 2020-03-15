@@ -65,13 +65,13 @@ SYSCTL_INT(_hw_hid_hgame, OID_AUTO, debug, CTLFLAG_RWTUN,
 static hmap_cb_t hgame_dpad_cb;
 
 #define HGAME_MAP_BUT(number, code)	\
-	HMAP_KEY(#number, HID_USAGE2(HUP_BUTTON, number), code)
+	HMAP_KEY(#number, HUP_BUTTON, number, code)
 #define HGAME_MAP_BUT_RG(number_from, number_to, code)	\
 	HMAP_KEY_RANGE(#code, HUP_BUTTON, number_from, number_to, code)
 #define HGAME_MAP_ABS(usage, code)        \
-	HMAP_ABS(#usage, HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_##usage), code)
+	HMAP_ABS(#usage, HUP_GENERIC_DESKTOP, HUG_##usage, code)
 #define HGAME_MAP_ABS_CB(usage, callback)        \
-	HMAP_ABS_CB(#usage, HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_##usage), callback)
+	HMAP_ABS_CB(#usage, HUP_GENERIC_DESKTOP, HUG_##usage, callback)
 
 #ifndef HUG_D_PAD_UP
 #define HUG_D_PAD_UP 0x90

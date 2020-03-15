@@ -77,27 +77,42 @@ struct hmap_item {
 	u_int			reserved:4;
 };
 
-#define	HMAP_ANY(_name, _usage, _type, _code)	.name = (_name),	\
-    .usage = (_usage), .nusages = 1, .type = (_type), .code = (_code)
+#define	HMAP_ANY(_name, _page, _usage, _type, _code)			\
+	.name = (_name),						\
+	.usage = HID_USAGE2((_page), (_usage)),				\
+	.nusages = 1,							\
+	.type = (_type),						\
+	.code = (_code)
 #define	HMAP_ANY_RANGE(_name, _page, _usage_from, _usage_to, _type, _code)\
-    .name = (_name), .type = (_type), .code = (_code),			\
-    .usage = HID_USAGE2((_page), (_usage_from)),			\
-    .nusages = (_usage_to) - (_usage_from) + 1
-#define	HMAP_KEY(_name, _usage, _code)					\
-    HMAP_ANY((_name), (_usage), EV_KEY, (_code)), .relabs = HMAP_RELABS_ANY
-#define	HMAP_KEY_RANGE(_name, _page, _usage_from, _usage_to, _code_base)\
-    HMAP_ANY_RANGE((_name), (_page), (_usage_from), (_usage_to),	\
-    EV_KEY, (_code_base)), .relabs = HMAP_RELABS_ANY
-#define	HMAP_REL(_name, _usage, _code)					\
-    HMAP_ANY((_name), (_usage), EV_REL, (_code)), .relabs = HMAP_RELATIVE
-#define	HMAP_ABS(_name, _usage, _code)					\
-    HMAP_ANY((_name), (_usage), EV_ABS, (_code)), .relabs = HMAP_ABSOLUTE
-#define	HMAP_ANY_CB(_name, _usage, _callback)				\
-    .name = (_name), .usage = (_usage), .cb = (_callback), .has_cb = true
-#define	HMAP_REL_CB(_name, _usage, _callback)				\
-    HMAP_ANY_CB((_name), (_usage), (_callback)), .relabs = HMAP_RELATIVE
-#define	HMAP_ABS_CB(_name, _usage, _callback)				\
-    HMAP_ANY_CB((_name), (_usage), (_callback)), .relabs = HMAP_ABSOLUTE
+	.name = (_name),						\
+	.usage = HID_USAGE2((_page), (_usage_from)),			\
+	.nusages = (_usage_to) - (_usage_from) + 1,			\
+	.type = (_type),						\
+	.code = (_code)
+#define	HMAP_ANY_CB(_name, _page, _usage, _callback)			\
+	.name = (_name),						\
+	.usage = HID_USAGE2((_page), (_usage)),				\
+	.nusages = 1,							\
+	.cb = (_callback),						\
+	.has_cb = true
+#define	HMAP_KEY(_name, _page, _usage, _code)				\
+	HMAP_ANY((_name), (_page), (_usage), EV_KEY, (_code)),		\
+		.relabs = HMAP_RELABS_ANY
+#define	HMAP_KEY_RANGE(_name, _page, _ufrom, _uto, _code)		\
+	HMAP_ANY_RANGE((_name), (_page), (_ufrom), (_uto), EV_KEY, (_code)),\
+		.relabs = HMAP_RELABS_ANY
+#define	HMAP_REL(_name, _page, _usage, _code)				\
+	HMAP_ANY((_name), (_page), (_usage), EV_REL, (_code)),		\
+		.relabs = HMAP_RELATIVE
+#define	HMAP_ABS(_name, _page, _usage, _code)				\
+	HMAP_ANY((_name), (_page), (_usage), EV_ABS, (_code)),		\
+		.relabs = HMAP_ABSOLUTE
+#define	HMAP_REL_CB(_name, _page, _usage, _callback)			\
+	HMAP_ANY_CB((_name), (_page), (_usage), (_callback)),		\
+		.relabs = HMAP_RELATIVE
+#define	HMAP_ABS_CB(_name, _page, _usage, _callback)			\
+	HMAP_ANY_CB((_name), (_page), (_usage), (_callback)),		\
+		.relabs = HMAP_ABSOLUTE
 
 enum hmap_type {
 	HMAP_TYPE_CALLBACK = 0,	/* HID item is reported with user callback */

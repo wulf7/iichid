@@ -64,13 +64,13 @@ SYSCTL_INT(_hw_hid_hpen, OID_AUTO, debug, CTLFLAG_RWTUN,
 static hmap_cb_t	hpen_battery_strenght_cb;
 
 #define HPEN_MAP_BUT(usage, code)        \
-	HMAP_KEY(#usage, HID_USAGE2(HUP_DIGITIZERS, HUD_##usage), code)
+	HMAP_KEY(#usage, HUP_DIGITIZERS, HUD_##usage, code)
 #define HPEN_MAP_ABS(usage, code)        \
-	HMAP_ABS(#usage, HID_USAGE2(HUP_DIGITIZERS, HUD_##usage), code)
+	HMAP_ABS(#usage, HUP_DIGITIZERS, HUD_##usage, code)
 #define HPEN_MAP_ABS_GD(usage, code)        \
-	HMAP_ABS(#usage, HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_##usage), code)
+	HMAP_ABS(#usage, HUP_GENERIC_DESKTOP, HUG_##usage, code)
 #define HPEN_MAP_ABS_CB(usage, cb)       \
-	HMAP_ABS_CB(#usage, HID_USAGE2(HUP_DIGITIZERS, HUD_##usage), cb)
+	HMAP_ABS_CB(#usage, HUP_DIGITIZERS, HUD_##usage, cb)
 
 static const struct hmap_item hpen_map[] = {
     { HPEN_MAP_ABS_GD(X,		ABS_X),		  .required = true },
