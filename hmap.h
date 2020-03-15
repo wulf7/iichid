@@ -74,7 +74,8 @@ struct hmap_item {
 	bool			required:1;	/* Required by driver */
 	enum hmap_relabs	relabs:2;
 	bool			has_cb:1;
-	u_int			reserved:4;
+	bool			compl_cb:1;
+	u_int			reserved:3;
 };
 
 #define	HMAP_ANY(_name, _page, _usage, _type, _code)			\
@@ -113,6 +114,13 @@ struct hmap_item {
 #define	HMAP_ABS_CB(_name, _page, _usage, _callback)			\
 	HMAP_ANY_CB((_name), (_page), (_usage), (_callback)),		\
 		.relabs = HMAP_ABSOLUTE
+/*
+ * Special callback function which is not tied to particular HID input usage
+ * but called at the end evdev properties setting or interrupt handler
+ * just before evdev_register() or evdev_sync() calls.
+ */
+#define	HMAP_COMPL_CB(_name, _callback)					\
+	HMAP_ANY_CB((_name), 0, 0, (_callback)), .compl_cb = true
 
 enum hmap_type {
 	HMAP_TYPE_CALLBACK = 0,	/* HID item is reported with user callback */
@@ -161,6 +169,7 @@ struct hmap_softc {
 	uint32_t		isize;
 	int			*debug_var;
 	enum hmap_cb_state	cb_state;
+	hmap_cb_t		*compl_cb;
 	bitstr_t		bit_decl(evdev_props, INPUT_PROP_CNT);
 };
 

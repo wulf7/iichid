@@ -275,6 +275,9 @@ report_key:
 		do_sync = true;
 	}
 
+	if (sc->compl_cb && sc->compl_cb(sc, NULL, 0) == 0)
+		do_sync = true;
+
 	if (do_sync)
 		evdev_sync(sc->evdev);
 }
@@ -284,7 +287,8 @@ can_map_callback(struct hid_item *hi, const struct hmap_item *mi,
     uint16_t usage_offset)
 {
 
-	return (mi->has_cb && hi->usage == mi->usage + usage_offset &&
+	return (mi->has_cb && !mi->compl_cb &&
+	    hi->usage == mi->usage + usage_offset &&
 	    (mi->relabs == HMAP_RELABS_ANY ||
 	    !(hi->flags & HIO_RELATIVE) == !(mi->relabs == HMAP_RELATIVE)));
 }
@@ -596,9 +600,10 @@ hmap_parse_hid_descr(struct hmap_softc *sc, uint8_t tlc_index)
 {
 	struct hid_item hi;
 	struct hid_data *hd;
+	const struct hmap_item *mi;
 	struct hmap_hid_item *item = sc->hid_items;
 	void *d_ptr;
-	uint16_t d_len;
+	uint16_t d_len, uoff;
 	int error;
 
 	error = hid_get_report_descr(sc->dev, &d_ptr, &d_len);
@@ -630,6 +635,18 @@ hmap_parse_hid_descr(struct hmap_softc *sc, uint8_t tlc_index)
 		DPRINTF(sc, "Parsed HID item number mismatch: expected=%u "
 		    "result=%ld\n", sc->nhid_items, item - sc->hid_items);
 	sc->nhid_items = item - sc->hid_items;
+
+	/*
+	 * If completion callback returned success at attach stage, run it
+	 * in interrupt handler and at the device detach too.
+	 */
+	HMAP_FOREACH_ITEM(sc, mi, uoff) {
+		if (mi->compl_cb) {
+			if (mi->cb(sc, NULL, 0) == 0)
+				sc->compl_cb = mi->cb;
+			break;
+		}
+	}
 
 	return (0);
 }
@@ -704,6 +721,9 @@ hmap_detach(device_t dev)
 				free(hi->codes, M_DEVBUF);
 		free(sc->hid_items, M_DEVBUF);
 	}
+
+	if (sc->compl_cb)
+		sc->compl_cb(sc, NULL, 0);
 
 	return (0);
 }
