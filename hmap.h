@@ -79,8 +79,15 @@ struct hmap_item {
 
 #define	HMAP_ANY(_name, _usage, _type, _code)	.name = (_name),	\
     .usage = (_usage), .nusages = 1, .type = (_type), .code = (_code)
+#define	HMAP_ANY_RANGE(_name, _page, _usage_from, _usage_to, _type, _code)\
+    .name = (_name), .type = (_type), .code = (_code),			\
+    .usage = HID_USAGE2((_page), (_usage_from)),			\
+    .nusages = (_usage_to) - (_usage_from) + 1
 #define	HMAP_KEY(_name, _usage, _code)					\
     HMAP_ANY((_name), (_usage), EV_KEY, (_code)), .relabs = HMAP_RELABS_ANY
+#define	HMAP_KEY_RANGE(_name, _page, _usage_from, _usage_to, _code_base)\
+    HMAP_ANY_RANGE((_name), (_page), (_usage_from), (_usage_to),	\
+    EV_KEY, (_code_base)), .relabs = HMAP_RELABS_ANY
 #define	HMAP_REL(_name, _usage, _code)					\
     HMAP_ANY((_name), (_usage), EV_REL, (_code)), .relabs = HMAP_RELATIVE
 #define	HMAP_ABS(_name, _usage, _code)					\

@@ -65,32 +65,17 @@ enum {
 	HMT_ABS_Z,
 	HMT_WHEEL,
 	HMT_HWHEEL,
-	HMT_BTN_LEFT,
-	HMT_BTN_RIGHT,
-	HMT_BTN_MIDDLE,
-	HMT_BTN_4,
-	HMT_BTN_5,
-	HMT_BTN_6,
-	HMT_BTN_7,
-	HMT_BTN_8,
-	HMT_BTN_9,
-	HMT_BTN_10,
-	HMT_BTN_11,
-	HMT_BTN_12,
-	HMT_BTN_13,
-	HMT_BTN_14,
-	HMT_BTN_15,
-	HMT_BTN_16,
+	HMT_BTN,
 	HMT_BTN_MS1,
 	HMT_BTN_MS2,
 };
 
 static hmap_cb_t	hms_wheel_cb;
 
-#define HMS_MAP_BUT(usage, code)	\
-	{ HMAP_KEY(#usage, HID_USAGE2(HUP_BUTTON, usage), code) }
+#define HMS_MAP_BUT_RG(usage_from, usage_to, code)	\
+	{ HMAP_KEY_RANGE(#code, HUP_BUTTON, usage_from, usage_to, code) }
 #define HMS_MAP_BUT_MS(usage, code)	\
-	{ HMAP_KEY(#usage, HID_USAGE2(HUP_MICROSOFT, usage), code) }
+	{ HMAP_KEY(#code, HID_USAGE2(HUP_MICROSOFT, usage), code) }
 #define HMS_MAP_ABS(usage, code)	\
 	{ HMAP_ABS(#usage, HID_USAGE2(HUP_GENERIC_DESKTOP, usage), code) }
 #define HMS_MAP_REL(usage, code)	\
@@ -109,22 +94,7 @@ static const struct hmap_item hms_map[] = {
 	[HMT_ABS_Z]	= HMS_MAP_ABS(HUG_Z,		ABS_Z),
 	[HMT_WHEEL]	= HMS_MAP_REL_CB(HUG_WHEEL,	hms_wheel_cb),
 	[HMT_HWHEEL]	= HMS_MAP_REL_CN(HUC_AC_PAN,	REL_HWHEEL),
-	[HMT_BTN_LEFT]	= HMS_MAP_BUT(1,		BTN_LEFT),
-	[HMT_BTN_RIGHT]	= HMS_MAP_BUT(2,		BTN_RIGHT),
-	[HMT_BTN_MIDDLE]= HMS_MAP_BUT(3,		BTN_MIDDLE),
-	[HMT_BTN_4]	= HMS_MAP_BUT(4,		BTN_SIDE),
-	[HMT_BTN_5]	= HMS_MAP_BUT(5,		BTN_EXTRA),
-	[HMT_BTN_6]	= HMS_MAP_BUT(6,		BTN_FORWARD),
-	[HMT_BTN_7]	= HMS_MAP_BUT(7,		BTN_BACK),
-	[HMT_BTN_8]	= HMS_MAP_BUT(8,		BTN_TASK),
-	[HMT_BTN_9]	= HMS_MAP_BUT(9,		BTN_MOUSE + 0x08),
-	[HMT_BTN_10]	= HMS_MAP_BUT(10,		BTN_MOUSE + 0x09),
-	[HMT_BTN_11]	= HMS_MAP_BUT(11,		BTN_MOUSE + 0x0a),
-	[HMT_BTN_12]	= HMS_MAP_BUT(12,		BTN_MOUSE + 0x0b),
-	[HMT_BTN_13]	= HMS_MAP_BUT(13,		BTN_MOUSE + 0x0c),
-	[HMT_BTN_14]	= HMS_MAP_BUT(14,		BTN_MOUSE + 0x0d),
-	[HMT_BTN_15] 	= HMS_MAP_BUT(15,		BTN_MOUSE + 0x0e),
-	[HMT_BTN_16]	= HMS_MAP_BUT(16,		BTN_MOUSE + 0x0f),
+	[HMT_BTN]	= HMS_MAP_BUT_RG(1, 16,		BTN_MOUSE),
 	[HMT_BTN_MS1]	= HMS_MAP_BUT_MS(1,		BTN_RIGHT),
 	[HMT_BTN_MS2]	= HMS_MAP_BUT_MS(2,		BTN_MIDDLE),
 };
@@ -194,7 +164,8 @@ static int
 hms_attach(device_t dev)
 {
 	struct hms_softc *sc = device_get_softc(dev);
-	int error;
+	struct hmap_hid_item *hi;
+	int error, nbuttons = 0;
 
 	/*
          * Force the report (non-boot) protocol.
@@ -224,9 +195,16 @@ hms_attach(device_t dev)
 	if (error)
 		return (error);
 
+	/* Count number of input usages of variable type mapped to buttons */
+	for (hi = sc->super_sc.hid_items;
+	     hi < sc->super_sc.hid_items + sc->super_sc.nhid_items;
+	     hi++)
+		if (hi->type == HMAP_TYPE_VARIABLE && hi->evtype == EV_KEY)
+			nbuttons++;
+
 	/* announce information about the mouse */
 	device_printf(dev, "%d buttons and [%s%s%s%s%s] coordinates ID=%u\n",
-	    hmap_count_caps(sc->caps, HMT_BTN_LEFT, HMT_BTN_MS2),
+	    nbuttons,
 	    (hmap_test_cap(sc->caps, HMT_REL_X) ||
 	     hmap_test_cap(sc->caps, HMT_ABS_X)) ? "X" : "",
 	    (hmap_test_cap(sc->caps, HMT_REL_Y) ||
