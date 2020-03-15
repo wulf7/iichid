@@ -134,6 +134,7 @@ struct usbhid_softc {
 					 * static */
 	uint8_t *sc_tr_buf;
 	uint16_t sc_tr_len;
+	uint8_t sc_tr_type;
 	int sc_tr_error;
 };
 
@@ -290,7 +291,7 @@ usbhid_set_report_callback(struct usb_xfer *xfer, usb_error_t error)
 		}
 
 		usbhid_fill_set_report(&req, sc->sc_iface_no,
-		    UHID_OUTPUT_REPORT, id, sc->sc_tr_len);
+		    sc->sc_tr_type, id, sc->sc_tr_len);
 
 		pc = usbd_xfer_get_frame(xfer, 0);
 		usbd_copy_in(pc, 0, &req, sizeof(req));
@@ -491,6 +492,7 @@ usbhid_write(device_t dev, void *buf, uint16_t len)
 	HID_MTX_LOCK(sc->sc_intr_mtx);
 	sc->sc_tr_buf = buf;
 	sc->sc_tr_len = len;
+	sc->sc_tr_type = UHID_OUTPUT_REPORT;
 
 	if (sc->sc_xfer[USBHID_INTR_DT_WR] == NULL)
 		usbd_transfer_start(sc->sc_xfer[USBHID_CTRL_DT_WR]);
