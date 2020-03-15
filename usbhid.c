@@ -132,10 +132,9 @@ struct usbhid_softc {
 #define	USBHID_FLAG_IMMED        0x01	/* set if read should be immediate */
 #define	USBHID_FLAG_STATIC_DESC  0x04	/* set if report descriptors are
 					 * static */
+	struct usb_device_request *sc_tr_req;
 	uint8_t *sc_tr_buf;
 	uint16_t sc_tr_len;
-	uint8_t sc_tr_type;
-	uint8_t sc_tr_id;
 	int sc_tr_error;
 };
 
@@ -271,7 +270,6 @@ static void
 usbhid_set_report_callback(struct usb_xfer *xfer, usb_error_t error)
 {
 	struct usbhid_softc *sc = usbd_xfer_softc(xfer);
-	struct usb_device_request req;
 	struct usb_page_cache *pc;
 
 	switch (USB_GET_STATE(xfer)) {
@@ -287,12 +285,9 @@ usbhid_set_report_callback(struct usb_xfer *xfer, usb_error_t error)
 			usbd_xfer_set_frame_len(xfer, 1, sc->sc_tr_len);
 		}
 
-		usbhid_fill_set_report(&req, sc->sc_iface_no,
-		    sc->sc_tr_type, sc->sc_tr_id, sc->sc_tr_len);
-
 		pc = usbd_xfer_get_frame(xfer, 0);
-		usbd_copy_in(pc, 0, &req, sizeof(req));
-		usbd_xfer_set_frame_len(xfer, 0, sizeof(req));
+		usbd_copy_in(pc, 0, sc->sc_tr_req, sizeof(*sc->sc_tr_req));
+		usbd_xfer_set_frame_len(xfer, 0, sizeof(*sc->sc_tr_req));
 
 		usbd_xfer_set_frames(xfer, sc->sc_tr_len > 0 ? 2 : 1);
 		usbd_transfer_submit(xfer);
@@ -463,6 +458,42 @@ usbhid_intr_poll(device_t dev)
  * HID interface
  */
 static int
+usbhid_sync_xfer(struct usbhid_softc* sc, struct usb_xfer *xfer,
+    struct usb_device_request *req, void *buf, uint16_t len)
+{
+	int error, timeout;
+
+	HID_MTX_LOCK(sc->sc_intr_mtx);
+
+	sc->sc_tr_buf = buf;
+	sc->sc_tr_len = len;
+	sc->sc_tr_req = req;
+	sc->sc_tr_error = ETIMEDOUT;
+	timeout = USB_DEFAULT_TIMEOUT;
+	usbd_transfer_start(xfer);
+
+	if (HID_IN_POLLING_MODE_FUNC())
+		while (timeout > 0 && sc->sc_tr_error == ETIMEDOUT) {
+			usbd_transfer_poll(&xfer, 1);
+			DELAY(1000);
+			timeout--;
+                }
+	 else
+		msleep_sbt(sc, sc->sc_intr_mtx, 0, "usbhid io",
+		    SBT_1MS * timeout, 0, C_HARDCLOCK);
+
+	usbd_transfer_stop(xfer);
+	error = sc->sc_tr_error;
+
+	HID_MTX_UNLOCK(sc->sc_intr_mtx);
+
+	if (error)
+		DPRINTF("USB IO error:%d\n", error);
+
+	return (error);
+}
+
+static int
 usbhid_get_report_desc(device_t dev, void **buf, uint16_t *len)
 {
 	struct usbhid_softc* sc = device_get_softc(dev);
@@ -496,27 +527,13 @@ usbhid_set_report(device_t dev, void *buf, uint16_t len, uint8_t type,
     uint8_t id)
 {
 	struct usbhid_softc* sc = device_get_softc(dev);
+	struct usb_device_request req;
 	int error;
 
-	HID_MTX_LOCK(sc->sc_intr_mtx);
+	usbhid_fill_set_report(&req, sc->sc_iface_no, type, id, len);
 
-	sc->sc_tr_buf = buf;
-	sc->sc_tr_len = len;
-	sc->sc_tr_type = type;
-	sc->sc_tr_id = id;
-
-	usbd_transfer_start(sc->sc_xfer[USBHID_CTRL_DT_WR]);
-
-	if (!HID_IN_POLLING_MODE_FUNC() &&
-	    msleep_sbt(sc, sc->sc_intr_mtx, 0, "usbhid sr",
-	    SBT_1MS * USB_DEFAULT_TIMEOUT, 0, C_HARDCLOCK) == EWOULDBLOCK) {
-		DPRINTF("USB set_report timed out\n");
-		usbd_transfer_stop(sc->sc_xfer[USBHID_CTRL_DT_WR]);
-		error = ETIMEDOUT;
-	} else
-		error = sc->sc_tr_error;
-
-	HID_MTX_UNLOCK(sc->sc_intr_mtx);
+	error = usbhid_sync_xfer
+	    (sc, sc->sc_xfer[USBHID_CTRL_DT_WR], &req, buf, len);
 
 	return (error);
 }
@@ -533,7 +550,7 @@ usbhid_write(device_t dev, void *buf, uint16_t len)
 {
 	struct usbhid_softc* sc = device_get_softc(dev);
 	uint8_t id;
-	int error = 0;
+	int error;
 
 	if (sc->sc_xfer[USBHID_INTR_DT_WR] == NULL) {
 		/* try to extract the ID byte */
@@ -542,23 +559,8 @@ usbhid_write(device_t dev, void *buf, uint16_t len)
 		    id));
 	}
 
-	HID_MTX_LOCK(sc->sc_intr_mtx);
-
-	sc->sc_tr_buf = buf;
-	sc->sc_tr_len = len;
-
-	usbd_transfer_start(sc->sc_xfer[USBHID_INTR_DT_WR]);
-
-	if (!HID_IN_POLLING_MODE_FUNC() &&
-	    msleep_sbt(sc, sc->sc_intr_mtx, 0, "usbhid wr",
-	    SBT_1MS * USB_DEFAULT_TIMEOUT, 0, C_HARDCLOCK) == EWOULDBLOCK) {
-		DPRINTF("USB write timed out\n");
-		usbd_transfer_stop(sc->sc_xfer[USBHID_INTR_DT_WR]);
-		error = ETIMEDOUT;
-	} else
-		error = sc->sc_tr_error;
-
-	HID_MTX_UNLOCK(sc->sc_intr_mtx);
+	error = usbhid_sync_xfer
+	    (sc, sc->sc_xfer[USBHID_INTR_DT_WR], NULL, buf, len);
 
 	return (error);
 }
