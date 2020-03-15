@@ -111,6 +111,7 @@ struct usbhid_softc {
 
 	struct hid_device_info sc_hw;
 
+	struct usb_config sc_config[USBHID_N_TRANSFER];
 	struct usb_xfer *sc_xfer[USBHID_N_TRANSFER];
 	struct usb_device *sc_udev;
 	void   *sc_repdesc_ptr;
@@ -404,9 +405,10 @@ usbhid_intr_setup(device_t dev, struct mtx *mtx, hid_intr_t intr,
 	sc->sc_intr_handler = intr;
 	sc->sc_intr_context = context;
 	sc->sc_intr_mtx = mtx;
+	bcopy(usbhid_config, sc->sc_config, sizeof(usbhid_config));
 
 	error = usbd_transfer_setup(sc->sc_udev,
-	    &sc->sc_iface_index, sc->sc_xfer, usbhid_config,
+	    &sc->sc_iface_index, sc->sc_xfer, sc->sc_config,
 	    USBHID_N_TRANSFER, sc, sc->sc_intr_mtx);
 
 	if (error)
