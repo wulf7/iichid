@@ -159,25 +159,23 @@ usbhid_write_callback(struct usb_xfer *xfer, usb_error_t error)
 {
 	struct usbhid_softc *sc = usbd_xfer_softc(xfer);
 	struct usb_page_cache *pc;
-	uint16_t io_len;
 
 	switch (USB_GET_STATE(xfer)) {
-	case USB_ST_TRANSFERRED:
 	case USB_ST_SETUP:
-		sc->sc_tr_error = 0;
-tr_setup:
-		if (sc->sc_tr_len == 0)
+		if (sc->sc_tr_len > usbd_xfer_max_len(xfer)) {
+			sc->sc_tr_error = ENOBUFS;
 			goto tr_exit;
-		io_len = MIN(sc->sc_tr_len, usbd_xfer_max_len(xfer));
-
+		}
+tr_setup:
 		pc = usbd_xfer_get_frame(xfer, 0);
-		usbd_copy_in(pc, 0, sc->sc_tr_buf, io_len);
-		usbd_xfer_set_frame_len(xfer, 0, io_len);
+		usbd_copy_in(pc, 0, sc->sc_tr_buf, sc->sc_tr_len);
+		usbd_xfer_set_frame_len(xfer, 0, sc->sc_tr_len);
 		usbd_transfer_submit(xfer);
-
-		sc->sc_tr_len -= io_len;
-		sc->sc_tr_buf += io_len;
 		return;
+
+	case USB_ST_TRANSFERRED:
+		sc->sc_tr_error = 0;
+		goto tr_exit;
 
 	default:			/* Error */
 		if (error != USB_ERR_CANCELLED) {
