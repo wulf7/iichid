@@ -129,10 +129,10 @@ static const struct hid_device_id hgame_devs[] = {
 
 struct hgame_softc {
 	struct hmap_softc	super_sc;
-	int			dpad_up;
-	int			dpad_down;
-	int			dpad_right;
-	int			dpad_left;
+	bool			dpad_up;
+	bool			dpad_down;
+	bool			dpad_right;
+	bool			dpad_left;
 };
 
 /* Emulate the hat switch report via the D-pad usages
