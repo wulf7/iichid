@@ -664,7 +664,6 @@ hmap_attach(device_t dev)
 {
 	struct hmap_softc *sc = device_get_softc(dev);
 	const struct hid_device_info *hw = hid_get_device_info(dev);
-	uint16_t i;
 	int error;
 
 	sc->cb_state = HMAP_CB_IS_ATTACHING;
@@ -682,9 +681,6 @@ hmap_attach(device_t dev)
 	    hw->idVersion);
 	evdev_set_serial(sc->evdev, hw->serial);
 	evdev_support_event(sc->evdev, EV_SYN);
-	for (i = 0; i < INPUT_PROP_CNT; i++)
-		if (bit_test(sc->evdev_props, i))
-			evdev_support_prop(sc->evdev, i);
 	evdev_set_methods(sc->evdev, dev, &hmap_evdev_methods);
 	error = hmap_parse_hid_descr(sc, hidbus_get_index(dev));
 	if (error) {

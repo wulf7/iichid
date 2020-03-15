@@ -62,6 +62,7 @@ SYSCTL_INT(_hw_hid_hpen, OID_AUTO, debug, CTLFLAG_RWTUN,
 #endif
 
 static hmap_cb_t	hpen_battery_strenght_cb;
+static hmap_cb_t	hpen_compl_cb;
 
 #define HPEN_MAP_BUT(usage, code)        \
 	HMAP_KEY(#usage, HUP_DIGITIZERS, HUD_##usage, code)
@@ -84,6 +85,7 @@ static const struct hmap_item hpen_map[] = {
     { HPEN_MAP_BUT(   BARREL_SWITCH,	BTN_STYLUS) },
     { HPEN_MAP_BUT(   INVERT,		BTN_TOOL_RUBBER), .required = true },
     { HPEN_MAP_BUT(   ERASER,		BTN_TOUCH),	  .required = true },
+    { HMAP_COMPL_CB(  "COMPL_CB",	&hpen_compl_cb) },
 };
 
 static const struct hid_device_id hpen_devs[] = {
@@ -110,6 +112,18 @@ hpen_battery_strenght_cb(HMAP_CB_ARGS)
 }
 
 static int
+hpen_compl_cb(HMAP_CB_ARGS)
+{
+	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV;
+
+	if (HMAP_CB_GET_STATE() == HMAP_CB_IS_ATTACHING)
+		evdev_support_prop(evdev, INPUT_PROP_DIRECT);
+
+	/* Do not execute callback at interrupt handler and detach */
+	return (ENOSYS);
+}
+
+static int
 hpen_probe(device_t dev)
 {
 	int error;
@@ -125,7 +139,6 @@ hpen_probe(device_t dev)
 	if (error != 0)
 		return (error);
 
-	hmap_set_evdev_prop(dev, INPUT_PROP_DIRECT);
 	hidbus_set_desc(dev, "Pen");
 
 	return (BUS_PROBE_DEFAULT);

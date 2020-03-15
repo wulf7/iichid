@@ -62,7 +62,8 @@ SYSCTL_INT(_hw_hid_hgame, OID_AUTO, debug, CTLFLAG_RWTUN,
 		&hgame_debug, 0, "Debug level");
 #endif
 
-static hmap_cb_t hgame_dpad_cb;
+static hmap_cb_t	hgame_dpad_cb;
+static hmap_cb_t	hgame_compl_cb;
 
 #define HGAME_MAP_BUT(number, code)	\
 	{ HMAP_KEY(#number, HUP_BUTTON, number, code) }
@@ -72,6 +73,8 @@ static hmap_cb_t hgame_dpad_cb;
 	{ HMAP_ABS(#usage, HUP_GENERIC_DESKTOP, HUG_##usage, code) }
 #define HGAME_MAP_ABS_CB(usage, callback)	\
 	{ HMAP_ABS_CB(#usage, HUP_GENERIC_DESKTOP, HUG_##usage, callback) }
+#define HGAME_COMPL_CB(cb)		\
+	{ HMAP_COMPL_CB("COMPL_CB", &cb) }
 
 #ifndef HUG_D_PAD_UP
 #define	HUG_D_PAD_UP	0x90
@@ -93,6 +96,7 @@ static const struct hmap_item hgame_common_map[] = {
 	HGAME_MAP_ABS_CB(D_PAD_RIGHT,	hgame_dpad_cb),
 	HGAME_MAP_ABS_CB(D_PAD_LEFT,	hgame_dpad_cb),
 	HGAME_MAP_BUT_RG(17, 57,	BTN_TRIGGER_HAPPY),
+	HGAME_COMPL_CB(hgame_compl_cb),
 };
 
 static const struct hmap_item hgame_joystick_map[] = {
@@ -183,6 +187,18 @@ hgame_dpad_cb(HMAP_CB_ARGS)
 }
 
 static int
+hgame_compl_cb(HMAP_CB_ARGS)
+{
+	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV;
+
+	if (HMAP_CB_GET_STATE() == HMAP_CB_IS_ATTACHING)
+		evdev_support_prop(evdev, INPUT_PROP_DIRECT);
+
+        /* Do not execute callback at interrupt handler and detach */
+        return (ENOSYS);
+}
+
+static int
 hgame_probe(device_t dev)
 {
 	int error, error2;
@@ -203,7 +219,6 @@ hgame_probe(device_t dev)
 	if (error != 0 && error2 != 0)
 		return (error);
 
-	hmap_set_evdev_prop(dev, INPUT_PROP_DIRECT);
 	hidbus_set_desc(dev,
 		(hidbus_get_driver_info(dev) == HUG_GAME_PAD) ? "Gamepad" : "Joystick");
 

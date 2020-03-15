@@ -170,7 +170,6 @@ struct hmap_softc {
 	int			*debug_var;
 	enum hmap_cb_state	cb_state;
 	hmap_cb_t		*compl_cb;
-	bitstr_t		bit_decl(evdev_props, INPUT_PROP_CNT);
 };
 
 #define	HMAP_CAPS(name, map)	bitstr_t bit_decl((name), nitems(map));
@@ -195,15 +194,6 @@ hmap_count_caps(bitstr_t *caps, int first, int last)
  * that makes possible to write probe-only drivers with attach/detach handlers
  * inherited from hmap. See hcons and hsctrl drivers for example.
  */
-
-static inline void
-hmap_set_evdev_prop(device_t dev, uint16_t prop)
-{
-	/* Assume struct hmap_softc is a first member of sc */
-	struct hmap_softc *sc = device_get_softc(dev);
-
-	bit_set(sc->evdev_props, prop);
-}
 void		hmap_set_debug_var(device_t dev, int *debug_var);
 uint32_t	hmap_add_map(device_t dev, const struct hmap_item *map,
 		    int nmap_items, bitstr_t *caps);

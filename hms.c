@@ -57,20 +57,22 @@ SYSCTL_INT(_hw_hid_hms, OID_AUTO, debug, CTLFLAG_RWTUN,
 #endif
 
 enum {
-	HMT_REL_X,
-	HMT_REL_Y,
-	HMT_REL_Z,
-	HMT_ABS_X,
-	HMT_ABS_Y,
-	HMT_ABS_Z,
-	HMT_WHEEL,
-	HMT_HWHEEL,
-	HMT_BTN,
-	HMT_BTN_MS1,
-	HMT_BTN_MS2,
+	HMS_REL_X,
+	HMS_REL_Y,
+	HMS_REL_Z,
+	HMS_ABS_X,
+	HMS_ABS_Y,
+	HMS_ABS_Z,
+	HMS_WHEEL,
+	HMS_HWHEEL,
+	HMS_BTN,
+	HMS_BTN_MS1,
+	HMS_BTN_MS2,
+	HMS_COMPL_CB,
 };
 
 static hmap_cb_t	hms_wheel_cb;
+static hmap_cb_t	hms_compl_cb;
 
 #define HMS_MAP_BUT_RG(usage_from, usage_to, code)	\
 	{ HMAP_KEY_RANGE(#code, HUP_BUTTON, usage_from, usage_to, code) }
@@ -84,19 +86,22 @@ static hmap_cb_t	hms_wheel_cb;
 	{ HMAP_REL(#usage, HUP_CONSUMER, usage, code) }
 #define HMS_MAP_REL_CB(usage, cb)	\
 	{ HMAP_REL_CB(#usage, HUP_GENERIC_DESKTOP, usage, &cb) }
+#define	HMS_COMPL_CB(cb)		\
+	{ HMAP_COMPL_CB("COMPL_CB", &cb) }
 
 static const struct hmap_item hms_map[] = {
-	[HMT_REL_X]	= HMS_MAP_REL(HUG_X,		REL_X),
-	[HMT_REL_Y]	= HMS_MAP_REL(HUG_Y,		REL_Y),
-	[HMT_REL_Z]	= HMS_MAP_REL(HUG_Z,		REL_Z),
-	[HMT_ABS_X]	= HMS_MAP_ABS(HUG_X,		ABS_X),
-	[HMT_ABS_Y]	= HMS_MAP_ABS(HUG_Y,		ABS_Y),
-	[HMT_ABS_Z]	= HMS_MAP_ABS(HUG_Z,		ABS_Z),
-	[HMT_WHEEL]	= HMS_MAP_REL_CB(HUG_WHEEL,	hms_wheel_cb),
-	[HMT_HWHEEL]	= HMS_MAP_REL_CN(HUC_AC_PAN,	REL_HWHEEL),
-	[HMT_BTN]	= HMS_MAP_BUT_RG(1, 16,		BTN_MOUSE),
-	[HMT_BTN_MS1]	= HMS_MAP_BUT_MS(1,		BTN_RIGHT),
-	[HMT_BTN_MS2]	= HMS_MAP_BUT_MS(2,		BTN_MIDDLE),
+	[HMS_REL_X]	= HMS_MAP_REL(HUG_X,		REL_X),
+	[HMS_REL_Y]	= HMS_MAP_REL(HUG_Y,		REL_Y),
+	[HMS_REL_Z]	= HMS_MAP_REL(HUG_Z,		REL_Z),
+	[HMS_ABS_X]	= HMS_MAP_ABS(HUG_X,		ABS_X),
+	[HMS_ABS_Y]	= HMS_MAP_ABS(HUG_Y,		ABS_Y),
+	[HMS_ABS_Z]	= HMS_MAP_ABS(HUG_Z,		ABS_Z),
+	[HMS_WHEEL]	= HMS_MAP_REL_CB(HUG_WHEEL,	hms_wheel_cb),
+	[HMS_HWHEEL]	= HMS_MAP_REL_CN(HUC_AC_PAN,	REL_HWHEEL),
+	[HMS_BTN]	= HMS_MAP_BUT_RG(1, 16,		BTN_MOUSE),
+	[HMS_BTN_MS1]	= HMS_MAP_BUT_MS(1,		BTN_RIGHT),
+	[HMS_BTN_MS2]	= HMS_MAP_BUT_MS(2,		BTN_MIDDLE),
+	[HMS_COMPL_CB]	= HMS_COMPL_CB(hms_compl_cb),
 };
 
 /* A match on these entries will load hms */
@@ -134,6 +139,24 @@ hms_wheel_cb(HMAP_CB_ARGS)
 }
 
 static int
+hms_compl_cb(HMAP_CB_ARGS)
+{
+	struct hms_softc *sc = HMAP_CB_GET_SOFTC;
+	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV;
+
+	if (HMAP_CB_GET_STATE() == HMAP_CB_IS_ATTACHING) {
+		if (hmap_test_cap(sc->caps, HMS_ABS_X) ||
+		    hmap_test_cap(sc->caps, HMS_ABS_Y))
+			evdev_support_prop(evdev, INPUT_PROP_DIRECT);
+		else
+			evdev_support_prop(evdev, INPUT_PROP_POINTER);
+	}
+
+	/* Do not execute callback at interrupt handler and detach */
+	return (ENOSYS);
+}
+
+static int
 hms_probe(device_t dev)
 {
 	struct hms_softc *sc = device_get_softc(dev);
@@ -151,10 +174,10 @@ hms_probe(device_t dev)
 		return (error);
 
 	/* There should be at least one X or Y axis */
-	if (!hmap_test_cap(sc->caps, HMT_REL_X) &&
-	    !hmap_test_cap(sc->caps, HMT_REL_X) &&
-	    !hmap_test_cap(sc->caps, HMT_ABS_X) &&
-	    !hmap_test_cap(sc->caps, HMT_ABS_Y))
+	if (!hmap_test_cap(sc->caps, HMS_REL_X) &&
+	    !hmap_test_cap(sc->caps, HMS_REL_X) &&
+	    !hmap_test_cap(sc->caps, HMS_ABS_X) &&
+	    !hmap_test_cap(sc->caps, HMS_ABS_Y))
 		return (ENXIO);
 
 	return (BUS_PROBE_DEFAULT);
@@ -182,14 +205,11 @@ hms_attach(device_t dev)
 	}
 #endif
 
-	if (hmap_test_cap(sc->caps, HMT_ABS_X) ||
-	    hmap_test_cap(sc->caps, HMT_ABS_Y)) {
+	if (hmap_test_cap(sc->caps, HMS_ABS_X) ||
+	    hmap_test_cap(sc->caps, HMS_ABS_Y))
 		hidbus_set_desc(dev, "Tablet");
-		hmap_set_evdev_prop(dev, INPUT_PROP_DIRECT);
-	} else {
+	 else
 		hidbus_set_desc(dev, "Mouse");
-		hmap_set_evdev_prop(dev, INPUT_PROP_POINTER);
-	}
 
 	error = hmap_attach(dev);
 	if (error)
@@ -205,14 +225,14 @@ hms_attach(device_t dev)
 	/* announce information about the mouse */
 	device_printf(dev, "%d buttons and [%s%s%s%s%s] coordinates ID=%u\n",
 	    nbuttons,
-	    (hmap_test_cap(sc->caps, HMT_REL_X) ||
-	     hmap_test_cap(sc->caps, HMT_ABS_X)) ? "X" : "",
-	    (hmap_test_cap(sc->caps, HMT_REL_Y) ||
-	     hmap_test_cap(sc->caps, HMT_ABS_Y)) ? "Y" : "",
-	    (hmap_test_cap(sc->caps, HMT_REL_Z) ||
-	     hmap_test_cap(sc->caps, HMT_ABS_Z)) ? "Z" : "",
-	    hmap_test_cap(sc->caps, HMT_WHEEL) ? "W" : "",
-	    hmap_test_cap(sc->caps, HMT_HWHEEL) ? "H" : "",
+	    (hmap_test_cap(sc->caps, HMS_REL_X) ||
+	     hmap_test_cap(sc->caps, HMS_ABS_X)) ? "X" : "",
+	    (hmap_test_cap(sc->caps, HMS_REL_Y) ||
+	     hmap_test_cap(sc->caps, HMS_ABS_Y)) ? "Y" : "",
+	    (hmap_test_cap(sc->caps, HMS_REL_Z) ||
+	     hmap_test_cap(sc->caps, HMS_ABS_Z)) ? "Z" : "",
+	    hmap_test_cap(sc->caps, HMS_WHEEL) ? "W" : "",
+	    hmap_test_cap(sc->caps, HMS_HWHEEL) ? "H" : "",
 	    sc->super_sc.hid_items[0].id);
 
 	return (0);
