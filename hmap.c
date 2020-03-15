@@ -636,6 +636,8 @@ hmap_parse_hid_descr(struct hmap_softc *sc, uint8_t tlc_index)
 		    "result=%ld\n", sc->nhid_items, item - sc->hid_items);
 	sc->nhid_items = item - sc->hid_items;
 
+	sc->isize = hid_report_size(d_ptr, d_len, hid_input, NULL);
+
 	/*
 	 * If completion callback returned success at attach stage, run it
 	 * in interrupt handler and at the device detach too.
