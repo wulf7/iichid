@@ -237,30 +237,6 @@ re_submit:
 }
 
 static void
-usbhid_fill_set_report(struct usb_device_request *req, uint8_t iface_no,
-    uint8_t type, uint8_t id, uint16_t size)
-{
-	req->bmRequestType = UT_WRITE_CLASS_INTERFACE;
-	req->bRequest = UR_SET_REPORT;
-	USETW2(req->wValue, type, id);
-	req->wIndex[0] = iface_no;
-	req->wIndex[1] = 0;
-	USETW(req->wLength, size);
-}
-
-static void
-usbhid_fill_get_report(struct usb_device_request *req, uint8_t iface_no,
-    uint8_t type, uint8_t id, uint16_t size)
-{
-	req->bmRequestType = UT_READ_CLASS_INTERFACE;
-	req->bRequest = UR_GET_REPORT;
-	USETW2(req->wValue, type, id);
-	req->wIndex[0] = iface_no;
-	req->wIndex[1] = 0;
-	USETW(req->wLength, size);
-}
-
-static void
 usbhid_set_report_callback(struct usb_xfer *xfer, usb_error_t error)
 {
 	struct usbhid_softc *sc = usbd_xfer_softc(xfer);
@@ -500,7 +476,12 @@ usbhid_get_report(device_t dev, void *buf, uint16_t maxlen, uint16_t *actlen,
 	struct usb_device_request req;
 	int error;
 
-	usbhid_fill_get_report(&req, sc->sc_iface_no, type, id, maxlen);
+	req.bmRequestType = UT_READ_CLASS_INTERFACE;
+	req.bRequest = UR_GET_REPORT;
+	USETW2(req.wValue, type, id);
+	req.wIndex[0] = sc->sc_iface_no;
+	req.wIndex[1] = 0;
+	USETW(req.wLength, maxlen);
 
 	error = usbhid_sync_xfer
 	    (sc, sc->sc_xfer[USBHID_CTRL_DT_RD], &req, buf, maxlen);
@@ -519,7 +500,12 @@ usbhid_set_report(device_t dev, void *buf, uint16_t len, uint8_t type,
 	struct usb_device_request req;
 	int error;
 
-	usbhid_fill_set_report(&req, sc->sc_iface_no, type, id, len);
+	req.bmRequestType = UT_WRITE_CLASS_INTERFACE;
+	req.bRequest = UR_SET_REPORT;
+	USETW2(req.wValue, type, id);
+	req.wIndex[0] = sc->sc_iface_no;
+	req.wIndex[1] = 0;
+	USETW(req.wLength, len);
 
 	error = usbhid_sync_xfer
 	    (sc, sc->sc_xfer[USBHID_CTRL_DT_WR], &req, buf, len);
