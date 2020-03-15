@@ -146,13 +146,13 @@ static device_probe_t usbhid_probe;
 static device_attach_t usbhid_attach;
 static device_detach_t usbhid_detach;
 
-static usb_callback_t usbhid_write_callback;
-static usb_callback_t usbhid_read_callback;
-static usb_callback_t usbhid_set_report_callback;
-static usb_callback_t usbhid_get_report_callback;
+static usb_callback_t usbhid_intr_wr_callback;
+static usb_callback_t usbhid_intr_rd_callback;
+static usb_callback_t usbhid_ctrl_wr_callback;
+static usb_callback_t usbhid_ctrl_rd_callback;
 
 static void
-usbhid_write_callback(struct usb_xfer *xfer, usb_error_t error)
+usbhid_intr_wr_callback(struct usb_xfer *xfer, usb_error_t error)
 {
 	struct usbhid_softc *sc = usbd_xfer_softc(xfer);
 	struct usb_page_cache *pc;
@@ -189,7 +189,7 @@ tr_exit:
 }
 
 static void
-usbhid_read_callback(struct usb_xfer *xfer, usb_error_t error)
+usbhid_intr_rd_callback(struct usb_xfer *xfer, usb_error_t error)
 {
 	struct usbhid_softc *sc = usbd_xfer_softc(xfer);
 	struct usb_page_cache *pc;
@@ -237,7 +237,7 @@ re_submit:
 }
 
 static void
-usbhid_set_report_callback(struct usb_xfer *xfer, usb_error_t error)
+usbhid_ctrl_wr_callback(struct usb_xfer *xfer, usb_error_t error)
 {
 	struct usbhid_softc *sc = usbd_xfer_softc(xfer);
 	struct usb_page_cache *pc;
@@ -278,7 +278,7 @@ tr_exit:
 }
 
 static void
-usbhid_get_report_callback(struct usb_xfer *xfer, usb_error_t error)
+usbhid_ctrl_rd_callback(struct usb_xfer *xfer, usb_error_t error)
 {
 	struct usbhid_softc *sc = usbd_xfer_softc(xfer);
 	struct usb_page_cache *pc;
@@ -323,21 +323,21 @@ static const struct usb_config usbhid_config[USBHID_N_TRANSFER] = {
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_OUT,
 		.flags = {.pipe_bof = 1,.no_pipe_ok = 1,.proxy_buffer = 1},
-		.callback = &usbhid_write_callback,
+		.callback = &usbhid_intr_wr_callback,
 	},
 	[USBHID_INTR_DT_RD] = {
 		.type = UE_INTERRUPT,
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_IN,
 		.flags = {.pipe_bof = 1,.short_xfer_ok = 1,.proxy_buffer = 1},
-		.callback = &usbhid_read_callback,
+		.callback = &usbhid_intr_rd_callback,
 	},
 	[USBHID_CTRL_DT_WR] = {
 		.type = UE_CONTROL,
 		.endpoint = 0x00,	/* Control pipe */
 		.direction = UE_DIR_ANY,
 		.flags = {.proxy_buffer = 1},
-		.callback = &usbhid_set_report_callback,
+		.callback = &usbhid_ctrl_wr_callback,
 		.timeout = 1000,	/* 1 second */
 	},
 	[USBHID_CTRL_DT_RD] = {
@@ -345,7 +345,7 @@ static const struct usb_config usbhid_config[USBHID_N_TRANSFER] = {
 		.endpoint = 0x00,	/* Control pipe */
 		.direction = UE_DIR_ANY,
 		.flags = {.proxy_buffer = 1},
-		.callback = &usbhid_get_report_callback,
+		.callback = &usbhid_ctrl_rd_callback,
 		.timeout = 1000,	/* 1 second */
 	},
 };
