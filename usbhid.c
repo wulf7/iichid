@@ -89,7 +89,7 @@ SYSCTL_INT(_hw_usb_usbhid, OID_AUTO, debug, CTLFLAG_RWTUN,
     &usbhid_debug, 0, "Debug level");
 #endif
 
-#define	USBHID_BSIZE		1024		/* bytes, buffer size */
+#define	USBHID_RSIZE		2048		/* bytes, max report size */
 #define	USBHID_FRAME_NUM 	50		/* bytes, frame number */
 
 enum {
@@ -168,7 +168,7 @@ usbhid_write_callback(struct usb_xfer *xfer, usb_error_t error)
 tr_setup:
 		if (sc->sc_tr_len == 0)
 			goto tr_exit;
-		io_len = MIN(sc->sc_tr_len, USBHID_BSIZE);
+		io_len = MIN(sc->sc_tr_len, usbd_xfer_max_len(xfer));
 
 		pc = usbd_xfer_get_frame(xfer, 0);
 		usbd_copy_in(pc, 0, sc->sc_tr_buf, io_len);
@@ -227,7 +227,7 @@ usbhid_read_callback(struct usb_xfer *xfer, usb_error_t error)
 
 	case USB_ST_SETUP:
 re_submit:
-		usbd_xfer_set_frame_len(xfer, 0, sc->sc_isize);
+		usbd_xfer_set_frame_len(xfer, 0, usbd_xfer_max_len(xfer));
 		usbd_transfer_submit(xfer);
 		return;
 
@@ -277,7 +277,7 @@ usbhid_set_report_callback(struct usb_xfer *xfer, usb_error_t error)
 
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_SETUP:
-		if (sc->sc_tr_len > USBHID_BSIZE) {
+		if (sc->sc_tr_len > usbd_xfer_max_len(xfer)) {
 			sc->sc_tr_error = ENOBUFS;
 			goto tr_exit;
 		}
@@ -363,23 +363,21 @@ static const struct usb_config usbhid_config[USBHID_N_TRANSFER] = {
 		.type = UE_INTERRUPT,
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_OUT,
-		.flags = {.pipe_bof = 1,.no_pipe_ok = 1, },
-		.bufsize = USBHID_BSIZE,
+		.flags = {.pipe_bof = 1,.no_pipe_ok = 1,.proxy_buffer = 1},
 		.callback = &usbhid_write_callback,
 	},
 	[USBHID_INTR_DT_RD] = {
 		.type = UE_INTERRUPT,
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_IN,
-		.flags = {.pipe_bof = 1,.short_xfer_ok = 1,},
-		.bufsize = USBHID_BSIZE,
+		.flags = {.pipe_bof = 1,.short_xfer_ok = 1,.proxy_buffer = 1},
 		.callback = &usbhid_read_callback,
 	},
 	[USBHID_CTRL_DT_WR] = {
 		.type = UE_CONTROL,
 		.endpoint = 0x00,	/* Control pipe */
 		.direction = UE_DIR_ANY,
-		.bufsize = sizeof(struct usb_device_request) + USBHID_BSIZE,
+		.flags = {.proxy_buffer = 1},
 		.callback = &usbhid_set_report_callback,
 		.timeout = 1000,	/* 1 second */
 	},
@@ -388,7 +386,7 @@ static const struct usb_config usbhid_config[USBHID_N_TRANSFER] = {
 		.type = UE_CONTROL,
 		.endpoint = 0x00,	/* Control pipe */
 		.direction = UE_DIR_ANY,
-		.bufsize = sizeof(struct usb_device_request) + USBHID_BSIZE,
+		.flags = {.proxy_buffer = 1},
 		.callback = &usbhid_get_report_callback,
 		.timeout = 1000,	/* 1 second */
 	},
@@ -406,6 +404,16 @@ usbhid_intr_setup(device_t dev, struct mtx *mtx, hid_intr_t intr,
 	sc->sc_intr_context = context;
 	sc->sc_intr_mtx = mtx;
 	bcopy(usbhid_config, sc->sc_config, sizeof(usbhid_config));
+
+	/* Set buffer sizes to match HID report sizes */
+	sc->sc_config[USBHID_INTR_DT_WR].bufsize = sc->sc_osize;
+	sc->sc_config[USBHID_INTR_DT_RD].bufsize = sc->sc_isize;
+	sc->sc_config[USBHID_CTRL_DT_WR].bufsize =
+	    MAX(sc->sc_osize, sc->sc_fsize);
+#ifdef NOT_YET
+	sc->sc_config[USBHID_CTRL_DT_RD].bufsize =
+	    MAX(sc->sc_isize, sc->sc_fsize);
+#endif
 
 	error = usbd_transfer_setup(sc->sc_udev,
 	    &sc->sc_iface_index, sc->sc_xfer, sc->sc_config,
@@ -693,23 +701,23 @@ usbhid_attach(device_t dev)
 	sc->sc_fsize = hid_report_size
 	    (sc->sc_repdesc_ptr, sc->sc_repdesc_size, hid_feature, &sc->sc_fid);
 
-	if (sc->sc_isize > USBHID_BSIZE) {
+	if (sc->sc_isize > USBHID_RSIZE) {
 		DPRINTF("input size is too large, "
 		    "%d bytes (truncating)\n",
 		    sc->sc_isize);
-		sc->sc_isize = USBHID_BSIZE;
+		sc->sc_isize = USBHID_RSIZE;
 	}
-	if (sc->sc_osize > USBHID_BSIZE) {
+	if (sc->sc_osize > USBHID_RSIZE) {
 		DPRINTF("output size is too large, "
 		    "%d bytes (truncating)\n",
 		    sc->sc_osize);
-		sc->sc_osize = USBHID_BSIZE;
+		sc->sc_osize = USBHID_RSIZE;
 	}
-	if (sc->sc_fsize > USBHID_BSIZE) {
+	if (sc->sc_fsize > USBHID_RSIZE) {
 		DPRINTF("feature size is too large, "
 		    "%d bytes (truncating)\n",
 		    sc->sc_fsize);
-		sc->sc_fsize = USBHID_BSIZE;
+		sc->sc_fsize = USBHID_RSIZE;
 	}
 	sc->sc_ibuf = malloc(sc->sc_isize, M_USBDEV, M_ZERO | M_WAITOK);
 
