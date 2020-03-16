@@ -357,6 +357,7 @@ usbhid_intr_setup(device_t dev, struct mtx *mtx, hid_intr_t intr,
     void *context)
 {
 	struct usbhid_softc* sc = device_get_softc(dev);
+	uint16_t n;
 	int error;
 
 	sc->sc_intr_handler = intr;
@@ -372,9 +373,26 @@ usbhid_intr_setup(device_t dev, struct mtx *mtx, hid_intr_t intr,
 	sc->sc_config[USBHID_CTRL_DT_RD].bufsize =
 	    MAX(sc->sc_isize, sc->sc_fsize);
 
-	error = usbd_transfer_setup(sc->sc_udev,
-	    &sc->sc_iface_index, sc->sc_xfer, sc->sc_config,
-	    USBHID_N_TRANSFER, sc, sc->sc_intr_mtx);
+	if (sc->sc_intr_mtx == HID_SYSCONS_MTX) {
+		/*
+		 * Setup the USB transfers one by one, so they are memory
+		 * independent which allows for handling panics triggered by
+		 * the HID drivers itself, typically by hkbd via CTRL+ALT+ESC
+		 * sequences. Or if the HID keyboard driver was processing a
+		 * key at the moment of panic.
+		 */
+		for (n = 0; n != USBHID_N_TRANSFER; n++) {
+			error = usbd_transfer_setup(sc->sc_udev,
+			   &sc->sc_iface_index, sc->sc_xfer + n,
+			   sc->sc_config + n, 1, sc, sc->sc_intr_mtx);
+			if (error)
+				break;
+		}
+	} else {
+		error = usbd_transfer_setup(sc->sc_udev,
+		    &sc->sc_iface_index, sc->sc_xfer, sc->sc_config,
+		    USBHID_N_TRANSFER, sc, sc->sc_intr_mtx);
+	}
 
 	if (error)
 		DPRINTF("error=%s\n", usbd_errstr(error));
