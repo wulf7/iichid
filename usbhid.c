@@ -126,10 +126,13 @@ struct usbhid_softc {
 	uint8_t	sc_iid;
 	uint8_t	sc_oid;
 	uint8_t	sc_fid;
-	uint8_t	sc_flags;
-#define	USBHID_FLAG_IMMED        0x01	/* set if read should be immediate */
-#define	USBHID_FLAG_STATIC_DESC  0x04	/* set if report descriptors are
+	struct {
+		bool immed:1;		/* set if read should be immediate */
+		bool static_desc:1;	/* set if report descriptors are
 					 * static */
+		uint8_t reserved:6;
+	} sc_flags;
+
 	struct usb_device_request *sc_tr_req;
 	uint8_t *sc_tr_buf;
 	uint16_t sc_tr_len;
@@ -660,7 +663,7 @@ usbhid_attach(device_t dev)
 
 			sc->sc_repdesc_size = sizeof(usbhid_graphire_report_descr);
 			sc->sc_repdesc_ptr = __DECONST(void *, &usbhid_graphire_report_descr);
-			sc->sc_flags |= USBHID_FLAG_STATIC_DESC;
+			sc->sc_flags.static_desc = true;
 
 		} else if (uaa->info.idProduct == USB_PRODUCT_WACOM_GRAPHIRE3_4X5) {
 
@@ -681,7 +684,7 @@ usbhid_attach(device_t dev)
 			}
 			sc->sc_repdesc_size = sizeof(usbhid_graphire3_4x5_report_descr);
 			sc->sc_repdesc_ptr = __DECONST(void *, &usbhid_graphire3_4x5_report_descr);
-			sc->sc_flags |= USBHID_FLAG_STATIC_DESC;
+			sc->sc_flags.static_desc = true;
 		}
 	} else if ((uaa->info.bInterfaceClass == UICLASS_VENDOR) &&
 	    (uaa->info.bInterfaceSubClass == UISUBCLASS_XBOX360_CONTROLLER) &&
@@ -701,7 +704,7 @@ usbhid_attach(device_t dev)
 		/* the Xbox 360 gamepad has no report descriptor */
 		sc->sc_repdesc_size = sizeof(usbhid_xb360gp_report_descr);
 		sc->sc_repdesc_ptr = __DECONST(void *, &usbhid_xb360gp_report_descr);
-		sc->sc_flags |= USBHID_FLAG_STATIC_DESC;
+		sc->sc_flags.static_desc = true;
 	}
 	if (sc->sc_repdesc_ptr == NULL) {
 
@@ -792,11 +795,8 @@ usbhid_detach(device_t dev)
 	if (sc->sc_child)
 		device_delete_child(dev, sc->sc_child);
 
-	if (sc->sc_repdesc_ptr) {
-		if (!(sc->sc_flags & USBHID_FLAG_STATIC_DESC)) {
-			free(sc->sc_repdesc_ptr, M_USBDEV);
-		}
-	}
+	if (!sc->sc_flags.static_desc)
+		free(sc->sc_repdesc_ptr, M_USBDEV);
 	free(sc->sc_ibuf, M_USBDEV);
 
 	return (0);
