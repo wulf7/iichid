@@ -422,7 +422,7 @@ usbhid_intr_poll(device_t dev)
  * HID interface
  */
 static int
-usbhid_sync_xfer(struct usbhid_softc* sc, struct usb_xfer *xfer,
+usbhid_sync_xfer(struct usbhid_softc* sc, int xfer_idx,
     struct usb_device_request *req, void *buf, uint16_t len)
 {
 	int error, timeout;
@@ -434,11 +434,11 @@ usbhid_sync_xfer(struct usbhid_softc* sc, struct usb_xfer *xfer,
 	sc->sc_tr_req = req;
 	sc->sc_tr_error = ETIMEDOUT;
 	timeout = USB_DEFAULT_TIMEOUT;
-	usbd_transfer_start(xfer);
+	usbd_transfer_start(sc->sc_xfer[xfer_idx]);
 
 	if (HID_IN_POLLING_MODE_FUNC())
 		while (timeout > 0 && sc->sc_tr_error == ETIMEDOUT) {
-			usbd_transfer_poll(&xfer, 1);
+			usbd_transfer_poll(&sc->sc_xfer[xfer_idx], 1);
 			DELAY(1000);
 			timeout--;
                 }
@@ -446,7 +446,7 @@ usbhid_sync_xfer(struct usbhid_softc* sc, struct usb_xfer *xfer,
 		msleep_sbt(sc, sc->sc_intr_mtx, 0, "usbhid io",
 		    SBT_1MS * timeout, 0, C_HARDCLOCK);
 
-	usbd_transfer_stop(xfer);
+	usbd_transfer_stop(sc->sc_xfer[xfer_idx]);
 	error = sc->sc_tr_error;
 
 	HID_MTX_UNLOCK(sc->sc_intr_mtx);
@@ -483,9 +483,7 @@ usbhid_get_report(device_t dev, void *buf, uint16_t maxlen, uint16_t *actlen,
 	req.wIndex[1] = 0;
 	USETW(req.wLength, maxlen);
 
-	error = usbhid_sync_xfer
-	    (sc, sc->sc_xfer[USBHID_CTRL_DT_RD], &req, buf, maxlen);
-
+	error = usbhid_sync_xfer(sc, USBHID_CTRL_DT_RD, &req, buf, maxlen);
 	if (!error && actlen != NULL)
 		*actlen = maxlen;
 
@@ -498,7 +496,6 @@ usbhid_set_report(device_t dev, void *buf, uint16_t len, uint8_t type,
 {
 	struct usbhid_softc* sc = device_get_softc(dev);
 	struct usb_device_request req;
-	int error;
 
 	req.bmRequestType = UT_WRITE_CLASS_INTERFACE;
 	req.bRequest = UR_SET_REPORT;
@@ -507,10 +504,7 @@ usbhid_set_report(device_t dev, void *buf, uint16_t len, uint8_t type,
 	req.wIndex[1] = 0;
 	USETW(req.wLength, len);
 
-	error = usbhid_sync_xfer
-	    (sc, sc->sc_xfer[USBHID_CTRL_DT_WR], &req, buf, len);
-
-	return (error);
+	return (usbhid_sync_xfer(sc, USBHID_CTRL_DT_WR, &req, buf, len));
 }
 
 static int
@@ -525,7 +519,6 @@ usbhid_write(device_t dev, void *buf, uint16_t len)
 {
 	struct usbhid_softc* sc = device_get_softc(dev);
 	uint8_t id;
-	int error;
 
 	if (sc->sc_xfer[USBHID_INTR_DT_WR] == NULL) {
 		/* try to extract the ID byte */
@@ -534,10 +527,7 @@ usbhid_write(device_t dev, void *buf, uint16_t len)
 		    id));
 	}
 
-	error = usbhid_sync_xfer
-	    (sc, sc->sc_xfer[USBHID_INTR_DT_WR], NULL, buf, len);
-
-	return (error);
+	return (usbhid_sync_xfer(sc, USBHID_INTR_DT_WR, NULL, buf, len));
 }
 
 static int
