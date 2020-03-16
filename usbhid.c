@@ -417,7 +417,7 @@ usbhid_intr_poll(device_t dev)
 {
 	struct usbhid_softc* sc = device_get_softc(dev);
 
-	usbd_transfer_poll(sc->sc_xfer, USBHID_N_TRANSFER);
+	usbd_transfer_poll(sc->sc_xfer + USBHID_INTR_DT_RD, 1);
 }
 
 /*
@@ -456,7 +456,7 @@ usbhid_sync_xfer(struct usbhid_softc* sc, int xfer_idx,
 
 	if (HID_IN_POLLING_MODE_FUNC())
 		while (timeout > 0 && sc->sc_tr_error == ETIMEDOUT) {
-			usbd_transfer_poll(&sc->sc_xfer[xfer_idx], 1);
+			usbd_transfer_poll(sc->sc_xfer + xfer_idx, 1);
 			DELAY(1000);
 			timeout--;
                 }
