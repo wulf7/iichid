@@ -134,6 +134,8 @@ struct usbhid_softc {
 	uint8_t *sc_tr_buf;
 	uint16_t sc_tr_len;
 	int sc_tr_error;
+	int sc_tr_waiters;
+	bool sc_tr_influx;
 };
 
 static const uint8_t usbhid_xb360gp_report_descr[] = {UHID_XB360GP_REPORT_DESCR()};
@@ -425,9 +427,25 @@ static int
 usbhid_sync_xfer(struct usbhid_softc* sc, int xfer_idx,
     struct usb_device_request *req, void *buf, uint16_t len)
 {
-	int error, timeout;
+	int error, save_error, timeout;
+	struct usb_device_request *save_req;
+	void *save_buf;
+	uint16_t save_len;
 
-	HID_MTX_LOCK(sc->sc_intr_mtx);
+	if (HID_IN_POLLING_MODE_FUNC()) {
+		save_buf = sc->sc_tr_buf;
+		save_len = sc->sc_tr_len;
+		save_req = sc->sc_tr_req;
+		save_error = sc->sc_tr_error;
+	} else {
+		mtx_lock(sc->sc_intr_mtx);
+		++sc->sc_tr_waiters;
+		while (sc->sc_tr_influx)
+			mtx_sleep(&sc->sc_tr_waiters, sc->sc_intr_mtx, 0,
+			    "usbhid wt", 0);
+		--sc->sc_tr_waiters;
+		sc->sc_tr_influx = true;
+	}
 
 	sc->sc_tr_buf = buf;
 	sc->sc_tr_len = len;
@@ -449,7 +467,17 @@ usbhid_sync_xfer(struct usbhid_softc* sc, int xfer_idx,
 	usbd_transfer_stop(sc->sc_xfer[xfer_idx]);
 	error = sc->sc_tr_error;
 
-	HID_MTX_UNLOCK(sc->sc_intr_mtx);
+	if (HID_IN_POLLING_MODE_FUNC()) {
+		sc->sc_tr_buf = save_buf;
+		sc->sc_tr_len = save_len;
+		sc->sc_tr_req = save_req;
+		sc->sc_tr_error = save_error;
+	} else {
+		sc->sc_tr_influx = false;
+		if (sc->sc_tr_waiters != 0)
+			wakeup_one(&sc->sc_tr_waiters);
+		mtx_unlock(sc->sc_intr_mtx);
+	}
 
 	if (error)
 		DPRINTF("USB IO error:%d\n", error);
