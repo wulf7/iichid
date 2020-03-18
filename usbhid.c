@@ -583,29 +583,33 @@ static int
 usbhid_set_idle(device_t dev, uint16_t duration, uint8_t id)
 {
 	struct usbhid_softc* sc = device_get_softc(dev);
-	int err;
+	struct usb_device_request req;
 
 	/* Duration is measured in 4 milliseconds per unit. */
-	err = usbd_req_set_idle(sc->sc_udev, NULL, sc->sc_iface_index,
-	    (duration + 3) / 4, id);
-	if (err)
-                err = ENXIO;
+	req.bmRequestType = UT_WRITE_CLASS_INTERFACE;
+	req.bRequest = UR_SET_IDLE;
+	USETW2(req.wValue, (duration + 3) / 4, id);
+	req.wIndex[0] = sc->sc_iface_no;
+	req.wIndex[1] = 0;
+	USETW(req.wLength, 0);
 
-	return (err);
+	return (usbhid_sync_xfer(sc, USBHID_CTRL_DT_WR, &req, NULL, 0));
 }
 
 static int
 usbhid_set_protocol(device_t dev, uint16_t protocol)
 {
 	struct usbhid_softc* sc = device_get_softc(dev);
-	int err;
+	struct usb_device_request req;
 
-	err = usbd_req_set_protocol(sc->sc_udev, NULL, sc->sc_iface_index,
-	    protocol);
-	if (err)
-                err = ENXIO;
+	req.bmRequestType = UT_WRITE_CLASS_INTERFACE;
+	req.bRequest = UR_SET_PROTOCOL;
+	USETW(req.wValue, protocol);
+	req.wIndex[0] = sc->sc_iface_no;
+	req.wIndex[1] = 0;
+	USETW(req.wLength, 0);
 
-	return (err);
+	return (usbhid_sync_xfer(sc, USBHID_CTRL_DT_WR, &req, NULL, 0));
 }
 
 static const STRUCT_USB_HOST_ID usbhid_devs[] = {
