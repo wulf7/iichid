@@ -115,8 +115,6 @@ struct hidraw_softc {
 		u_char	reserved:4;
 	} sc_state;
 
-	int sc_refcnt;
-
 	struct cdev *dev;
 };
 
@@ -125,31 +123,26 @@ struct hidraw_softc {
 #define	UHID_BSIZE	1020	/* buffer size */
 #define	UHID_INDEX	0xFF	/* Arbitrary high value */
 
-d_open_t	hidrawopen;
-d_read_t	hidrawread;
-d_write_t	hidrawwrite;
-d_ioctl_t	hidrawioctl;
-d_poll_t	hidrawpoll;
+static d_open_t		hidraw_open;
+static d_read_t		hidraw_read;
+static d_write_t	hidraw_write;
+static d_ioctl_t	hidraw_ioctl;
+static d_poll_t		hidraw_poll;
 
 static d_priv_dtor_t	hidraw_dtor;
 
 static struct cdevsw hidraw_cdevsw = {
 	.d_version =	D_VERSION,
 	.d_flags =	D_NEEDGIANT,
-	.d_open =	hidrawopen,
-	.d_read =	hidrawread,
-	.d_write =	hidrawwrite,
-	.d_ioctl =	hidrawioctl,
-	.d_poll =	hidrawpoll,
+	.d_open =	hidraw_open,
+	.d_read =	hidraw_read,
+	.d_write =	hidraw_write,
+	.d_ioctl =	hidraw_ioctl,
+	.d_poll =	hidraw_poll,
 	.d_name =	"hidraw",
 };
 
 static void hidraw_intr(void *, void *, uint16_t);
-
-static int hidraw_do_read(struct hidraw_softc *, struct uio *uio, int);
-static int hidraw_do_write(struct hidraw_softc *, struct uio *uio, int);
-static int hidraw_do_ioctl(struct hidraw_softc *, u_long, caddr_t, int,
-			      struct thread *);
 
 static device_identify_t hidraw_identify;
 static device_probe_t hidraw_match;
@@ -259,12 +252,8 @@ hidraw_detach(device_t self)
 	mtx_lock(hidbus_get_lock(self));
 	sc->sc_state.dying = true;
 	if (sc->sc_state.open) {
-		if (--sc->sc_refcnt >= 0) {
-			/* Wake everyone */
-			wakeup(&sc->sc_q);
-			/* Wait for processes to go away. */
-//			usb_detach_wait(sc->sc_dev);
-		}
+		/* Wake everyone */
+		wakeup(&sc->sc_q);
 	}
 	mtx_unlock(hidbus_get_lock(self));
 	destroy_dev(sc->dev);
@@ -308,8 +297,8 @@ hidraw_intr(void *context, void *buf, uint16_t len)
 #endif
 }
 
-int
-hidrawopen(struct cdev *dev, int flag, int mode, struct thread *p)
+static int
+hidraw_open(struct cdev *dev, int flag, int mode, struct thread *p)
 {
 	struct hidraw_softc *sc;
 	int error;
@@ -318,7 +307,7 @@ hidrawopen(struct cdev *dev, int flag, int mode, struct thread *p)
 	if (sc == NULL)
 		return (ENXIO);
 
-	DPRINTF(("hidrawopen: sc=%p\n", sc));
+	DPRINTF(("hidraw_open: sc=%p\n", sc));
 
 	if (sc->sc_state.dying)
 		return (ENXIO);
@@ -384,16 +373,20 @@ hidraw_dtor(void *data)
 #endif
 }
 
-int
-hidraw_do_read(struct hidraw_softc *sc, struct uio *uio, int flag)
+static int
+hidraw_read(struct cdev *dev, struct uio *uio, int flag)
 {
+	struct hidraw_softc *sc;
 	int error = 0;
 	size_t length;
 	u_char buffer[UHID_CHUNK];
 
-	DPRINTFN(1, ("hidrawread\n"));
+	DPRINTFN(1, ("hidraw_read\n"));
+
+	sc = dev->si_drv1;
+
 	if (sc->sc_state.immed) {
-		DPRINTFN(1, ("hidrawread immed\n"));
+		DPRINTFN(1, ("hidraw_read immed\n"));
 
 		error = hid_get_report(sc->sc_dev, buffer, sc->sc_isize, NULL,
 		    HID_INPUT_REPORT, sc->sc_iid);
@@ -442,28 +435,16 @@ hidraw_do_read(struct hidraw_softc *sc, struct uio *uio, int flag)
 	return (error);
 }
 
-int
-hidrawread(struct cdev *dev, struct uio *uio, int flag)
+static int
+hidraw_write(struct cdev *dev, struct uio *uio, int flag)
 {
 	struct hidraw_softc *sc;
 	int error;
-
-	sc = dev->si_drv1;
-	sc->sc_refcnt++;
-	error = hidraw_do_read(sc, uio, flag);
-	if (--sc->sc_refcnt < 0)
-		{} /*usb_detach_wakeup(sc->sc_dev);*/
-	return (error);
-}
-
-int
-hidraw_do_write(struct hidraw_softc *sc, struct uio *uio, int flag)
-{
-	int error;
 	int size;
 
-	DPRINTFN(1, ("hidrawwrite\n"));
+	DPRINTFN(1, ("hidraw_write\n"));
 
+	sc = dev->si_drv1;
 	if (sc->sc_state.dying)
 		return (EIO);
 
@@ -484,31 +465,19 @@ hidraw_do_write(struct hidraw_softc *sc, struct uio *uio, int flag)
 	return (error);
 }
 
-int
-hidrawwrite(struct cdev *dev, struct uio *uio, int flag)
+static int
+hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
+    struct thread *p)
 {
 	struct hidraw_softc *sc;
-	int error;
-
-	sc = dev->si_drv1;
-	sc->sc_refcnt++;
-	error = hidraw_do_write(sc, uio, flag);
-	if (--sc->sc_refcnt < 0)
-		{} /*usb_detach_wakeup(sc->sc_dev);*/
-	return (error);
-}
-
-int
-hidraw_do_ioctl(struct hidraw_softc *sc, u_long cmd, caddr_t addr, int flag,
-	      struct thread *p)
-{
 	struct usb_gen_descriptor *ugd;
 	void *buf;
 	int size, id;
 	int error;
 
-	DPRINTFN(2, ("hidrawioctl: cmd=%lx\n", cmd));
+	DPRINTFN(2, ("hidraw_ioctl: cmd=%lx\n", cmd));
 
+	sc = dev->si_drv1;
 	if (sc->sc_state.dying)
 		return (EIO);
 
@@ -523,7 +492,7 @@ hidraw_do_ioctl(struct hidraw_softc *sc, u_long cmd, caddr_t addr, int flag,
 			if (sc->sc_async != NULL)
 				return (EBUSY);
 			sc->sc_async = p->td_proc;
-			DPRINTF(("hidraw_do_ioctl: FIOASYNC %p\n", sc->sc_async));
+			DPRINTF(("hidraw_ioctl: FIOASYNC %p\n", sc->sc_async));
 		} else
 			sc->sc_async = NULL;
 		break;
@@ -636,22 +605,8 @@ hidraw_do_ioctl(struct hidraw_softc *sc, u_long cmd, caddr_t addr, int flag,
 	return (0);
 }
 
-int
-hidrawioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag, struct thread *p)
-{
-	struct hidraw_softc *sc;
-	int error;
-
-	sc = dev->si_drv1;
-	sc->sc_refcnt++;
-	error = hidraw_do_ioctl(sc, cmd, addr, flag, p);
-	if (--sc->sc_refcnt < 0)
-		{} /*usb_detach_wakeup(sc->sc_dev);*/
-	return (error);
-}
-
-int
-hidrawpoll(struct cdev *dev, int events, struct thread *p)
+static int
+hidraw_poll(struct cdev *dev, int events, struct thread *p)
 {
 	struct hidraw_softc *sc;
 	int revents = 0;
