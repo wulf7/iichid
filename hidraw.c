@@ -209,6 +209,7 @@ static int
 hidraw_attach(device_t self)
 {
 	struct hidraw_softc *sc = device_get_softc(self);
+	struct make_dev_args mda;
 	uint16_t size;
 	void *desc;
 	int error;
@@ -228,10 +229,20 @@ hidraw_attach(device_t self)
 
 	sc->sc_repdesc = desc;
 	sc->sc_repdesc_size = size;
-	sc->dev = make_dev(&hidraw_cdevsw, device_get_unit(self),
-			UID_ROOT, GID_OPERATOR,
-			0644, "hidraw%d", device_get_unit(self));
-	sc->dev->si_drv1 = sc;
+
+	make_dev_args_init(&mda);
+	mda.mda_flags = MAKEDEV_WAITOK;
+	mda.mda_devsw = &hidraw_cdevsw;
+	mda.mda_uid = UID_ROOT;
+	mda.mda_gid = GID_OPERATOR;
+	mda.mda_mode = 0600;
+	mda.mda_si_drv1 = sc;
+
+	error = make_dev_s(&mda, &sc->dev, "hidraw%d", device_get_unit(self));
+	if (error) {
+		device_printf(self, "Can not create character device\n");
+		return (error);
+	}
 
 	hidbus_set_intr(sc->sc_dev, hidraw_intr);
 
