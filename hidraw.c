@@ -89,7 +89,6 @@ SYSCTL_INT(_hw_usb_hidraw, OID_AUTO, debug, CTLFLAG_RW,
 
 struct hidraw_softc {
 	device_t sc_dev;			/* base device */
-	int sc_ep_addr;
 
 	int sc_isize;
 	int sc_osize;
@@ -117,7 +116,6 @@ struct hidraw_softc {
 	struct cdev *dev;
 };
 
-#define	UHIDUNIT(dev)	(minor(dev))
 #define	UHID_CHUNK	128	/* chunk size for read */
 #define	UHID_BSIZE	1020	/* buffer size */
 #define	UHID_INDEX	0xFF	/* Arbitrary high value */
