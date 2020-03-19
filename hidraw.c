@@ -186,7 +186,8 @@ hidraw_identify(driver_t *driver, device_t parent)
 	device_t child;
 
 	if (device_find_child(parent, "hidraw", -1) == NULL) {
-		child = BUS_ADD_CHILD(parent, 0, "hidraw", -1);
+		child = BUS_ADD_CHILD(parent, 0, "hidraw",
+		    device_get_unit(parent));
 		hidbus_set_index(child, UHID_INDEX);
 	}
 }
