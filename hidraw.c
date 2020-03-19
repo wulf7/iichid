@@ -88,7 +88,9 @@ SYSCTL_INT(_hw_usb_hidraw, OID_AUTO, debug, CTLFLAG_RW,
 #endif
 
 struct hidraw_softc {
-	device_t sc_dev;			/* base device */
+	device_t sc_dev;		/* base device */
+
+	struct mtx *sc_mtx;		/* hidbus private mutex */
 
 	int sc_isize;
 	int sc_osize;
@@ -206,6 +208,7 @@ hidraw_attach(device_t self)
 	int error;
 
 	sc->sc_dev = self;
+	sc->sc_mtx = hidbus_get_lock(self);
 
 	error = hid_get_report_descr(sc->sc_dev, &desc, &size);
 	if (error) {
@@ -246,13 +249,13 @@ hidraw_detach(device_t self)
 
 	DPRINTF(("hidraw_detach: sc=%p\n", sc));
 
-	mtx_lock(hidbus_get_lock(self));
+	mtx_lock(sc->sc_mtx);
 	sc->dev->si_drv1 = NULL;
 	if (sc->sc_state.open) {
 		/* Wake everyone */
 		wakeup(&sc->sc_q);
 	}
-	mtx_unlock(hidbus_get_lock(self));
+	mtx_unlock(sc->sc_mtx);
 	destroy_dev(sc->dev);
 
 	return (0);
@@ -306,19 +309,19 @@ hidraw_open(struct cdev *dev, int flag, int mode, struct thread *p)
 
 	DPRINTF(("hidraw_open: sc=%p\n", sc));
 
-	mtx_lock(hidbus_get_lock(sc->sc_dev));
+	mtx_lock(sc->sc_mtx);
 	if (sc->sc_state.open) {
-		mtx_unlock(hidbus_get_lock(sc->sc_dev));
+		mtx_unlock(sc->sc_mtx);
 		return (EBUSY);
 	}
 	sc->sc_state.open = true;
-	mtx_unlock(hidbus_get_lock(sc->sc_dev));
+	mtx_unlock(sc->sc_mtx);
 
 	error = devfs_set_cdevpriv(sc, hidraw_dtor);
 	if (error != 0) {
-		mtx_lock(hidbus_get_lock(sc->sc_dev));
+		mtx_lock(sc->sc_mtx);
 		sc->sc_state.open = false;
-		mtx_unlock(hidbus_get_lock(sc->sc_dev));
+		mtx_unlock(sc->sc_mtx);
 		return (error);
 	}
 
@@ -327,10 +330,10 @@ hidraw_open(struct cdev *dev, int flag, int mode, struct thread *p)
 	sc->sc_obuf = malloc(sc->sc_osize, M_USBDEV, M_WAITOK);
 
 	/* Set up interrupt pipe. */
-	mtx_lock(hidbus_get_lock(sc->sc_dev));
+	mtx_lock(sc->sc_mtx);
 	hidbus_intr_start(sc->sc_dev);
 	sc->sc_state.immed = false;
-	mtx_unlock(hidbus_get_lock(sc->sc_dev));
+	mtx_unlock(sc->sc_mtx);
 
 #ifdef NOT_YET
 	sc->sc_async = 0;
@@ -347,9 +350,9 @@ hidraw_dtor(void *data)
 	DPRINTF(("hidraw_dtor: sc=%p\n", sc));
 
 	/* Disable interrupts. */
-	mtx_lock(hidbus_get_lock(sc->sc_dev));
+	mtx_lock(sc->sc_mtx);
 	hidbus_intr_stop(sc->sc_dev);
-	mtx_unlock(hidbus_get_lock(sc->sc_dev));
+	mtx_unlock(sc->sc_mtx);
 
 	ndflush(&sc->sc_q, sc->sc_q.c_cc);
 	clist_free_cblocks(&sc->sc_q);
@@ -358,9 +361,9 @@ hidraw_dtor(void *data)
 	free(sc->sc_obuf, M_USBDEV);
 	sc->sc_ibuf = sc->sc_obuf = NULL;
 
-	mtx_lock(hidbus_get_lock(sc->sc_dev));
+	mtx_lock(sc->sc_mtx);
 	sc->sc_state.open = false;
-	mtx_unlock(hidbus_get_lock(sc->sc_dev));
+	mtx_unlock(sc->sc_mtx);
 
 #ifdef NOT_YET
 	sc->sc_async = 0;
@@ -391,17 +394,17 @@ hidraw_read(struct cdev *dev, struct uio *uio, int flag)
 		return (uiomove(buffer, sc->sc_isize, uio));
 	}
 
-	mtx_lock(hidbus_get_lock(sc->sc_dev));
+	mtx_lock(sc->sc_mtx);
 	while (sc->sc_q.c_cc == 0) {
 		if (flag & O_NONBLOCK) {
-			mtx_unlock(hidbus_get_lock(sc->sc_dev));
+			mtx_unlock(sc->sc_mtx);
 			return (EWOULDBLOCK);
 		}
 		sc->sc_state.aslp = true;
-		DPRINTFN(5, ("hidrawread: sleep on %p\n", &sc->sc_q));
-		error = mtx_sleep(&sc->sc_q, hidbus_get_lock(sc->sc_dev),
-		    PZERO | PCATCH, "hidrawrea", 0);
-		DPRINTFN(5, ("hidrawread: woke, error=%d\n", error));
+		DPRINTFN(5, ("hidraw_read: sleep on %p\n", &sc->sc_q));
+		error = mtx_sleep(&sc->sc_q, sc->sc_mtx, PZERO | PCATCH,
+		    "hidrawrd", 0);
+		DPRINTFN(5, ("hidraw_read: woke, error=%d\n", error));
 		if (dev->si_drv1 == NULL)
 			error = EIO;
 		if (error) {
@@ -421,12 +424,12 @@ hidraw_read(struct cdev *dev, struct uio *uio, int flag)
 		DPRINTFN(5, ("hidrawread: got %lu chars\n", (u_long)length));
 
 		/* Copy the data to the user process. */
-		mtx_unlock(hidbus_get_lock(sc->sc_dev));
+		mtx_unlock(sc->sc_mtx);
 		error = uiomove(buffer, length, uio);
-		mtx_lock(hidbus_get_lock(sc->sc_dev));
+		mtx_lock(sc->sc_mtx);
 			break;
 	}
-	mtx_unlock(hidbus_get_lock(sc->sc_dev));
+	mtx_unlock(sc->sc_mtx);
 
 	return (error);
 }
@@ -522,13 +525,13 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 			if (error)
 				return (EOPNOTSUPP);
 
-			mtx_lock(hidbus_get_lock(sc->sc_dev));
+			mtx_lock(sc->sc_mtx);
 			sc->sc_state.immed = true;
-			mtx_unlock(hidbus_get_lock(sc->sc_dev));
+			mtx_unlock(sc->sc_mtx);
 		} else {
-			mtx_lock(hidbus_get_lock(sc->sc_dev));
+			mtx_lock(sc->sc_mtx);
 			sc->sc_state.immed = false;
-			mtx_unlock(hidbus_get_lock(sc->sc_dev));
+			mtx_unlock(sc->sc_mtx);
 		}
 		break;
 
@@ -611,7 +614,7 @@ hidraw_poll(struct cdev *dev, int events, struct thread *p)
 	if (sc == NULL)
 		return (EIO);
 
-	mtx_lock(hidbus_get_lock(sc->sc_dev));
+	mtx_lock(sc->sc_mtx);
 	if (events & (POLLOUT | POLLWRNORM))
 		revents |= events & (POLLOUT | POLLWRNORM);
 	if (events & (POLLIN | POLLRDNORM)) {
@@ -621,6 +624,6 @@ hidraw_poll(struct cdev *dev, int events, struct thread *p)
 			selrecord(p, &sc->sc_rsel);
 	}
 
-	mtx_unlock(hidbus_get_lock(sc->sc_dev));
+	mtx_unlock(sc->sc_mtx);
 	return (revents);
 }
