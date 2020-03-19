@@ -107,14 +107,15 @@ struct hidraw_softc {
 	struct clist sc_q;
 	struct selinfo sc_rsel;
 	struct proc *sc_async;	/* process that wants SIGIO */
-	u_char sc_state;	/* driver state */
-#define	UHID_OPEN	0x01	/* device is open */
-#define	UHID_ASLP	0x02	/* waiting for device data */
-#define UHID_NEEDCLEAR	0x04	/* needs clearing endpoint stall */
-#define UHID_IMMED	0x08	/* return read data immediately */
+	struct {			/* driver state */
+		bool	open:1;		/* device is open */
+		bool	aslp:1;		/* waiting for device data */
+		bool	immed:1;	/* return read data immediately */
+		bool	dying:1;	/* driver is detaching */
+		u_char	reserved:4;
+	} sc_state;
 
 	int sc_refcnt;
-	u_char sc_dying;
 
 	struct cdev *dev;
 };
@@ -218,8 +219,7 @@ hidraw_attach(device_t self)
 
 	error = hid_get_report_descr(sc->sc_dev, &desc, &size);
 	if (error) {
-		printf("%s: no report descriptor\n", device_get_nameunit(sc->sc_dev));
-		sc->sc_dying = 1;
+		device_printf(self, "no report descriptor\n");
 		return ENXIO;
 	}
 
@@ -255,10 +255,10 @@ hidraw_detach(device_t self)
 	struct hidraw_softc *sc = device_get_softc(self);
 
 	DPRINTF(("hidraw_detach: sc=%p\n", sc));
-	sc->sc_dying = 1;
 
 	mtx_lock(hidbus_get_lock(self));
-	if (sc->sc_state & UHID_OPEN) {
+	sc->sc_state.dying = true;
+	if (sc->sc_state.open) {
 		if (--sc->sc_refcnt >= 0) {
 			/* Wake everyone */
 			wakeup(&sc->sc_q);
@@ -292,8 +292,8 @@ hidraw_intr(void *context, void *buf, uint16_t len)
 
 	(void) b_to_q(buf, sc->sc_isize, &sc->sc_q);
 
-	if (sc->sc_state & UHID_ASLP) {
-		sc->sc_state &= ~UHID_ASLP;
+	if (sc->sc_state.aslp) {
+		sc->sc_state.aslp = false;
 		DPRINTFN(5, ("hidraw_intr: waking %p\n", &sc->sc_q));
 		wakeup(&sc->sc_q);
 	}
@@ -319,12 +319,12 @@ hidrawopen(struct cdev *dev, int flag, int mode, struct thread *p)
 
 	DPRINTF(("hidrawopen: sc=%p\n", sc));
 
-	if (sc->sc_dying)
+	if (sc->sc_state.dying)
 		return (ENXIO);
 
-	if (sc->sc_state & UHID_OPEN)
+	if (sc->sc_state.open)
 		return (EBUSY);
-	sc->sc_state |= UHID_OPEN;
+	sc->sc_state.open = true;
 
 	clist_alloc_cblocks(&sc->sc_q, UHID_BSIZE, UHID_BSIZE);
 	sc->sc_ibuf = malloc(sc->sc_isize, M_USBDEV, M_WAITOK);
@@ -333,9 +333,8 @@ hidrawopen(struct cdev *dev, int flag, int mode, struct thread *p)
 	/* Set up interrupt pipe. */
 	mtx_lock(hidbus_get_lock(sc->sc_dev));
 	hidbus_intr_start(sc->sc_dev);
+	sc->sc_state.immed = false;
 	mtx_unlock(hidbus_get_lock(sc->sc_dev));
-
-	sc->sc_state &= ~UHID_IMMED;
 
 #ifdef NOT_YET
 	sc->sc_async = 0;
@@ -365,7 +364,9 @@ hidrawclose(struct cdev *dev, int flag, int mode, struct thread *p)
 	free(sc->sc_obuf, M_USBDEV);
 	sc->sc_ibuf = sc->sc_obuf = NULL;
 
-	sc->sc_state &= ~UHID_OPEN;
+	mtx_lock(hidbus_get_lock(sc->sc_dev));
+	sc->sc_state.open = false;
+	mtx_unlock(hidbus_get_lock(sc->sc_dev));
 
 #ifdef NOT_YET
 	sc->sc_async = 0;
@@ -382,7 +383,7 @@ hidraw_do_read(struct hidraw_softc *sc, struct uio *uio, int flag)
 	u_char buffer[UHID_CHUNK];
 
 	DPRINTFN(1, ("hidrawread\n"));
-	if (sc->sc_state & UHID_IMMED) {
+	if (sc->sc_state.immed) {
 		DPRINTFN(1, ("hidrawread immed\n"));
 
 		error = hid_get_report(sc->sc_dev, buffer, sc->sc_isize, NULL,
@@ -398,15 +399,15 @@ hidraw_do_read(struct hidraw_softc *sc, struct uio *uio, int flag)
 			mtx_unlock(hidbus_get_lock(sc->sc_dev));
 			return (EWOULDBLOCK);
 		}
-		sc->sc_state |= UHID_ASLP;
+		sc->sc_state.aslp = true;
 		DPRINTFN(5, ("hidrawread: sleep on %p\n", &sc->sc_q));
 		error = mtx_sleep(&sc->sc_q, hidbus_get_lock(sc->sc_dev),
 		    PZERO | PCATCH, "hidrawrea", 0);
 		DPRINTFN(5, ("hidrawread: woke, error=%d\n", error));
-		if (sc->sc_dying)
+		if (sc->sc_state.dying)
 			error = EIO;
 		if (error) {
-			sc->sc_state &= ~UHID_ASLP;
+			sc->sc_state.aslp = false;
 			break;
 		}
 	}
@@ -454,7 +455,7 @@ hidraw_do_write(struct hidraw_softc *sc, struct uio *uio, int flag)
 
 	DPRINTFN(1, ("hidrawwrite\n"));
 
-	if (sc->sc_dying)
+	if (sc->sc_state.dying)
 		return (EIO);
 
 	size = sc->sc_osize;
@@ -499,7 +500,7 @@ hidraw_do_ioctl(struct hidraw_softc *sc, u_long cmd, caddr_t addr, int flag,
 
 	DPRINTFN(2, ("hidrawioctl: cmd=%lx\n", cmd));
 
-	if (sc->sc_dying)
+	if (sc->sc_state.dying)
 		return (EIO);
 
 	switch (cmd) {
@@ -548,11 +549,11 @@ hidraw_do_ioctl(struct hidraw_softc *sc, u_long cmd, caddr_t addr, int flag,
 				return (EOPNOTSUPP);
 
 			mtx_lock(hidbus_get_lock(sc->sc_dev));
-			sc->sc_state |=  UHID_IMMED;
+			sc->sc_state.immed = true;
 			mtx_unlock(hidbus_get_lock(sc->sc_dev));
 		} else {
 			mtx_lock(hidbus_get_lock(sc->sc_dev));
-			sc->sc_state &= ~UHID_IMMED;
+			sc->sc_state.immed = false;
 			mtx_unlock(hidbus_get_lock(sc->sc_dev));
 		}
 		break;
@@ -647,7 +648,7 @@ hidrawpoll(struct cdev *dev, int events, struct thread *p)
 	int revents = 0;
 
 	sc = dev->si_drv1;
-	if (sc->sc_dying)
+	if (sc->sc_state.dying)
 		return (EIO);
 
 	mtx_lock(hidbus_get_lock(sc->sc_dev));
