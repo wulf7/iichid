@@ -142,7 +142,7 @@ static struct cdevsw hidraw_cdevsw = {
 	.d_name =	"hidraw",
 };
 
-static void hidraw_intr(void *, void *, uint16_t);
+static hid_intr_t	hidraw_intr;
 
 static device_identify_t hidraw_identify;
 static device_probe_t hidraw_match;
