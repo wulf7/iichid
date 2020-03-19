@@ -36,6 +36,7 @@ SRCS	+= strcasestr.c strcasestr.h
     (${OSVERSION} >= 1201507 && ${OSVERSION} < 1300000)
 SRCS	+= opt_kbd.h opt_hkbd.h hkbd.c
 .endif
+SRCS	+= clist.c clist.h hidraw.c
 #CFLAGS	+= -DINVARIANTS -DINVARIANT_SUPPORT
 CFLAGS	+= -DHID_DEBUG
 CFLAGS	+= -DIICHID_DEBUG
