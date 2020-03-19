@@ -76,18 +76,18 @@ __FBSDID("$FreeBSD$");
 #include <dev/usb/usb_ioctl.h>
 
 #ifdef USB_DEBUG
-#define DPRINTF(x)	if (uhiddebug) printf x
-#define DPRINTFN(n,x)	if (uhiddebug>(n)) printf x
-int	uhiddebug = 0;
-SYSCTL_NODE(_hw_usb, OID_AUTO, uhid, CTLFLAG_RW, 0, "USB uhid");
-SYSCTL_INT(_hw_usb_uhid, OID_AUTO, debug, CTLFLAG_RW,
-	   &uhiddebug, 0, "uhid debug level");
+#define DPRINTF(x)	if (hidrawdebug) printf x
+#define DPRINTFN(n,x)	if (hidrawdebug>(n)) printf x
+int	hidrawdebug = 0;
+SYSCTL_NODE(_hw_usb, OID_AUTO, hidraw, CTLFLAG_RW, 0, "HID raw interface");
+SYSCTL_INT(_hw_usb_hidraw, OID_AUTO, debug, CTLFLAG_RW,
+	   &hidrawdebug, 0, "hidraw debug level");
 #else
 #define DPRINTF(x)
 #define DPRINTFN(n,x)
 #endif
 
-struct uhid_softc {
+struct hidraw_softc {
 	device_t sc_dev;			/* base device */
 	int sc_ep_addr;
 
@@ -124,74 +124,74 @@ struct uhid_softc {
 #define	UHID_BSIZE	1020	/* buffer size */
 #define	UHID_INDEX	0xFF	/* Arbitrary high value */
 
-d_open_t	uhidopen;
-d_close_t	uhidclose;
-d_read_t	uhidread;
-d_write_t	uhidwrite;
-d_ioctl_t	uhidioctl;
-d_poll_t	uhidpoll;
+d_open_t	hidrawopen;
+d_close_t	hidrawclose;
+d_read_t	hidrawread;
+d_write_t	hidrawwrite;
+d_ioctl_t	hidrawioctl;
+d_poll_t	hidrawpoll;
 
 
-static struct cdevsw uhid_cdevsw = {
+static struct cdevsw hidraw_cdevsw = {
 	.d_version =	D_VERSION,
 	.d_flags =	D_NEEDGIANT,
-	.d_open =	uhidopen,
-	.d_close =	uhidclose,
-	.d_read =	uhidread,
-	.d_write =	uhidwrite,
-	.d_ioctl =	uhidioctl,
-	.d_poll =	uhidpoll,
-	.d_name =	"uhid",
+	.d_open =	hidrawopen,
+	.d_close =	hidrawclose,
+	.d_read =	hidrawread,
+	.d_write =	hidrawwrite,
+	.d_ioctl =	hidrawioctl,
+	.d_poll =	hidrawpoll,
+	.d_name =	"hidraw",
 };
 
-static void uhid_intr(void *, void *, uint16_t);
+static void hidraw_intr(void *, void *, uint16_t);
 
-static int uhid_do_read(struct uhid_softc *, struct uio *uio, int);
-static int uhid_do_write(struct uhid_softc *, struct uio *uio, int);
-static int uhid_do_ioctl(struct uhid_softc *, u_long, caddr_t, int,
+static int hidraw_do_read(struct hidraw_softc *, struct uio *uio, int);
+static int hidraw_do_write(struct hidraw_softc *, struct uio *uio, int);
+static int hidraw_do_ioctl(struct hidraw_softc *, u_long, caddr_t, int,
 			      struct thread *);
 
-static device_identify_t uhid_identify;
-static device_probe_t uhid_match;
-static device_attach_t uhid_attach;
-static device_detach_t uhid_detach;
+static device_identify_t hidraw_identify;
+static device_probe_t hidraw_match;
+static device_attach_t hidraw_attach;
+static device_detach_t hidraw_detach;
 
-static device_method_t uhid_methods[] = {
+static device_method_t hidraw_methods[] = {
 	/* Device interface */
-	DEVMETHOD(device_identify,	uhid_identify),
-	DEVMETHOD(device_probe,		uhid_match),
-	DEVMETHOD(device_attach,	uhid_attach),
-	DEVMETHOD(device_detach,	uhid_detach),
+	DEVMETHOD(device_identify,	hidraw_identify),
+	DEVMETHOD(device_probe,		hidraw_match),
+	DEVMETHOD(device_attach,	hidraw_attach),
+	DEVMETHOD(device_detach,	hidraw_detach),
 
 	{ 0, 0 }
 };
 
-static driver_t uhid_driver = {
-	"uhid",
-	uhid_methods,
-	sizeof(struct uhid_softc)
+static driver_t hidraw_driver = {
+	"hidraw",
+	hidraw_methods,
+	sizeof(struct hidraw_softc)
 };
 
-static devclass_t uhid_devclass;
+static devclass_t hidraw_devclass;
 
-DRIVER_MODULE(uhid, hidbus, uhid_driver, uhid_devclass, NULL, 0);
-MODULE_DEPEND(uhid, hidbus, 1, 1, 1);
-MODULE_DEPEND(uhid, hid, 1, 1, 1);
-MODULE_VERSION(uhid, 1);
+DRIVER_MODULE(hidraw, hidbus, hidraw_driver, hidraw_devclass, NULL, 0);
+MODULE_DEPEND(hidraw, hidbus, 1, 1, 1);
+MODULE_DEPEND(hidraw, hid, 1, 1, 1);
+MODULE_VERSION(hidraw, 1);
 
 static void
-uhid_identify(driver_t *driver, device_t parent)
+hidraw_identify(driver_t *driver, device_t parent)
 {
 	device_t child;
 
-	if (device_find_child(parent, "uhid", -1) == NULL) {
-		child = BUS_ADD_CHILD(parent, 0, "uhid", -1);
+	if (device_find_child(parent, "hidraw", -1) == NULL) {
+		child = BUS_ADD_CHILD(parent, 0, "hidraw", -1);
 		hidbus_set_index(child, UHID_INDEX);
 	}
 }
 
 static int
-uhid_match(device_t self)
+hidraw_match(device_t self)
 {
 
 	if (hidbus_get_index(self) != UHID_INDEX)
@@ -206,9 +206,9 @@ uhid_match(device_t self)
 }
 
 static int
-uhid_attach(device_t self)
+hidraw_attach(device_t self)
 {
-	struct uhid_softc *sc = device_get_softc(self);
+	struct hidraw_softc *sc = device_get_softc(self);
 	uint16_t size;
 	void *desc;
 	int error;
@@ -228,22 +228,22 @@ uhid_attach(device_t self)
 
 	sc->sc_repdesc = desc;
 	sc->sc_repdesc_size = size;
-	sc->dev = make_dev(&uhid_cdevsw, device_get_unit(self),
+	sc->dev = make_dev(&hidraw_cdevsw, device_get_unit(self),
 			UID_ROOT, GID_OPERATOR,
-			0644, "uhid%d", device_get_unit(self));
+			0644, "hidraw%d", device_get_unit(self));
 	sc->dev->si_drv1 = sc;
 
-	hidbus_set_intr(sc->sc_dev, uhid_intr);
+	hidbus_set_intr(sc->sc_dev, hidraw_intr);
 
 	return 0;
 }
 
 static int
-uhid_detach(device_t self)
+hidraw_detach(device_t self)
 {
-	struct uhid_softc *sc = device_get_softc(self);
+	struct hidraw_softc *sc = device_get_softc(self);
 
-	DPRINTF(("uhid_detach: sc=%p\n", sc));
+	DPRINTF(("hidraw_detach: sc=%p\n", sc));
 	sc->sc_dying = 1;
 
 	mtx_lock(hidbus_get_lock(self));
@@ -262,17 +262,17 @@ uhid_detach(device_t self)
 }
 
 void
-uhid_intr(void *context, void *buf, uint16_t len)
+hidraw_intr(void *context, void *buf, uint16_t len)
 {
 	device_t dev = context;
-	struct uhid_softc *sc = device_get_softc(dev);
+	struct hidraw_softc *sc = device_get_softc(dev);
 
 #ifdef USB_DEBUG
-	if (uhiddebug > 5) {
+	if (hidrawdebug > 5) {
 		u_int32_t i;
 
-		DPRINTF(("uhid_intr: len=%d\n", len));
-		DPRINTF(("uhid_intr: data ="));
+		DPRINTF(("hidraw_intr: len=%d\n", len));
+		DPRINTF(("hidraw_intr: data ="));
 		for (i = 0; i < len; i++)
 			DPRINTF((" %02x", ((uint8_t *)buf)[i]));
 		DPRINTF(("\n"));
@@ -283,13 +283,13 @@ uhid_intr(void *context, void *buf, uint16_t len)
 
 	if (sc->sc_state & UHID_ASLP) {
 		sc->sc_state &= ~UHID_ASLP;
-		DPRINTFN(5, ("uhid_intr: waking %p\n", &sc->sc_q));
+		DPRINTFN(5, ("hidraw_intr: waking %p\n", &sc->sc_q));
 		wakeup(&sc->sc_q);
 	}
 	selwakeuppri(&sc->sc_rsel, PZERO);
 #ifdef NOT_YET
 	if (sc->sc_async != NULL) {
-		DPRINTFN(3, ("uhid_intr: sending SIGIO %p\n", sc->sc_async));
+		DPRINTFN(3, ("hidraw_intr: sending SIGIO %p\n", sc->sc_async));
 		PROC_LOCK(sc->sc_async);
 		psignal(sc->sc_async, SIGIO);
 		PROC_UNLOCK(sc->sc_async);
@@ -298,15 +298,15 @@ uhid_intr(void *context, void *buf, uint16_t len)
 }
 
 int
-uhidopen(struct cdev *dev, int flag, int mode, struct thread *p)
+hidrawopen(struct cdev *dev, int flag, int mode, struct thread *p)
 {
-	struct uhid_softc *sc;
+	struct hidraw_softc *sc;
 
 	sc = dev->si_drv1;
 	if (sc == NULL)
 		return (ENXIO);
 
-	DPRINTF(("uhidopen: sc=%p\n", sc));
+	DPRINTF(("hidrawopen: sc=%p\n", sc));
 
 	if (sc->sc_dying)
 		return (ENXIO);
@@ -334,13 +334,13 @@ uhidopen(struct cdev *dev, int flag, int mode, struct thread *p)
 }
 
 int
-uhidclose(struct cdev *dev, int flag, int mode, struct thread *p)
+hidrawclose(struct cdev *dev, int flag, int mode, struct thread *p)
 {
-	struct uhid_softc *sc;
+	struct hidraw_softc *sc;
 
 	sc = dev->si_drv1;
 
-	DPRINTF(("uhidclose: sc=%p\n", sc));
+	DPRINTF(("hidrawclose: sc=%p\n", sc));
 
 	/* Disable interrupts. */
 	mtx_lock(hidbus_get_lock(sc->sc_dev));
@@ -364,15 +364,15 @@ uhidclose(struct cdev *dev, int flag, int mode, struct thread *p)
 }
 
 int
-uhid_do_read(struct uhid_softc *sc, struct uio *uio, int flag)
+hidraw_do_read(struct hidraw_softc *sc, struct uio *uio, int flag)
 {
 	int error = 0;
 	size_t length;
 	u_char buffer[UHID_CHUNK];
 
-	DPRINTFN(1, ("uhidread\n"));
+	DPRINTFN(1, ("hidrawread\n"));
 	if (sc->sc_state & UHID_IMMED) {
-		DPRINTFN(1, ("uhidread immed\n"));
+		DPRINTFN(1, ("hidrawread immed\n"));
 
 		error = hid_get_report(sc->sc_dev, buffer, sc->sc_isize, NULL,
 		    HID_INPUT_REPORT, sc->sc_iid);
@@ -388,10 +388,10 @@ uhid_do_read(struct uhid_softc *sc, struct uio *uio, int flag)
 			return (EWOULDBLOCK);
 		}
 		sc->sc_state |= UHID_ASLP;
-		DPRINTFN(5, ("uhidread: sleep on %p\n", &sc->sc_q));
+		DPRINTFN(5, ("hidrawread: sleep on %p\n", &sc->sc_q));
 		error = mtx_sleep(&sc->sc_q, hidbus_get_lock(sc->sc_dev),
-		    PZERO | PCATCH, "uhidrea", 0);
-		DPRINTFN(5, ("uhidread: woke, error=%d\n", error));
+		    PZERO | PCATCH, "hidrawrea", 0);
+		DPRINTFN(5, ("hidrawread: woke, error=%d\n", error));
 		if (sc->sc_dying)
 			error = EIO;
 		if (error) {
@@ -408,7 +408,7 @@ uhid_do_read(struct uhid_softc *sc, struct uio *uio, int flag)
 
 		/* Remove a small chunk from the input queue. */
 		(void) q_to_b(&sc->sc_q, buffer, length);
-		DPRINTFN(5, ("uhidread: got %lu chars\n", (u_long)length));
+		DPRINTFN(5, ("hidrawread: got %lu chars\n", (u_long)length));
 
 		/* Copy the data to the user process. */
 		mtx_unlock(hidbus_get_lock(sc->sc_dev));
@@ -422,26 +422,26 @@ uhid_do_read(struct uhid_softc *sc, struct uio *uio, int flag)
 }
 
 int
-uhidread(struct cdev *dev, struct uio *uio, int flag)
+hidrawread(struct cdev *dev, struct uio *uio, int flag)
 {
-	struct uhid_softc *sc;
+	struct hidraw_softc *sc;
 	int error;
 
 	sc = dev->si_drv1;
 	sc->sc_refcnt++;
-	error = uhid_do_read(sc, uio, flag);
+	error = hidraw_do_read(sc, uio, flag);
 	if (--sc->sc_refcnt < 0)
 		{} /*usb_detach_wakeup(sc->sc_dev);*/
 	return (error);
 }
 
 int
-uhid_do_write(struct uhid_softc *sc, struct uio *uio, int flag)
+hidraw_do_write(struct hidraw_softc *sc, struct uio *uio, int flag)
 {
 	int error;
 	int size;
 
-	DPRINTFN(1, ("uhidwrite\n"));
+	DPRINTFN(1, ("hidrawwrite\n"));
 
 	if (sc->sc_dying)
 		return (EIO);
@@ -464,21 +464,21 @@ uhid_do_write(struct uhid_softc *sc, struct uio *uio, int flag)
 }
 
 int
-uhidwrite(struct cdev *dev, struct uio *uio, int flag)
+hidrawwrite(struct cdev *dev, struct uio *uio, int flag)
 {
-	struct uhid_softc *sc;
+	struct hidraw_softc *sc;
 	int error;
 
 	sc = dev->si_drv1;
 	sc->sc_refcnt++;
-	error = uhid_do_write(sc, uio, flag);
+	error = hidraw_do_write(sc, uio, flag);
 	if (--sc->sc_refcnt < 0)
 		{} /*usb_detach_wakeup(sc->sc_dev);*/
 	return (error);
 }
 
 int
-uhid_do_ioctl(struct uhid_softc *sc, u_long cmd, caddr_t addr, int flag,
+hidraw_do_ioctl(struct hidraw_softc *sc, u_long cmd, caddr_t addr, int flag,
 	      struct thread *p)
 {
 	struct usb_gen_descriptor *ugd;
@@ -486,7 +486,7 @@ uhid_do_ioctl(struct uhid_softc *sc, u_long cmd, caddr_t addr, int flag,
 	int size, id;
 	int error;
 
-	DPRINTFN(2, ("uhidioctl: cmd=%lx\n", cmd));
+	DPRINTFN(2, ("hidrawioctl: cmd=%lx\n", cmd));
 
 	if (sc->sc_dying)
 		return (EIO);
@@ -502,7 +502,7 @@ uhid_do_ioctl(struct uhid_softc *sc, u_long cmd, caddr_t addr, int flag,
 			if (sc->sc_async != NULL)
 				return (EBUSY);
 			sc->sc_async = p->td_proc;
-			DPRINTF(("uhid_do_ioctl: FIOASYNC %p\n", sc->sc_async));
+			DPRINTF(("hidraw_do_ioctl: FIOASYNC %p\n", sc->sc_async));
 		} else
 			sc->sc_async = NULL;
 		break;
@@ -616,23 +616,23 @@ uhid_do_ioctl(struct uhid_softc *sc, u_long cmd, caddr_t addr, int flag,
 }
 
 int
-uhidioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag, struct thread *p)
+hidrawioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag, struct thread *p)
 {
-	struct uhid_softc *sc;
+	struct hidraw_softc *sc;
 	int error;
 
 	sc = dev->si_drv1;
 	sc->sc_refcnt++;
-	error = uhid_do_ioctl(sc, cmd, addr, flag, p);
+	error = hidraw_do_ioctl(sc, cmd, addr, flag, p);
 	if (--sc->sc_refcnt < 0)
 		{} /*usb_detach_wakeup(sc->sc_dev);*/
 	return (error);
 }
 
 int
-uhidpoll(struct cdev *dev, int events, struct thread *p)
+hidrawpoll(struct cdev *dev, int events, struct thread *p)
 {
-	struct uhid_softc *sc;
+	struct hidraw_softc *sc;
 	int revents = 0;
 
 	sc = dev->si_drv1;
