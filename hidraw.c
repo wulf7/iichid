@@ -126,18 +126,17 @@ struct hidraw_softc {
 #define	UHID_INDEX	0xFF	/* Arbitrary high value */
 
 d_open_t	hidrawopen;
-d_close_t	hidrawclose;
 d_read_t	hidrawread;
 d_write_t	hidrawwrite;
 d_ioctl_t	hidrawioctl;
 d_poll_t	hidrawpoll;
 
+static d_priv_dtor_t	hidraw_dtor;
 
 static struct cdevsw hidraw_cdevsw = {
 	.d_version =	D_VERSION,
 	.d_flags =	D_NEEDGIANT,
 	.d_open =	hidrawopen,
-	.d_close =	hidrawclose,
 	.d_read =	hidrawread,
 	.d_write =	hidrawwrite,
 	.d_ioctl =	hidrawioctl,
@@ -313,6 +312,7 @@ int
 hidrawopen(struct cdev *dev, int flag, int mode, struct thread *p)
 {
 	struct hidraw_softc *sc;
+	int error;
 
 	sc = dev->si_drv1;
 	if (sc == NULL)
@@ -323,9 +323,21 @@ hidrawopen(struct cdev *dev, int flag, int mode, struct thread *p)
 	if (sc->sc_state.dying)
 		return (ENXIO);
 
-	if (sc->sc_state.open)
+	mtx_lock(hidbus_get_lock(sc->sc_dev));
+	if (sc->sc_state.open) {
+		mtx_unlock(hidbus_get_lock(sc->sc_dev));
 		return (EBUSY);
+	}
 	sc->sc_state.open = true;
+	mtx_unlock(hidbus_get_lock(sc->sc_dev));
+
+	error = devfs_set_cdevpriv(sc, hidraw_dtor);
+	if (error != 0) {
+		mtx_lock(hidbus_get_lock(sc->sc_dev));
+		sc->sc_state.open = false;
+		mtx_unlock(hidbus_get_lock(sc->sc_dev));
+		return (error);
+	}
 
 	clist_alloc_cblocks(&sc->sc_q, UHID_BSIZE, UHID_BSIZE);
 	sc->sc_ibuf = malloc(sc->sc_isize, M_USBDEV, M_WAITOK);
@@ -344,14 +356,12 @@ hidrawopen(struct cdev *dev, int flag, int mode, struct thread *p)
 	return (0);
 }
 
-int
-hidrawclose(struct cdev *dev, int flag, int mode, struct thread *p)
+static void
+hidraw_dtor(void *data)
 {
-	struct hidraw_softc *sc;
+	struct hidraw_softc *sc = data;
 
-	sc = dev->si_drv1;
-
-	DPRINTF(("hidrawclose: sc=%p\n", sc));
+	DPRINTF(("hidraw_dtor: sc=%p\n", sc));
 
 	/* Disable interrupts. */
 	mtx_lock(hidbus_get_lock(sc->sc_dev));
@@ -372,8 +382,6 @@ hidrawclose(struct cdev *dev, int flag, int mode, struct thread *p)
 #ifdef NOT_YET
 	sc->sc_async = 0;
 #endif
-
-	return (0);
 }
 
 int
