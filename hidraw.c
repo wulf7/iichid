@@ -91,7 +91,6 @@ struct hidraw_softc {
 	device_t sc_dev;		/* base device */
 
 	struct mtx *sc_mtx;		/* hidbus private mutex */
-	struct sx sc_sx;		/* user request serializer lock */
 
 	int sc_isize;
 	int sc_osize;
@@ -100,8 +99,9 @@ struct hidraw_softc {
 	u_int8_t sc_oid;
 	u_int8_t sc_fid;
 
-	u_char *sc_buf;
+	u_char *sc_buf;			/* user request proxy buffer */
 	int sc_buf_size;
+	struct sx sc_buf_lock;
 
 	void *sc_repdesc;
 	int sc_repdesc_size;
@@ -196,7 +196,7 @@ hidraw_attach(device_t self)
 		return ENXIO;
 	}
 
-	sx_init(&sc->sc_sx, "hidraw sx");
+	sx_init(&sc->sc_buf_lock, "hidraw sx");
 
 	sc->sc_isize = hid_report_size(desc, size, hid_input,   &sc->sc_iid);
 	sc->sc_osize = hid_report_size(desc, size, hid_output,  &sc->sc_oid);
@@ -217,7 +217,7 @@ hidraw_attach(device_t self)
 	error = make_dev_s(&mda, &sc->dev, "hidraw%d", device_get_unit(self));
 	if (error) {
 		device_printf(self, "Can not create character device\n");
-		sx_destroy(&sc->sc_sx);
+		sx_destroy(&sc->sc_buf_lock);
 		return (error);
 	}
 
@@ -240,7 +240,7 @@ hidraw_detach(device_t self)
 		hidraw_notify(sc);
 	mtx_unlock(sc->sc_mtx);
 	destroy_dev(sc->dev);
-	sx_destroy(&sc->sc_sx);
+	sx_destroy(&sc->sc_buf_lock);
 
 	return (0);
 }
@@ -349,12 +349,12 @@ hidraw_read(struct cdev *dev, struct uio *uio, int flag)
 		mtx_unlock(sc->sc_mtx);
 		DPRINTFN(1, "immed\n");
 
-		sx_xlock(&sc->sc_sx);
+		sx_xlock(&sc->sc_buf_lock);
 		error = hid_get_report(sc->sc_dev, sc->sc_buf, sc->sc_isize,
 		    NULL, HID_INPUT_REPORT, sc->sc_iid);
 		if (error == 0)
 			error = uiomove(sc->sc_buf, sc->sc_isize, uio);
-		sx_unlock(&sc->sc_sx);
+		sx_unlock(&sc->sc_buf_lock);
 		return (error);
 	}
 
@@ -413,7 +413,7 @@ hidraw_write(struct cdev *dev, struct uio *uio, int flag)
 	error = 0;
 	if (uio->uio_resid != size)
 		return (EINVAL);
-	sx_xlock(&sc->sc_sx);
+	sx_xlock(&sc->sc_buf_lock);
 	error = uiomove(sc->sc_buf, size, uio);
 	if (!error) {
 		if (sc->sc_oid)
@@ -423,7 +423,7 @@ hidraw_write(struct cdev *dev, struct uio *uio, int flag)
 			error = hid_set_report(sc->sc_dev, sc->sc_buf,
 			    size, UHID_OUTPUT_REPORT, 0);
 	}
-	sx_unlock(&sc->sc_sx);
+	sx_unlock(&sc->sc_buf_lock);
 
 	return (error);
 }
@@ -483,10 +483,10 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 	case USB_SET_IMMED:
 		if (*(int *)addr) {
 			/* XXX should read into ibuf, but does it matter? */
-			sx_xlock(&sc->sc_sx);
+			sx_xlock(&sc->sc_buf_lock);
 			error = hid_get_report(sc->sc_dev, sc->sc_buf,
 			    sc->sc_isize, NULL, UHID_INPUT_REPORT, sc->sc_iid);
-			sx_unlock(&sc->sc_sx);
+			sx_unlock(&sc->sc_buf_lock);
 			if (error)
 				return (EOPNOTSUPP);
 
@@ -521,12 +521,12 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		if (id != 0)
 			copyin(ugd->ugd_data, &id, 1);
 		size = imin(ugd->ugd_maxlen, size);
-		sx_xlock(&sc->sc_sx);
+		sx_xlock(&sc->sc_buf_lock);
 		error = hid_get_report(sc->sc_dev, sc->sc_buf, size, NULL,
 		    ugd->ugd_report_type, id);
 		if (!error)
 			copyout(sc->sc_buf, ugd->ugd_data, size);
-		sx_unlock(&sc->sc_sx);
+		sx_unlock(&sc->sc_buf_lock);
 		break;
 
 	case USB_SET_REPORT:
@@ -548,13 +548,13 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 			return (EINVAL);
 		}
 		size = imin(ugd->ugd_maxlen, size);
-		sx_xlock(&sc->sc_sx);
+		sx_xlock(&sc->sc_buf_lock);
 		copyin(ugd->ugd_data, sc->sc_buf, size);
 		if (id != 0)
 			id = sc->sc_buf[0];
 		error = hid_set_report(sc->sc_dev, sc->sc_buf, size,
 		    ugd->ugd_report_type, id);
-		sx_unlock(&sc->sc_sx);
+		sx_unlock(&sc->sc_buf_lock);
 		if (error)
 			return (EIO);
 		break;
