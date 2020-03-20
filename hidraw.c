@@ -148,29 +148,6 @@ static device_probe_t	hidraw_probe;
 static device_attach_t	hidraw_attach;
 static device_detach_t	hidraw_detach;
 
-static device_method_t hidraw_methods[] = {
-	/* Device interface */
-	DEVMETHOD(device_identify,	hidraw_identify),
-	DEVMETHOD(device_probe,		hidraw_probe),
-	DEVMETHOD(device_attach,	hidraw_attach),
-	DEVMETHOD(device_detach,	hidraw_detach),
-
-	{ 0, 0 }
-};
-
-static driver_t hidraw_driver = {
-	"hidraw",
-	hidraw_methods,
-	sizeof(struct hidraw_softc)
-};
-
-static devclass_t hidraw_devclass;
-
-DRIVER_MODULE(hidraw, hidbus, hidraw_driver, hidraw_devclass, NULL, 0);
-MODULE_DEPEND(hidraw, hidbus, 1, 1, 1);
-MODULE_DEPEND(hidraw, hid, 1, 1, 1);
-MODULE_VERSION(hidraw, 1);
-
 static void
 hidraw_identify(driver_t *driver, device_t parent)
 {
@@ -626,3 +603,26 @@ hidraw_poll(struct cdev *dev, int events, struct thread *p)
 	mtx_unlock(sc->sc_mtx);
 	return (revents);
 }
+
+static device_method_t hidraw_methods[] = {
+	/* Device interface */
+	DEVMETHOD(device_identify,	hidraw_identify),
+	DEVMETHOD(device_probe,		hidraw_probe),
+	DEVMETHOD(device_attach,	hidraw_attach),
+	DEVMETHOD(device_detach,	hidraw_detach),
+
+	{ 0, 0 }
+};
+
+static driver_t hidraw_driver = {
+	"hidraw",
+	hidraw_methods,
+	sizeof(struct hidraw_softc)
+};
+
+static devclass_t hidraw_devclass;
+
+DRIVER_MODULE(hidraw, hidbus, hidraw_driver, hidraw_devclass, NULL, 0);
+MODULE_DEPEND(hidraw, hidbus, 1, 1, 1);
+MODULE_DEPEND(hidraw, hid, 1, 1, 1);
+MODULE_VERSION(hidraw, 1);
