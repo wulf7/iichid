@@ -148,6 +148,8 @@ static device_probe_t	hidraw_probe;
 static device_attach_t	hidraw_attach;
 static device_detach_t	hidraw_detach;
 
+static void		hidraw_notify(struct hidraw_softc *);
+
 static void
 hidraw_identify(driver_t *driver, device_t parent)
 {
@@ -232,10 +234,9 @@ hidraw_detach(device_t self)
 
 	mtx_lock(sc->sc_mtx);
 	sc->dev->si_drv1 = NULL;
-	if (sc->sc_state.open) {
-		/* Wake everyone */
-		wakeup(&sc->sc_q);
-	}
+	/* Wake everyone */
+	if (sc->sc_state.open)
+		hidraw_notify(sc);
 	mtx_unlock(sc->sc_mtx);
 	destroy_dev(sc->dev);
 	sx_destroy(&sc->sc_sx);
@@ -254,20 +255,7 @@ hidraw_intr(void *context, void *buf, uint16_t len)
 
 	(void) b_to_q(buf, sc->sc_isize, &sc->sc_q);
 
-	if (sc->sc_state.aslp) {
-		sc->sc_state.aslp = false;
-		DPRINTFN(5, "waking %p\n", &sc->sc_q);
-		wakeup(&sc->sc_q);
-	}
-	selwakeuppri(&sc->sc_rsel, PZERO);
-#ifdef NOT_YET
-	if (sc->sc_async != NULL) {
-		DPRINTFN(3, "sending SIGIO %p\n", sc->sc_async);
-		PROC_LOCK(sc->sc_async);
-		psignal(sc->sc_async, SIGIO);
-		PROC_UNLOCK(sc->sc_async);
-	}
-#endif
+	hidraw_notify(sc);
 }
 
 static int
@@ -602,6 +590,28 @@ hidraw_poll(struct cdev *dev, int events, struct thread *p)
 
 	mtx_unlock(sc->sc_mtx);
 	return (revents);
+}
+
+static void
+hidraw_notify(struct hidraw_softc *sc)
+{
+
+	mtx_assert(sc->sc_mtx, MA_OWNED);
+
+	if (sc->sc_state.aslp) {
+		sc->sc_state.aslp = false;
+		DPRINTFN(5, "waking %p\n", &sc->sc_q);
+		wakeup(&sc->sc_q);
+	}
+	selwakeuppri(&sc->sc_rsel, PZERO);
+#ifdef NOT_YET
+	if (sc->sc_async != NULL) {
+		DPRINTFN(3, "sending SIGIO %p\n", sc->sc_async);
+		PROC_LOCK(sc->sc_async);
+		psignal(sc->sc_async, SIGIO);
+		PROC_UNLOCK(sc->sc_async);
+	}
+#endif
 }
 
 static device_method_t hidraw_methods[] = {
