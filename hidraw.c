@@ -76,16 +76,15 @@ __FBSDID("$FreeBSD$");
 #include "hidbus.h"
 #include <dev/usb/usb_ioctl.h>
 
-#ifdef USB_DEBUG
-#define DPRINTF(x)	if (hidrawdebug) printf x
-#define DPRINTFN(n,x)	if (hidrawdebug>(n)) printf x
-int	hidrawdebug = 0;
-SYSCTL_NODE(_hw_usb, OID_AUTO, hidraw, CTLFLAG_RW, 0, "HID raw interface");
-SYSCTL_INT(_hw_usb_hidraw, OID_AUTO, debug, CTLFLAG_RW,
-	   &hidrawdebug, 0, "hidraw debug level");
-#else
-#define DPRINTF(x)
-#define DPRINTFN(n,x)
+#define HID_DEBUG_VAR	hidraw_debug
+#include "hid_debug.h"
+
+#ifdef HID_DEBUG
+static int hidraw_debug = 0;
+static SYSCTL_NODE(_hw_hid, OID_AUTO, hidraw, CTLFLAG_RW, 0,
+    "HID raw interface");
+SYSCTL_INT(_hw_hid_hidraw, OID_AUTO, debug, CTLFLAG_RWTUN,
+    &hidraw_debug, 0, "Debug level");
 #endif
 
 struct hidraw_softc {
@@ -252,7 +251,7 @@ hidraw_detach(device_t self)
 {
 	struct hidraw_softc *sc = device_get_softc(self);
 
-	DPRINTF(("hidraw_detach: sc=%p\n", sc));
+	DPRINTF("sc=%p\n", sc);
 
 	mtx_lock(sc->sc_mtx);
 	sc->dev->si_drv1 = NULL;
@@ -273,29 +272,20 @@ hidraw_intr(void *context, void *buf, uint16_t len)
 	device_t dev = context;
 	struct hidraw_softc *sc = device_get_softc(dev);
 
-#ifdef USB_DEBUG
-	if (hidrawdebug > 5) {
-		u_int32_t i;
-
-		DPRINTF(("hidraw_intr: len=%d\n", len));
-		DPRINTF(("hidraw_intr: data ="));
-		for (i = 0; i < len; i++)
-			DPRINTF((" %02x", ((uint8_t *)buf)[i]));
-		DPRINTF(("\n"));
-	}
-#endif
+	DPRINTFN(5, "len=%d\n", len);
+	DPRINTFN(5, "data = %*D\n", len, buf, " ");
 
 	(void) b_to_q(buf, sc->sc_isize, &sc->sc_q);
 
 	if (sc->sc_state.aslp) {
 		sc->sc_state.aslp = false;
-		DPRINTFN(5, ("hidraw_intr: waking %p\n", &sc->sc_q));
+		DPRINTFN(5, "waking %p\n", &sc->sc_q);
 		wakeup(&sc->sc_q);
 	}
 	selwakeuppri(&sc->sc_rsel, PZERO);
 #ifdef NOT_YET
 	if (sc->sc_async != NULL) {
-		DPRINTFN(3, ("hidraw_intr: sending SIGIO %p\n", sc->sc_async));
+		DPRINTFN(3, "sending SIGIO %p\n", sc->sc_async);
 		PROC_LOCK(sc->sc_async);
 		psignal(sc->sc_async, SIGIO);
 		PROC_UNLOCK(sc->sc_async);
@@ -313,7 +303,7 @@ hidraw_open(struct cdev *dev, int flag, int mode, struct thread *p)
 	if (sc == NULL)
 		return (ENXIO);
 
-	DPRINTF(("hidraw_open: sc=%p\n", sc));
+	DPRINTF("sc=%p\n", sc);
 
 	mtx_lock(sc->sc_mtx);
 	if (sc->sc_state.open) {
@@ -352,7 +342,7 @@ hidraw_dtor(void *data)
 {
 	struct hidraw_softc *sc = data;
 
-	DPRINTF(("hidraw_dtor: sc=%p\n", sc));
+	DPRINTF("sc=%p\n", sc);
 
 	/* Disable interrupts. */
 	mtx_lock(sc->sc_mtx);
@@ -382,7 +372,7 @@ hidraw_read(struct cdev *dev, struct uio *uio, int flag)
 	size_t length;
 	u_char buffer[UHID_CHUNK];
 
-	DPRINTFN(1, ("hidraw_read\n"));
+	DPRINTFN(1, "\n");
 
 	sc = dev->si_drv1;
 	if (sc == NULL)
@@ -391,7 +381,7 @@ hidraw_read(struct cdev *dev, struct uio *uio, int flag)
 	mtx_lock(sc->sc_mtx);
 	if (sc->sc_state.immed) {
 		mtx_unlock(sc->sc_mtx);
-		DPRINTFN(1, ("hidraw_read immed\n"));
+		DPRINTFN(1, "immed\n");
 
 		sx_xlock(&sc->sc_sx);
 		error = hid_get_report(sc->sc_dev, sc->sc_buf, sc->sc_isize,
@@ -408,10 +398,10 @@ hidraw_read(struct cdev *dev, struct uio *uio, int flag)
 			break;
 		}
 		sc->sc_state.aslp = true;
-		DPRINTFN(5, ("hidraw_read: sleep on %p\n", &sc->sc_q));
+		DPRINTFN(5, "sleep on %p\n", &sc->sc_q);
 		error = mtx_sleep(&sc->sc_q, sc->sc_mtx, PZERO | PCATCH,
 		    "hidrawrd", 0);
-		DPRINTFN(5, ("hidraw_read: woke, error=%d\n", error));
+		DPRINTFN(5, "woke, error=%d\n", error);
 		if (dev->si_drv1 == NULL)
 			error = EIO;
 		if (error) {
@@ -428,7 +418,7 @@ hidraw_read(struct cdev *dev, struct uio *uio, int flag)
 
 		/* Remove a small chunk from the input queue. */
 		(void) q_to_b(&sc->sc_q, buffer, length);
-		DPRINTFN(5, ("hidraw_read: got %lu chars\n", (u_long)length));
+		DPRINTFN(5, "got %lu chars\n", (u_long)length);
 
 		/* Copy the data to the user process. */
 		mtx_unlock(sc->sc_mtx);
@@ -447,7 +437,7 @@ hidraw_write(struct cdev *dev, struct uio *uio, int flag)
 	int error;
 	int size;
 
-	DPRINTFN(1, ("hidraw_write\n"));
+	DPRINTFN(1, "\n");
 
 	sc = dev->si_drv1;
 	if (sc == NULL)
@@ -481,7 +471,7 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 	int size, id;
 	int error;
 
-	DPRINTFN(2, ("hidraw_ioctl: cmd=%lx\n", cmd));
+	DPRINTFN(2, "cmd=%lx\n", cmd);
 
 	sc = dev->si_drv1;
 	if (sc == NULL)
@@ -498,7 +488,7 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 			if (sc->sc_async != NULL)
 				return (EBUSY);
 			sc->sc_async = p->td_proc;
-			DPRINTF(("hidraw_ioctl: FIOASYNC %p\n", sc->sc_async));
+			DPRINTF("FIOASYNC %p\n", sc->sc_async);
 		} else
 			sc->sc_async = NULL;
 		break;
