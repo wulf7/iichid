@@ -111,9 +111,10 @@ struct hidraw_softc {
 	struct proc *sc_async;	/* process that wants SIGIO */
 	struct {			/* driver state */
 		bool	open:1;		/* device is open */
-		bool	aslp:1;		/* waiting for device data */
+		bool	aslp:1;		/* waiting for device data in read() */
+		bool	sel:1;		/* waiting for device data in poll() */
 		bool	immed:1;	/* return read data immediately */
-		u_char	reserved:5;
+		u_char	reserved:4;
 	} sc_state;
 
 	struct cdev *dev;
@@ -578,17 +579,19 @@ hidraw_poll(struct cdev *dev, int events, struct thread *p)
 	if (sc == NULL)
 		return (POLLHUP);
 
-	mtx_lock(sc->sc_mtx);
 	if (events & (POLLOUT | POLLWRNORM))
 		revents |= events & (POLLOUT | POLLWRNORM);
 	if (events & (POLLIN | POLLRDNORM)) {
+		mtx_lock(sc->sc_mtx);
 		if (sc->sc_q.c_cc > 0)
 			revents |= events & (POLLIN | POLLRDNORM);
-		else
+		else {
+			sc->sc_state.sel = true;
 			selrecord(p, &sc->sc_rsel);
+		}
+		mtx_unlock(sc->sc_mtx);
 	}
 
-	mtx_unlock(sc->sc_mtx);
 	return (revents);
 }
 
@@ -603,7 +606,10 @@ hidraw_notify(struct hidraw_softc *sc)
 		DPRINTFN(5, "waking %p\n", &sc->sc_q);
 		wakeup(&sc->sc_q);
 	}
-	selwakeuppri(&sc->sc_rsel, PZERO);
+	if (sc->sc_state.sel) {
+		sc->sc_state.sel = false;
+		selwakeuppri(&sc->sc_rsel, PZERO);
+	}
 #ifdef NOT_YET
 	if (sc->sc_async != NULL) {
 		DPRINTFN(3, "sending SIGIO %p\n", sc->sc_async);
