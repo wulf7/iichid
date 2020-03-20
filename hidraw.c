@@ -388,7 +388,9 @@ hidraw_read(struct cdev *dev, struct uio *uio, int flag)
 	if (sc == NULL)
 		return (ENXIO);
 
+	mtx_lock(sc->sc_mtx);
 	if (sc->sc_state.immed) {
+		mtx_unlock(sc->sc_mtx);
 		DPRINTFN(1, ("hidraw_read immed\n"));
 
 		sx_xlock(&sc->sc_sx);
@@ -400,11 +402,10 @@ hidraw_read(struct cdev *dev, struct uio *uio, int flag)
 		return (error);
 	}
 
-	mtx_lock(sc->sc_mtx);
 	while (sc->sc_q.c_cc == 0) {
 		if (flag & O_NONBLOCK) {
-			mtx_unlock(sc->sc_mtx);
-			return (EWOULDBLOCK);
+			error = EWOULDBLOCK;
+			break;
 		}
 		sc->sc_state.aslp = true;
 		DPRINTFN(5, ("hidraw_read: sleep on %p\n", &sc->sc_q));
@@ -427,13 +428,12 @@ hidraw_read(struct cdev *dev, struct uio *uio, int flag)
 
 		/* Remove a small chunk from the input queue. */
 		(void) q_to_b(&sc->sc_q, buffer, length);
-		DPRINTFN(5, ("hidrawread: got %lu chars\n", (u_long)length));
+		DPRINTFN(5, ("hidraw_read: got %lu chars\n", (u_long)length));
 
 		/* Copy the data to the user process. */
 		mtx_unlock(sc->sc_mtx);
 		error = uiomove(buffer, length, uio);
 		mtx_lock(sc->sc_mtx);
-			break;
 	}
 	mtx_unlock(sc->sc_mtx);
 
