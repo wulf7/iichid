@@ -260,7 +260,7 @@ hidraw_intr(void *context, void *buf, uint16_t len)
 }
 
 static int
-hidraw_open(struct cdev *dev, int flag, int mode, struct thread *p)
+hidraw_open(struct cdev *dev, int flag, int mode, struct thread *td)
 {
 	struct hidraw_softc *sc;
 	int error;
@@ -430,7 +430,7 @@ hidraw_write(struct cdev *dev, struct uio *uio, int flag)
 
 static int
 hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
-    struct thread *p)
+    struct thread *td)
 {
 	struct hidraw_softc *sc;
 	struct usb_gen_descriptor *ugd;
@@ -453,7 +453,7 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		if (*(int *)addr) {
 			if (sc->sc_async != NULL)
 				return (EBUSY);
-			sc->sc_async = p->td_proc;
+			sc->sc_async = td->td_proc;
 			DPRINTF("FIOASYNC %p\n", sc->sc_async);
 		} else
 			sc->sc_async = NULL;
@@ -570,7 +570,7 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 }
 
 static int
-hidraw_poll(struct cdev *dev, int events, struct thread *p)
+hidraw_poll(struct cdev *dev, int events, struct thread *td)
 {
 	struct hidraw_softc *sc;
 	int revents = 0;
@@ -587,7 +587,7 @@ hidraw_poll(struct cdev *dev, int events, struct thread *p)
 			revents |= events & (POLLIN | POLLRDNORM);
 		else {
 			sc->sc_state.sel = true;
-			selrecord(p, &sc->sc_rsel);
+			selrecord(td, &sc->sc_rsel);
 		}
 		mtx_unlock(sc->sc_mtx);
 	}
