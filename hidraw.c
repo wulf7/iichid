@@ -588,7 +588,7 @@ hidraw_poll(struct cdev *dev, int events, struct thread *p)
 
 	sc = dev->si_drv1;
 	if (sc == NULL)
-		return (EIO);
+		return (POLLHUP);
 
 	mtx_lock(sc->sc_mtx);
 	if (events & (POLLOUT | POLLWRNORM))
