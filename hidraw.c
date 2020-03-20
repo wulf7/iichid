@@ -435,7 +435,7 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 	struct hidraw_softc *sc;
 	struct usb_gen_descriptor *ugd;
 	int size, id;
-	int error;
+	int error = 0;
 
 	DPRINTFN(2, "cmd=%lx\n", cmd);
 
@@ -481,6 +481,10 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		break;
 
 	case USB_SET_IMMED:
+		if (!(flag & FREAD)) {
+			error = EPERM;
+			break;
+		}
 		if (*(int *)addr) {
 			/* XXX should read into ibuf, but does it matter? */
 			sx_xlock(&sc->sc_buf_lock);
@@ -501,6 +505,10 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		break;
 
 	case USB_GET_REPORT:
+		if (!(flag & FREAD)) {
+			error = EPERM;
+			break;
+		}
 		ugd = (struct usb_gen_descriptor *)addr;
 		switch (ugd->ugd_report_type) {
 		case UHID_INPUT_REPORT:
@@ -530,6 +538,10 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		break;
 
 	case USB_SET_REPORT:
+		if (!(flag & FWRITE)) {
+			error = EPERM;
+			break;
+		}
 		ugd = (struct usb_gen_descriptor *)addr;
 		switch (ugd->ugd_report_type) {
 		case UHID_INPUT_REPORT:
@@ -566,7 +578,8 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 	default:
 		return (EINVAL);
 	}
-	return (0);
+
+	return (error);
 }
 
 static int
