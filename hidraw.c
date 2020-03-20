@@ -410,19 +410,12 @@ hidraw_write(struct cdev *dev, struct uio *uio, int flag)
 		return (EIO);
 
 	size = sc->sc_osize;
-	error = 0;
 	if (uio->uio_resid != size)
 		return (EINVAL);
 	sx_xlock(&sc->sc_buf_lock);
 	error = uiomove(sc->sc_buf, size, uio);
-	if (!error) {
-		if (sc->sc_oid)
-			error = hid_set_report(sc->sc_dev, sc->sc_buf+1,
-			    size-1, UHID_OUTPUT_REPORT, sc->sc_buf[0]);
-		else
-			error = hid_set_report(sc->sc_dev, sc->sc_buf,
-			    size, UHID_OUTPUT_REPORT, 0);
-	}
+	if (error == 0)
+		error = hid_write(sc->sc_dev, sc->sc_buf, size);
 	sx_unlock(&sc->sc_buf_lock);
 
 	return (error);
