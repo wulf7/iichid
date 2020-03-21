@@ -74,6 +74,7 @@ __FBSDID("$FreeBSD$");
 
 #include "hid.h"
 #include "hidbus.h"
+#include "hidraw.h"
 #include <dev/usb/usb_ioctl.h>
 
 #define HID_DEBUG_VAR	hidraw_debug
@@ -421,7 +422,7 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 {
 	struct hidraw_softc *sc;
 	struct usb_gen_descriptor *ugd;
-	int size, id;
+	int size, id, len;
 	int error = 0;
 
 	DPRINTFN(2, "cmd=%lx\n", cmd);
@@ -430,10 +431,11 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 	if (sc == NULL)
 		return (EIO);
 
+	/* fixed-length ioctls handling */
 	switch (cmd) {
 	case FIONBIO:
 		/* All handled in the upper FS layer. */
-		break;
+		return (0);
 
 	case FIOASYNC:
 		mtx_lock(sc->sc_mtx);
@@ -446,7 +448,7 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		} else
 			sc->sc_async = NULL;
 		mtx_unlock(sc->sc_mtx);
-		break;
+		return (error);
 
 	/* XXX this is not the most general solution. */
 	case TIOCSPGRP:
@@ -456,7 +458,7 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		else if (*(int *)addr != sc->sc_async->p_pgid)
 			error = EPERM;
 		mtx_unlock(sc->sc_mtx);
-		break;
+		return (error);
 
 	case USB_GET_REPORT_DESC:
 		ugd = (struct usb_gen_descriptor *)addr;
@@ -467,15 +469,12 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		}
 		ugd->ugd_actlen = size;
 		if (ugd->ugd_data == NULL)
-			break;		/* descriptor length only */
-		error = copyout(sc->sc_repdesc, ugd->ugd_data, size);
-		break;
+			return (0);		/* descriptor length only */
+		return (copyout(sc->sc_repdesc, ugd->ugd_data, size));
 
 	case USB_SET_IMMED:
-		if (!(flag & FREAD)) {
-			error = EPERM;
-			break;
-		}
+		if (!(flag & FREAD))
+			return (EPERM);
 		if (*(int *)addr) {
 			/* XXX should read into ibuf, but does it matter? */
 			sx_xlock(&sc->sc_buf_lock);
@@ -493,13 +492,11 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 			sc->sc_state.immed = false;
 			mtx_unlock(sc->sc_mtx);
 		}
-		break;
+		return (0);
 
 	case USB_GET_REPORT:
-		if (!(flag & FREAD)) {
-			error = EPERM;
-			break;
-		}
+		if (!(flag & FREAD))
+			return (EPERM);
 		ugd = (struct usb_gen_descriptor *)addr;
 		switch (ugd->ugd_report_type) {
 		case UHID_INPUT_REPORT:
@@ -524,15 +521,13 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		error = hid_get_report(sc->sc_dev, sc->sc_buf, size, NULL,
 		    ugd->ugd_report_type, id);
 		if (!error)
-			copyout(sc->sc_buf, ugd->ugd_data, size);
+			error = copyout(sc->sc_buf, ugd->ugd_data, size);
 		sx_unlock(&sc->sc_buf_lock);
-		break;
+		return (error);
 
 	case USB_SET_REPORT:
-		if (!(flag & FWRITE)) {
-			error = EPERM;
-			break;
-		}
+		if (!(flag & FWRITE))
+			return (EPERM);
 		ugd = (struct usb_gen_descriptor *)addr;
 		switch (ugd->ugd_report_type) {
 		case UHID_INPUT_REPORT:
@@ -558,19 +553,30 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		error = hid_set_report(sc->sc_dev, sc->sc_buf, size,
 		    ugd->ugd_report_type, id);
 		sx_unlock(&sc->sc_buf_lock);
-		if (error)
-			return (EIO);
-		break;
+		return (error);
 
 	case USB_GET_REPORT_ID:
 		*(int *)addr = 0;	/* XXX: we only support reportid 0? */
-		break;
+		return (0);
 
-	default:
-		return (EINVAL);
+	case HIDIOCGRDESCSIZE:
+	case HIDIOCGRDESC:
+	case HIDIOCGRAWINFO:
+		return (EOPNOTSUPP);
 	}
 
-	return (error);
+	/* variable-length ioctls handling */
+	len = IOCPARM_LEN(cmd);
+	switch (IOCBASECMD(cmd)) {
+	case HIDIOCGRAWNAME(0):
+	case HIDIOCGRAWPHYS(0):
+	case HIDIOCSFEATURE(0):
+	case HIDIOCGFEATURE(0):
+	case HIDIOCGRAWUNIQ(0):
+		return (EOPNOTSUPP);
+	}
+
+	return (EINVAL);
 }
 
 static int
