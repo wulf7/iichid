@@ -294,11 +294,8 @@ hidraw_open(struct cdev *dev, int flag, int mode, struct thread *td)
 	mtx_lock(sc->sc_mtx);
 	hidbus_intr_start(sc->sc_dev);
 	sc->sc_state.immed = false;
-	mtx_unlock(sc->sc_mtx);
-
-#ifdef NOT_YET
 	sc->sc_async = 0;
-#endif
+	mtx_unlock(sc->sc_mtx);
 
 	return (0);
 }
@@ -323,11 +320,8 @@ hidraw_dtor(void *data)
 
 	mtx_lock(sc->sc_mtx);
 	sc->sc_state.open = false;
-	mtx_unlock(sc->sc_mtx);
-
-#ifdef NOT_YET
 	sc->sc_async = 0;
-#endif
+	mtx_unlock(sc->sc_mtx);
 }
 
 static int
@@ -441,25 +435,29 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		/* All handled in the upper FS layer. */
 		break;
 
-#ifdef NOT_YET
 	case FIOASYNC:
+		mtx_lock(sc->sc_mtx);
 		if (*(int *)addr) {
-			if (sc->sc_async != NULL)
-				return (EBUSY);
-			sc->sc_async = td->td_proc;
-			DPRINTF("FIOASYNC %p\n", sc->sc_async);
+			if (sc->sc_async == NULL) {
+				sc->sc_async = td->td_proc;
+				DPRINTF("FIOASYNC %p\n", sc->sc_async);
+			} else
+				error = EBUSY;
 		} else
 			sc->sc_async = NULL;
+		mtx_unlock(sc->sc_mtx);
 		break;
 
 	/* XXX this is not the most general solution. */
 	case TIOCSPGRP:
+		mtx_lock(sc->sc_mtx);
 		if (sc->sc_async == NULL)
-			return (EINVAL);
-		if (*(int *)addr != sc->sc_async->p_pgid)
-			return (EPERM);
+			error = EINVAL;
+		else if (*(int *)addr != sc->sc_async->p_pgid)
+			error = EPERM;
+		mtx_unlock(sc->sc_mtx);
 		break;
-#endif
+
 	case USB_GET_REPORT_DESC:
 		ugd = (struct usb_gen_descriptor *)addr;
 		if (sc->sc_repdesc_size > ugd->ugd_maxlen) {
@@ -616,14 +614,12 @@ hidraw_notify(struct hidraw_softc *sc)
 		sc->sc_state.sel = false;
 		selwakeuppri(&sc->sc_rsel, PZERO);
 	}
-#ifdef NOT_YET
 	if (sc->sc_async != NULL) {
 		DPRINTFN(3, "sending SIGIO %p\n", sc->sc_async);
 		PROC_LOCK(sc->sc_async);
-		psignal(sc->sc_async, SIGIO);
+		kern_psignal(sc->sc_async, SIGIO);
 		PROC_UNLOCK(sc->sc_async);
 	}
-#endif
 }
 
 static device_method_t hidraw_methods[] = {
