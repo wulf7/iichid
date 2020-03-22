@@ -88,6 +88,8 @@ SYSCTL_INT(_hw_hid_hidraw, OID_AUTO, debug, CTLFLAG_RWTUN,
     &hidraw_debug, 0, "Debug level");
 #endif
 
+#define	UHID_INDEX	0xFF	/* Arbitrary high value */
+
 struct hidraw_softc {
 	device_t sc_dev;		/* base device */
 
@@ -96,9 +98,9 @@ struct hidraw_softc {
 	int sc_isize;
 	int sc_osize;
 	int sc_fsize;
-	u_int8_t sc_iid;
-	u_int8_t sc_oid;
-	u_int8_t sc_fid;
+	uint8_t sc_iid;
+	uint8_t sc_oid;
+	uint8_t sc_fid;
 
 	u_char *sc_buf;			/* user request proxy buffer */
 	int sc_buf_size;
@@ -124,8 +126,6 @@ struct hidraw_softc {
 
 	struct cdev *dev;
 };
-
-#define	UHID_INDEX	0xFF	/* Arbitrary high value */
 
 static d_open_t		hidraw_open;
 static d_read_t		hidraw_read;
@@ -198,7 +198,7 @@ hidraw_attach(device_t self)
 	error = hid_get_report_descr(sc->sc_dev, &desc, &size);
 	if (error) {
 		device_printf(self, "no report descriptor\n");
-		return ENXIO;
+		return (ENXIO);
 	}
 
 	sx_init(&sc->sc_buf_lock, "hidraw sx");
