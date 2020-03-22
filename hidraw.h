@@ -33,7 +33,7 @@
 #include <sys/ioccom.h>
 
 #define	HIDRAW_BUFFER_SIZE	64	/* number of input reports buffered */
-#define	HID_MAX_DESCRIPTOR_SIZE	4096
+#define	HID_MAX_DESCRIPTOR_SIZE	4096	/* artificial limit taken from Linux */
 
 struct hidraw_report_descriptor {
 	uint32_t	size;
@@ -47,7 +47,7 @@ struct hidraw_devinfo {
 };
 
 #define	HIDIOCGRDESCSIZE	_IOR('H', 0x01, int)
-#define	HIDIOCGRDESC		_IOR('H', 0x02, struct hidraw_report_descriptor)
+#define	HIDIOCGRDESC		_IO('H', 0x02)
 #define	HIDIOCGRAWINFO		_IOR('H', 0x03, struct hidraw_devinfo)
 #define	HIDIOCGRAWNAME(len)	_IOC(IOC_OUT, 'H', 0x04, len)
 #define	HIDIOCGRAWPHYS(len)	_IOC(IOC_OUT, 'H', 0x05, len)

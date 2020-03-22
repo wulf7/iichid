@@ -422,7 +422,9 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 {
 	struct hidraw_softc *sc;
 	struct usb_gen_descriptor *ugd;
-	int size, id, len;
+	struct hidraw_report_descriptor *hrd;
+	uint32_t size;
+	int id, len;
 	int error = 0;
 
 	DPRINTFN(2, "cmd=%lx\n", cmd);
@@ -516,7 +518,7 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		}
 		if (id != 0)
 			copyin(ugd->ugd_data, &id, 1);
-		size = imin(ugd->ugd_maxlen, size);
+		size = MIN(ugd->ugd_maxlen, size);
 		sx_xlock(&sc->sc_buf_lock);
 		error = hid_get_report(sc->sc_dev, sc->sc_buf, size, NULL,
 		    ugd->ugd_report_type, id);
@@ -545,7 +547,7 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		default:
 			return (EINVAL);
 		}
-		size = imin(ugd->ugd_maxlen, size);
+		size = MIN(ugd->ugd_maxlen, size);
 		sx_xlock(&sc->sc_buf_lock);
 		copyin(ugd->ugd_data, sc->sc_buf, size);
 		if (id != 0)
@@ -564,6 +566,19 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		return (0);
 
 	case HIDIOCGRDESC:
+		hrd = *(struct hidraw_report_descriptor **)addr;
+		error = copyin(&hrd->size, &size, sizeof(uint32_t));
+		if (error)
+			return (error);
+		/*
+		 * HID_MAX_DESCRIPTOR_SIZE-1 is a limit of report descriptor
+		 * size in current Linux implementation.
+		 */
+		if (size >= HID_MAX_DESCRIPTOR_SIZE)
+			return (EINVAL);
+		size = MIN(size, sc->sc_repdesc_size);
+		return (copyout(sc->sc_repdesc, hrd->value, size));
+
 	case HIDIOCGRAWINFO:
 		return (EOPNOTSUPP);
 	}
