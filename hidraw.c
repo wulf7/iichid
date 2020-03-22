@@ -560,6 +560,9 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		return (0);
 
 	case HIDIOCGRDESCSIZE:
+		*(int *)addr = sc->sc_repdesc_size;
+		return (0);
+
 	case HIDIOCGRDESC:
 	case HIDIOCGRAWINFO:
 		return (EOPNOTSUPP);
