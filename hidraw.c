@@ -107,7 +107,11 @@ struct hidraw_softc {
 	void *sc_repdesc;
 	int sc_repdesc_size;
 
-	struct clist sc_q;
+	uint8_t *sc_q;
+	uint16_t *sc_qlen;
+	int sc_head;
+	int sc_tail;
+
 	struct selinfo sc_rsel;
 	struct proc *sc_async;	/* process that wants SIGIO */
 	struct {			/* driver state */
@@ -121,8 +125,6 @@ struct hidraw_softc {
 	struct cdev *dev;
 };
 
-#define	UHID_CHUNK	128	/* chunk size for read */
-#define	UHID_BSIZE	1020	/* buffer size */
 #define	UHID_INDEX	0xFF	/* Arbitrary high value */
 
 static d_open_t		hidraw_open;
@@ -253,11 +255,18 @@ hidraw_intr(void *context, void *buf, uint16_t len)
 {
 	device_t dev = context;
 	struct hidraw_softc *sc = device_get_softc(dev);
+	int next;
 
 	DPRINTFN(5, "len=%d\n", len);
 	DPRINTFN(5, "data = %*D\n", len, buf, " ");
 
-	(void) b_to_q(buf, sc->sc_isize, &sc->sc_q);
+	next = (sc->sc_tail + 1) % HIDRAW_BUFFER_SIZE;
+	if (next == sc->sc_head)
+		return;
+
+	bcopy(buf, sc->sc_q + sc->sc_tail * sc->sc_isize, len);
+	sc->sc_qlen[sc->sc_tail] = sc->sc_isize;
+	sc->sc_tail = next;
 
 	hidraw_notify(sc);
 }
@@ -290,7 +299,10 @@ hidraw_open(struct cdev *dev, int flag, int mode, struct thread *td)
 		return (error);
 	}
 
-	clist_alloc_cblocks(&sc->sc_q, UHID_BSIZE, UHID_BSIZE);
+	sc->sc_q = malloc(sc->sc_isize * HIDRAW_BUFFER_SIZE, M_DEVBUF,
+	    M_ZERO | M_WAITOK);
+	sc->sc_qlen = malloc(sizeof(uint16_t) * HIDRAW_BUFFER_SIZE, M_DEVBUF,
+	    M_ZERO | M_WAITOK);
 	sc->sc_buf = malloc(sc->sc_buf_size, M_DEVBUF, M_WAITOK);
 
 	/* Set up interrupt pipe. */
@@ -315,9 +327,8 @@ hidraw_dtor(void *data)
 	hidbus_intr_stop(sc->sc_dev);
 	mtx_unlock(sc->sc_mtx);
 
-	ndflush(&sc->sc_q, sc->sc_q.c_cc);
-	clist_free_cblocks(&sc->sc_q);
-
+	free(sc->sc_q, M_DEVBUF);
+	free(sc->sc_qlen, M_DEVBUF);
 	free(sc->sc_buf, M_DEVBUF);
 	sc->sc_buf = NULL;
 
@@ -333,7 +344,6 @@ hidraw_read(struct cdev *dev, struct uio *uio, int flag)
 	struct hidraw_softc *sc;
 	int error = 0;
 	size_t length;
-	u_char buffer[UHID_CHUNK];
 
 	DPRINTFN(1, "\n");
 
@@ -355,7 +365,7 @@ hidraw_read(struct cdev *dev, struct uio *uio, int flag)
 		return (error);
 	}
 
-	while (sc->sc_q.c_cc == 0) {
+	while (sc->sc_tail == sc->sc_head) {
 		if (flag & O_NONBLOCK) {
 			error = EWOULDBLOCK;
 			break;
@@ -374,19 +384,16 @@ hidraw_read(struct cdev *dev, struct uio *uio, int flag)
 	}
 
 	/* Transfer as many chunks as possible. */
-	while (sc->sc_q.c_cc > 0 && uio->uio_resid > 0 && !error) {
-		length = min(sc->sc_q.c_cc, uio->uio_resid);
-		if (length > sizeof(buffer))
-			length = sizeof(buffer);
-
-		/* Remove a small chunk from the input queue. */
-		(void) q_to_b(&sc->sc_q, buffer, length);
+	while (sc->sc_tail != sc->sc_head && uio->uio_resid > 0 && !error) {
+		length = min(sc->sc_qlen[sc->sc_head], uio->uio_resid);
 		DPRINTFN(5, "got %lu chars\n", (u_long)length);
-
 		/* Copy the data to the user process. */
 		mtx_unlock(sc->sc_mtx);
-		error = uiomove(buffer, length, uio);
+		error = uiomove(sc->sc_q + sc->sc_head * sc->sc_isize, length,
+		    uio);
 		mtx_lock(sc->sc_mtx);
+		/* Remove a small chunk from the input queue. */
+		sc->sc_head = (sc->sc_head + 1) % HIDRAW_BUFFER_SIZE;
 	}
 	mtx_unlock(sc->sc_mtx);
 
@@ -653,7 +660,7 @@ hidraw_poll(struct cdev *dev, int events, struct thread *td)
 		revents |= events & (POLLOUT | POLLWRNORM);
 	if (events & (POLLIN | POLLRDNORM)) {
 		mtx_lock(sc->sc_mtx);
-		if (sc->sc_q.c_cc > 0)
+		if (sc->sc_head != sc->sc_tail)
 			revents |= events & (POLLIN | POLLRDNORM);
 		else {
 			sc->sc_state.sel = true;
