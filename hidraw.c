@@ -188,6 +188,8 @@ hidraw_attach(device_t self)
 	void *desc;
 	int error;
 
+	hidbus_set_desc(self, "Raw HID Device");
+
 	sc->sc_dev = self;
 	sc->sc_mtx = hidbus_get_lock(self);
 
@@ -421,8 +423,10 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
     struct thread *td)
 {
 	struct hidraw_softc *sc;
+	const struct hid_device_info *hw;
 	struct usb_gen_descriptor *ugd;
 	struct hidraw_report_descriptor *hrd;
+	struct hidraw_devinfo *hdi;
 	uint32_t size;
 	int id, len;
 	int error = 0;
@@ -580,18 +584,34 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		return (copyout(sc->sc_repdesc, hrd->value, size));
 
 	case HIDIOCGRAWINFO:
-		return (EOPNOTSUPP);
+		hw = hid_get_device_info(sc->sc_dev);
+		hdi = (struct hidraw_devinfo *)addr;
+		hdi->bustype = hw->idBus;
+		hdi->vendor = hw->idVendor;
+		hdi->product = hw->idProduct;
+		return (0);
 	}
 
 	/* variable-length ioctls handling */
 	len = IOCPARM_LEN(cmd);
 	switch (IOCBASECMD(cmd)) {
 	case HIDIOCGRAWNAME(0):
+		hw = hid_get_device_info(sc->sc_dev);
+		strlcpy(addr, hw->name, len);
+		return (0);
+
 	case HIDIOCGRAWPHYS(0):
+		strlcpy(addr, device_get_nameunit(sc->sc_dev), len);
+		return (0);
+
 	case HIDIOCSFEATURE(0):
 	case HIDIOCGFEATURE(0):
-	case HIDIOCGRAWUNIQ(0):
 		return (EOPNOTSUPP);
+
+	case HIDIOCGRAWUNIQ(0):
+		hw = hid_get_device_info(sc->sc_dev);
+		strlcpy(addr, hw->serial, len);
+		return (0);
 	}
 
 	return (EINVAL);
