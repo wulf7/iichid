@@ -605,8 +605,30 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		return (0);
 
 	case HIDIOCSFEATURE(0):
+		if (!(flag & FWRITE))
+			return (EPERM);
+		if (len < 2)
+			return (EINVAL);
+		id = *(uint8_t *)addr;
+		if (id == 0) {
+			addr = (uint8_t *)addr + 1;
+			len--;
+		}
+		return (hid_set_report(sc->sc_dev, addr, len,
+		    HID_FEATURE_REPORT, id));
+
 	case HIDIOCGFEATURE(0):
-		return (EOPNOTSUPP);
+		if (!(flag & FREAD))
+			return (EPERM);
+		if (len < 2)
+			return (EINVAL);
+		id = *(uint8_t *)addr;
+		if (id == 0) {
+			addr = (uint8_t *)addr + 1;
+			len--;
+		}
+		return (hid_get_report(sc->sc_dev, addr, len, NULL,
+		    HID_FEATURE_REPORT, id));
 
 	case HIDIOCGRAWUNIQ(0):
 		hw = hid_get_device_info(sc->sc_dev);
