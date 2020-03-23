@@ -70,8 +70,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/sysctl.h>
 #include <sys/uio.h>
 
-#include "clist.h"
-
 #include "hid.h"
 #include "hidbus.h"
 #include "hidraw.h"
@@ -88,7 +86,7 @@ SYSCTL_INT(_hw_hid_hidraw, OID_AUTO, debug, CTLFLAG_RWTUN,
     &hidraw_debug, 0, "Debug level");
 #endif
 
-#define	UHID_INDEX	0xFF	/* Arbitrary high value */
+#define	HIDRAW_INDEX	0xFF	/* Arbitrary high value */
 
 struct hidraw_softc {
 	device_t sc_dev;		/* base device */
@@ -162,7 +160,8 @@ hidraw_identify(driver_t *driver, device_t parent)
 	if (device_find_child(parent, "hidraw", -1) == NULL) {
 		child = BUS_ADD_CHILD(parent, 0, "hidraw",
 		    device_get_unit(parent));
-		hidbus_set_index(child, UHID_INDEX);
+		if (child != NULL)
+			hidbus_set_index(child, HIDRAW_INDEX);
 	}
 }
 
@@ -170,7 +169,7 @@ static int
 hidraw_probe(device_t self)
 {
 
-	if (hidbus_get_index(self) != UHID_INDEX)
+	if (hidbus_get_index(self) != HIDRAW_INDEX)
 		return (ENXIO);
 
 #ifdef NOT_YET
