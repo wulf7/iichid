@@ -133,6 +133,7 @@ static d_read_t		hidraw_read;
 static d_write_t	hidraw_write;
 static d_ioctl_t	hidraw_ioctl;
 static d_poll_t		hidraw_poll;
+static d_kqfilter_t	hidraw_kqfilter;
 
 static d_priv_dtor_t	hidraw_dtor;
 
@@ -143,6 +144,7 @@ static struct cdevsw hidraw_cdevsw = {
 	.d_write =	hidraw_write,
 	.d_ioctl =	hidraw_ioctl,
 	.d_poll =	hidraw_poll,
+	.d_kqfilter = 	hidraw_kqfilter,
 	.d_name =	"hidraw",
 };
 
@@ -153,7 +155,15 @@ static device_probe_t	hidraw_probe;
 static device_attach_t	hidraw_attach;
 static device_detach_t	hidraw_detach;
 
+static int		hidraw_kqread(struct knote *, long);
+static void		hidraw_kqdetach(struct knote *);
 static void		hidraw_notify(struct hidraw_softc *);
+
+static struct filterops hidraw_filterops_read = {
+	.f_isfd =	1,
+	.f_detach =	hidraw_kqdetach,
+	.f_event =	hidraw_kqread,
+};
 
 static void
 hidraw_identify(driver_t *driver, device_t parent)
@@ -205,6 +215,7 @@ hidraw_attach(device_t self)
 		device_printf(self, "no report descriptor\n");
 
 	sx_init(&sc->sc_buf_lock, "hidraw sx");
+	knlist_init_mtx(&sc->sc_rsel.si_note, sc->sc_mtx);
 
 	sc->sc_isize = hid_report_size(desc, size, hid_input,   &sc->sc_iid);
 	sc->sc_osize = hid_report_size(desc, size, hid_output,  &sc->sc_oid);
@@ -222,7 +233,7 @@ hidraw_attach(device_t self)
 	error = make_dev_s(&mda, &sc->dev, "hidraw%d", device_get_unit(self));
 	if (error) {
 		device_printf(self, "Can not create character device\n");
-		sx_destroy(&sc->sc_buf_lock);
+		hidraw_detach(self);
 		return (error);
 	}
 
@@ -238,14 +249,13 @@ hidraw_detach(device_t self)
 
 	DPRINTF("sc=%p\n", sc);
 
-	mtx_lock(sc->sc_mtx);
 	sc->dev->si_drv1 = NULL;
-	/* Wake everyone */
-	if (sc->sc_state.open)
-		hidraw_notify(sc);
-	mtx_unlock(sc->sc_mtx);
-	destroy_dev(sc->dev);
+	if (sc->dev != NULL)
+		destroy_dev(sc->dev);
 	sx_destroy(&sc->sc_buf_lock);
+	knlist_clear(&sc->sc_rsel.si_note, 0);
+	knlist_destroy(&sc->sc_rsel.si_note);
+	seldrain(&sc->sc_rsel);
 
 	return (0);
 }
@@ -345,6 +355,8 @@ hidraw_dtor(void *data)
 
 	mtx_lock(sc->sc_mtx);
 	sc->sc_state.open = false;
+	/* Wake everyone */
+	hidraw_notify(sc);
 	sc->sc_async = 0;
 	mtx_unlock(sc->sc_mtx);
 }
@@ -721,6 +733,59 @@ hidraw_poll(struct cdev *dev, int events, struct thread *td)
 	return (revents);
 }
 
+static int
+hidraw_kqfilter(struct cdev *dev, struct knote *kn)
+{
+	struct hidraw_softc *sc;
+
+	sc = dev->si_drv1;
+	if (sc == NULL)
+		return (EIO);
+
+	switch(kn->kn_filter) {
+	case EVFILT_READ:
+		if (sc->sc_fflags & FREAD) {
+			kn->kn_fop = &hidraw_filterops_read;
+			break;
+		}
+		/* FALLTHROUGH */
+	default:
+		return(EINVAL);
+	}
+	kn->kn_hook = sc;
+
+	knlist_add(&sc->sc_rsel.si_note, kn, 0);
+	return (0);
+}
+
+static int
+hidraw_kqread(struct knote *kn, long hint)
+{
+	struct hidraw_softc *sc;
+	int ret;
+
+	sc = kn->kn_hook;
+
+	mtx_assert(sc->sc_mtx, MA_OWNED);
+
+	if (sc->dev->si_drv1 == NULL) {
+		kn->kn_flags |= EV_EOF;
+		ret = 1;
+	} else
+		ret = (sc->sc_head != sc->sc_tail) ? 1 : 0;
+
+	return (ret);
+}
+
+static void
+hidraw_kqdetach(struct knote *kn)
+{
+	struct hidraw_softc *sc;
+
+	sc = kn->kn_hook;
+	knlist_remove(&sc->sc_rsel.si_note, kn, 0);
+}
+
 static void
 hidraw_notify(struct hidraw_softc *sc)
 {
@@ -742,6 +807,7 @@ hidraw_notify(struct hidraw_softc *sc)
 		kern_psignal(sc->sc_async, SIGIO);
 		PROC_UNLOCK(sc->sc_async);
 	}
+	KNOTE_LOCKED(&sc->sc_rsel.si_note, 0);
 }
 
 static device_method_t hidraw_methods[] = {
