@@ -119,7 +119,8 @@ struct hidraw_softc {
 		bool	aslp:1;		/* waiting for device data in read() */
 		bool	sel:1;		/* waiting for device data in poll() */
 		bool	immed:1;	/* return read data immediately */
-		u_char	reserved:4;
+		bool	uhid:1;		/* driver switched in to uhid mode */
+		u_char	reserved:3;
 	} sc_state;
 
 	struct cdev *dev;
@@ -262,7 +263,7 @@ hidraw_intr(void *context, void *buf, uint16_t len)
 		return;
 
 	bcopy(buf, sc->sc_q + sc->sc_tail * sc->sc_isize, len);
-	sc->sc_qlen[sc->sc_tail] = sc->sc_isize;
+	sc->sc_qlen[sc->sc_tail] = len;
 	sc->sc_tail = next;
 
 	hidraw_notify(sc);
@@ -307,6 +308,7 @@ hidraw_open(struct cdev *dev, int flag, int mode, struct thread *td)
 	hidbus_intr_start(sc->sc_dev);
 	sc->sc_state.immed = false;
 	sc->sc_async = 0;
+	sc->sc_state.uhid = false;	/* hidraw mode is default */
 	mtx_unlock(sc->sc_mtx);
 
 	return (0);
@@ -380,9 +382,9 @@ hidraw_read(struct cdev *dev, struct uio *uio, int flag)
 		}
 	}
 
-	/* Transfer as many chunks as possible. */
 	while (sc->sc_tail != sc->sc_head && uio->uio_resid > 0 && !error) {
-		length = min(sc->sc_qlen[sc->sc_head], uio->uio_resid);
+		length = min(sc->sc_state.uhid ?
+		    sc->sc_isize : sc->sc_qlen[sc->sc_head], uio->uio_resid);
 		DPRINTFN(5, "got %lu chars\n", (u_long)length);
 		/* Copy the data to the user process. */
 		mtx_unlock(sc->sc_mtx);
@@ -391,6 +393,12 @@ hidraw_read(struct cdev *dev, struct uio *uio, int flag)
 		mtx_lock(sc->sc_mtx);
 		/* Remove a small chunk from the input queue. */
 		sc->sc_head = (sc->sc_head + 1) % HIDRAW_BUFFER_SIZE;
+		/*
+		 * In uhid mode transfer as many chunks as possible. Hidraw
+		 * packets are transferred one by one due to different length.
+		 */
+		if (!sc->sc_state.uhid)
+			break;
 	}
 	mtx_unlock(sc->sc_mtx);
 
@@ -402,7 +410,8 @@ hidraw_write(struct cdev *dev, struct uio *uio, int flag)
 {
 	struct hidraw_softc *sc;
 	int error;
-	int size;
+	int size, uio_size;
+	uint8_t *uio_buf, id = 0;
 
 	DPRINTFN(1, "\n");
 
@@ -410,11 +419,32 @@ hidraw_write(struct cdev *dev, struct uio *uio, int flag)
 	if (sc == NULL)
 		return (EIO);
 
-	size = sc->sc_osize;
-	if (uio->uio_resid != size)
-		return (EINVAL);
+	if (sc->sc_osize == 0)
+		return (EOPNOTSUPP);
+
+	uio_buf = sc->sc_buf;
+	if (sc->sc_state.uhid) {
+		size = uio_size = sc->sc_osize;
+		if (uio->uio_resid != uio_size)
+			return (EINVAL);
+	} else {
+		size = uio->uio_resid;
+		if (size < 2)
+			return (EINVAL);
+		/* Strip leading 0 if the device doesnt use numbered reports */
+		error = uiomove(&id, 1, uio);
+		if (error)
+			return (error);
+		if (id != 0) {
+			uio_buf++;
+			size = imin(sc->sc_osize, size);
+			uio_size = size - 1;
+		} else
+			size = uio_size = imin(sc->sc_osize, uio->uio_resid);
+	}
 	sx_xlock(&sc->sc_buf_lock);
-	error = uiomove(sc->sc_buf, size, uio);
+	sc->sc_buf[0] = id;
+	error = uiomove(uio_buf, uio_size, uio);
 	if (error == 0)
 		error = hid_write(sc->sc_dev, sc->sc_buf, size);
 	sx_unlock(&sc->sc_buf_lock);
@@ -473,6 +503,9 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 	case USB_GET_REPORT_DESC:
 		if (sc->sc_repdesc_size == 0)
 			return (EOPNOTSUPP);
+		mtx_lock(sc->sc_mtx);
+		sc->sc_state.uhid = true;
+		mtx_unlock(sc->sc_mtx);
 		ugd = (struct usb_gen_descriptor *)addr;
 		if (sc->sc_repdesc_size > ugd->ugd_maxlen) {
 			size = ugd->ugd_maxlen;
