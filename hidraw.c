@@ -123,6 +123,7 @@ struct hidraw_softc {
 		bool	uhid:1;		/* driver switched in to uhid mode */
 		u_char	reserved:2;
 	} sc_state;
+	int sc_fflags;			/* access mode for open lifetime */
 
 	struct cdev *dev;
 };
@@ -318,6 +319,7 @@ hidraw_open(struct cdev *dev, int flag, int mode, struct thread *td)
 	sc->sc_state.uhid = false;	/* hidraw mode is default */
 	sc->sc_state.owfl = false;
 	sc->sc_head = sc->sc_tail = 0;
+	sc->sc_fflags = flag;
 	mtx_unlock(sc->sc_mtx);
 
 	return (0);
@@ -533,7 +535,7 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		return (copyout(sc->sc_repdesc, ugd->ugd_data, size));
 
 	case USB_SET_IMMED:
-		if (!(flag & FREAD))
+		if (!(sc->sc_fflags & FREAD))
 			return (EPERM);
 		if (*(int *)addr) {
 			/* XXX should read into ibuf, but does it matter? */
@@ -555,7 +557,7 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		return (0);
 
 	case USB_GET_REPORT:
-		if (!(flag & FREAD))
+		if (!(sc->sc_fflags & FREAD))
 			return (EPERM);
 		ugd = (struct usb_gen_descriptor *)addr;
 		switch (ugd->ugd_report_type) {
@@ -586,7 +588,7 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		return (error);
 
 	case USB_SET_REPORT:
-		if (!(flag & FWRITE))
+		if (!(sc->sc_fflags & FWRITE))
 			return (EPERM);
 		ugd = (struct usb_gen_descriptor *)addr;
 		switch (ugd->ugd_report_type) {
@@ -659,7 +661,7 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		return (0);
 
 	case HIDIOCSFEATURE(0):
-		if (!(flag & FWRITE))
+		if (!(sc->sc_fflags & FWRITE))
 			return (EPERM);
 		if (len < 2)
 			return (EINVAL);
@@ -672,7 +674,7 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		    HID_FEATURE_REPORT, id));
 
 	case HIDIOCGFEATURE(0):
-		if (!(flag & FREAD))
+		if (!(sc->sc_fflags & FREAD))
 			return (EPERM);
 		if (len < 2)
 			return (EINVAL);
@@ -703,9 +705,9 @@ hidraw_poll(struct cdev *dev, int events, struct thread *td)
 	if (sc == NULL)
 		return (POLLHUP);
 
-	if (events & (POLLOUT | POLLWRNORM))
+	if (events & (POLLOUT | POLLWRNORM) && (sc->sc_fflags & FWRITE))
 		revents |= events & (POLLOUT | POLLWRNORM);
-	if (events & (POLLIN | POLLRDNORM)) {
+	if (events & (POLLIN | POLLRDNORM) && (sc->sc_fflags & FREAD)) {
 		mtx_lock(sc->sc_mtx);
 		if (sc->sc_head != sc->sc_tail)
 			revents |= events & (POLLIN | POLLRDNORM);
