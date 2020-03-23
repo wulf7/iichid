@@ -118,9 +118,10 @@ struct hidraw_softc {
 		bool	open:1;		/* device is open */
 		bool	aslp:1;		/* waiting for device data in read() */
 		bool	sel:1;		/* waiting for device data in poll() */
+		bool	owfl:1;		/* input queue is about to overflow */
 		bool	immed:1;	/* return read data immediately */
 		bool	uhid:1;		/* driver switched in to uhid mode */
-		u_char	reserved:3;
+		u_char	reserved:2;
 	} sc_state;
 
 	struct cdev *dev;
@@ -266,6 +267,12 @@ hidraw_intr(void *context, void *buf, uint16_t len)
 	sc->sc_qlen[sc->sc_tail] = len;
 	sc->sc_tail = next;
 
+	if ((next + 1) % HIDRAW_BUFFER_SIZE == sc->sc_head) {
+		DPRINTFN(3, "queue overflown. Stop intr");
+		sc->sc_state.owfl = true;
+		hidbus_intr_stop(sc->sc_dev);
+	}
+
 	hidraw_notify(sc);
 }
 
@@ -309,6 +316,8 @@ hidraw_open(struct cdev *dev, int flag, int mode, struct thread *td)
 	sc->sc_state.immed = false;
 	sc->sc_async = 0;
 	sc->sc_state.uhid = false;	/* hidraw mode is default */
+	sc->sc_state.owfl = false;
+	sc->sc_head = sc->sc_tail = 0;
 	mtx_unlock(sc->sc_mtx);
 
 	return (0);
@@ -323,7 +332,8 @@ hidraw_dtor(void *data)
 
 	/* Disable interrupts. */
 	mtx_lock(sc->sc_mtx);
-	hidbus_intr_stop(sc->sc_dev);
+	if (!sc->sc_state.owfl)
+		hidbus_intr_stop(sc->sc_dev);
 	mtx_unlock(sc->sc_mtx);
 
 	free(sc->sc_q, M_DEVBUF);
@@ -393,6 +403,11 @@ hidraw_read(struct cdev *dev, struct uio *uio, int flag)
 		mtx_lock(sc->sc_mtx);
 		/* Remove a small chunk from the input queue. */
 		sc->sc_head = (sc->sc_head + 1) % HIDRAW_BUFFER_SIZE;
+		if (sc->sc_state.owfl) {
+			DPRINTFN(3, "queue freed. Start intr");
+			sc->sc_state.owfl = false;
+			hidbus_intr_start(sc->sc_dev);
+		}
 		/*
 		 * In uhid mode transfer as many chunks as possible. Hidraw
 		 * packets are transferred one by one due to different length.
