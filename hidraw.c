@@ -194,11 +194,12 @@ hidraw_attach(device_t self)
 	sc->sc_dev = self;
 	sc->sc_mtx = hidbus_get_lock(self);
 
-	error = hid_get_report_descr(sc->sc_dev, &desc, &size);
-	if (error) {
+	/* Hidraw mode does not require report descriptor to work */
+	if (hid_get_report_descr(sc->sc_dev, &desc, &size) == 0) {
+		sc->sc_repdesc = desc;
+		sc->sc_repdesc_size = size;
+	} else
 		device_printf(self, "no report descriptor\n");
-		return (ENXIO);
-	}
 
 	sx_init(&sc->sc_buf_lock, "hidraw sx");
 
@@ -206,9 +207,6 @@ hidraw_attach(device_t self)
 	sc->sc_osize = hid_report_size(desc, size, hid_output,  &sc->sc_oid);
 	sc->sc_fsize = hid_report_size(desc, size, hid_feature, &sc->sc_fid);
 	sc->sc_buf_size = imax(sc->sc_isize, imax(sc->sc_osize, sc->sc_fsize));
-
-	sc->sc_repdesc = desc;
-	sc->sc_repdesc_size = size;
 
 	make_dev_args_init(&mda);
 	mda.mda_flags = MAKEDEV_WAITOK;
@@ -473,6 +471,8 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		return (error);
 
 	case USB_GET_REPORT_DESC:
+		if (sc->sc_repdesc_size == 0)
+			return (EOPNOTSUPP);
 		ugd = (struct usb_gen_descriptor *)addr;
 		if (sc->sc_repdesc_size > ugd->ugd_maxlen) {
 			size = ugd->ugd_maxlen;
