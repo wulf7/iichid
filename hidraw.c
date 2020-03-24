@@ -253,7 +253,10 @@ hidraw_detach(device_t self)
 	if (sc->dev != NULL)
 		destroy_dev(sc->dev);
 	sx_destroy(&sc->sc_buf_lock);
-	knlist_clear(&sc->sc_rsel.si_note, 0);
+	/* Avoid knlist_clear KASSERTion when hidbus lock is a newbus lock */
+	mtx_lock(sc->sc_mtx);
+	knlist_clear(&sc->sc_rsel.si_note, 1);
+	mtx_unlock(sc->sc_mtx);
 	knlist_destroy(&sc->sc_rsel.si_note);
 	seldrain(&sc->sc_rsel);
 
@@ -315,11 +318,13 @@ hidraw_open(struct cdev *dev, int flag, int mode, struct thread *td)
 		return (error);
 	}
 
+	sx_xlock(&sc->sc_buf_lock);
 	sc->sc_q = malloc(sc->sc_isize * HIDRAW_BUFFER_SIZE, M_DEVBUF,
 	    M_ZERO | M_WAITOK);
 	sc->sc_qlen = malloc(sizeof(uint16_t) * HIDRAW_BUFFER_SIZE, M_DEVBUF,
 	    M_ZERO | M_WAITOK);
 	sc->sc_buf = malloc(sc->sc_buf_size, M_DEVBUF, M_WAITOK);
+	sx_unlock(&sc->sc_buf_lock);
 
 	/* Set up interrupt pipe. */
 	mtx_lock(sc->sc_mtx);
@@ -346,12 +351,15 @@ hidraw_dtor(void *data)
 	mtx_lock(sc->sc_mtx);
 	if (!sc->sc_state.owfl)
 		hidbus_intr_stop(sc->sc_dev);
+	sc->sc_tail = sc->sc_head = 0;
 	mtx_unlock(sc->sc_mtx);
 
+	sx_xlock(&sc->sc_buf_lock);
 	free(sc->sc_q, M_DEVBUF);
 	free(sc->sc_qlen, M_DEVBUF);
 	free(sc->sc_buf, M_DEVBUF);
-	sc->sc_buf = NULL;
+	sc->sc_q = sc->sc_buf = NULL;
+	sx_unlock(&sc->sc_buf_lock);
 
 	mtx_lock(sc->sc_mtx);
 	sc->sc_state.open = false;
@@ -365,7 +373,7 @@ static int
 hidraw_read(struct cdev *dev, struct uio *uio, int flag)
 {
 	struct hidraw_softc *sc;
-	int error = 0;
+	int head, error = 0;
 	size_t length;
 
 	DPRINTFN(1, "\n");
@@ -375,6 +383,10 @@ hidraw_read(struct cdev *dev, struct uio *uio, int flag)
 		return (ENXIO);
 
 	mtx_lock(sc->sc_mtx);
+	if (!sc->sc_state.open) {
+		mtx_unlock(sc->sc_mtx);
+		return (EIO);
+	}
 	if (sc->sc_state.immed) {
 		mtx_unlock(sc->sc_mtx);
 		DPRINTFN(1, "immed\n");
@@ -398,7 +410,7 @@ hidraw_read(struct cdev *dev, struct uio *uio, int flag)
 		error = mtx_sleep(&sc->sc_q, sc->sc_mtx, PZERO | PCATCH,
 		    "hidrawrd", 0);
 		DPRINTFN(5, "woke, error=%d\n", error);
-		if (dev->si_drv1 == NULL)
+		if (!sc->sc_state.open)
 			error = EIO;
 		if (error) {
 			sc->sc_state.aslp = false;
@@ -407,16 +419,24 @@ hidraw_read(struct cdev *dev, struct uio *uio, int flag)
 	}
 
 	while (sc->sc_tail != sc->sc_head && uio->uio_resid > 0 && !error) {
-		length = min(sc->sc_state.uhid ?
-		    sc->sc_isize : sc->sc_qlen[sc->sc_head], uio->uio_resid);
+		head = sc->sc_head;
+		length = min(uio->uio_resid,
+		    sc->sc_state.uhid ? sc->sc_isize : sc->sc_qlen[head]);
 		DPRINTFN(5, "got %lu chars\n", (u_long)length);
-		/* Copy the data to the user process. */
-		mtx_unlock(sc->sc_mtx);
-		error = uiomove(sc->sc_q + sc->sc_head * sc->sc_isize, length,
-		    uio);
-		mtx_lock(sc->sc_mtx);
 		/* Remove a small chunk from the input queue. */
-		sc->sc_head = (sc->sc_head + 1) % HIDRAW_BUFFER_SIZE;
+		sc->sc_head = (head + 1) % HIDRAW_BUFFER_SIZE;
+		mtx_unlock(sc->sc_mtx);
+
+		/* Copy the data to the user process. */
+		sx_slock(&sc->sc_buf_lock);
+		if (sc->sc_q == NULL) {
+			sx_unlock(&sc->sc_buf_lock);
+			return (0);
+		}
+		error = uiomove(sc->sc_q + head * sc->sc_isize, length, uio);
+		sx_unlock(&sc->sc_buf_lock);
+
+		mtx_lock(sc->sc_mtx);
 		if (sc->sc_state.owfl) {
 			DPRINTFN(3, "queue freed. Start intr");
 			sc->sc_state.owfl = false;
@@ -472,8 +492,11 @@ hidraw_write(struct cdev *dev, struct uio *uio, int flag)
 			size = uio_size = imin(sc->sc_osize, uio->uio_resid);
 	}
 	sx_xlock(&sc->sc_buf_lock);
-	sc->sc_buf[0] = id;
-	error = uiomove(uio_buf, uio_size, uio);
+	if (sc->sc_buf != NULL) {
+		sc->sc_buf[0] = id;
+		error = uiomove(uio_buf, uio_size, uio);
+	} else
+		error = EIO;
 	if (error == 0)
 		error = hid_write(sc->sc_dev, sc->sc_buf, size);
 	sx_unlock(&sc->sc_buf_lock);
@@ -552,6 +575,10 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		if (*(int *)addr) {
 			/* XXX should read into ibuf, but does it matter? */
 			sx_xlock(&sc->sc_buf_lock);
+			if (sc->sc_buf == NULL) {
+				sx_unlock(&sc->sc_buf_lock);
+				return (EIO);
+			}
 			error = hid_get_report(sc->sc_dev, sc->sc_buf,
 			    sc->sc_isize, NULL, UHID_INPUT_REPORT, sc->sc_iid);
 			sx_unlock(&sc->sc_buf_lock);
@@ -592,6 +619,10 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 			copyin(ugd->ugd_data, &id, 1);
 		size = MIN(ugd->ugd_maxlen, size);
 		sx_xlock(&sc->sc_buf_lock);
+		if (sc->sc_buf == NULL) {
+			sx_unlock(&sc->sc_buf_lock);
+			return (EIO);
+		}
 		error = hid_get_report(sc->sc_dev, sc->sc_buf, size, NULL,
 		    ugd->ugd_report_type, id);
 		if (!error)
@@ -621,6 +652,10 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		}
 		size = MIN(ugd->ugd_maxlen, size);
 		sx_xlock(&sc->sc_buf_lock);
+		if (sc->sc_buf == NULL) {
+			sx_unlock(&sc->sc_buf_lock);
+			return (EIO);
+		}
 		copyin(ugd->ugd_data, sc->sc_buf, size);
 		if (id != 0)
 			id = sc->sc_buf[0];
@@ -715,20 +750,24 @@ hidraw_poll(struct cdev *dev, int events, struct thread *td)
 
 	sc = dev->si_drv1;
 	if (sc == NULL)
-		return (POLLHUP);
+		return (POLLERR);
 
+	mtx_lock(sc->sc_mtx);
+	if (!sc->sc_state.open) {
+		mtx_unlock(sc->sc_mtx);
+		return (POLLHUP);
+	}
 	if (events & (POLLOUT | POLLWRNORM) && (sc->sc_fflags & FWRITE))
 		revents |= events & (POLLOUT | POLLWRNORM);
 	if (events & (POLLIN | POLLRDNORM) && (sc->sc_fflags & FREAD)) {
-		mtx_lock(sc->sc_mtx);
 		if (sc->sc_head != sc->sc_tail)
 			revents |= events & (POLLIN | POLLRDNORM);
 		else {
 			sc->sc_state.sel = true;
 			selrecord(td, &sc->sc_rsel);
 		}
-		mtx_unlock(sc->sc_mtx);
 	}
+	mtx_unlock(sc->sc_mtx);
 
 	return (revents);
 }
@@ -740,7 +779,7 @@ hidraw_kqfilter(struct cdev *dev, struct knote *kn)
 
 	sc = dev->si_drv1;
 	if (sc == NULL)
-		return (EIO);
+		return (ENXIO);
 
 	switch(kn->kn_filter) {
 	case EVFILT_READ:
@@ -768,7 +807,7 @@ hidraw_kqread(struct knote *kn, long hint)
 
 	mtx_assert(sc->sc_mtx, MA_OWNED);
 
-	if (sc->dev->si_drv1 == NULL) {
+	if (!sc->sc_state.open) {
 		kn->kn_flags |= EV_EOF;
 		ret = 1;
 	} else
