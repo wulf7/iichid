@@ -18,6 +18,8 @@ Current drivers and respective HID devices supported by them are following:
 * **hpen**  - Generic / MS Windows compatible HID pen tablets.
 * **hcons** - Consumer page AKA Multimedia keys.
 * **hsctrl** - System Controls page (Power/Sleep keys).
+* **hgame** - Game controllers including Xbox360-compatible and joysticks.
+* **hidraw** - Export raw HID data in uhid(4) and Linux hidraw-compatible way.
 
 ## System requirements
 
@@ -113,6 +115,20 @@ to reprobe can be found with issuing of simple **usbconfig** command:
 ```
 $ sudo usbconfig
 ```
+
+## hidraw
+
+For now hidraw driver should be loaded after iichid to recognize hidbus
+properly. That is why it is made as separate kernel module - hidraw.ko.
+To build and install it issue following commands:
+
+```
+$ make -f Makefile.hidraw
+$ sudo make -f Makefile.hidraw install
+```
+
+To load the module at a boot time, add the module **hidraw** to **kld_list**
+variable in **/etc/rc.conf**
 
 ## Bug reporting
 
