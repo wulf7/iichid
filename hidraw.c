@@ -874,4 +874,5 @@ static devclass_t hidraw_devclass;
 DRIVER_MODULE(hidraw, hidbus, hidraw_driver, hidraw_devclass, NULL, 0);
 MODULE_DEPEND(hidraw, hidbus, 1, 1, 1);
 MODULE_DEPEND(hidraw, hid, 1, 1, 1);
+MODULE_DEPEND(hidraw, usb, 1, 1, 1);
 MODULE_VERSION(hidraw, 1);

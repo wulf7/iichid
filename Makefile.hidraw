@@ -1,0 +1,8 @@
+# $FreeBSD$
+
+KMOD	= hidraw
+SRCS	+= hidraw.c hidraw.h
+#CFLAGS	+= -DINVARIANTS -DINVARIANT_SUPPORT
+CFLAGS	+= -DHID_DEBUG
+
+.include <bsd.kmod.mk>
