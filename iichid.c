@@ -110,7 +110,11 @@ struct iichid_softc {
 	uint8_t			*rep_desc;
 	uint8_t			*ibuf;
 	int			isize;
+	int			osize;
+	int			fsize;
 	uint8_t			iid;
+	uint8_t			oid;
+	uint8_t			fid;
 
 	int			irq_rid;
 	struct resource		*irq_res;
@@ -1041,10 +1045,16 @@ iichid_attach(device_t dev)
 	 */
 	sc->isize = hid_report_size(sc->rep_desc,
 	     le16toh(sc->desc.wReportDescLength), hid_input, &sc->iid);
-	if (sc->isize != le16toh(sc->desc.wMaxInputLength) - 2)
-		DPRINTF(sc, "determined (len=%d) and described (len=%d)"
-		    " input report lengths mismatch\n",
-		    sc->isize, le16toh(sc->desc.wMaxInputLength) - 2);
+	sc->osize = hid_report_size(sc->rep_desc,
+	     le16toh(sc->desc.wReportDescLength), hid_output, &sc->oid);
+	sc->fsize = hid_report_size(sc->rep_desc,
+	     le16toh(sc->desc.wReportDescLength), hid_feature, &sc->fid);
+
+	sc->hw.rdsize = sc->isize;
+	sc->hw.wrsize = sc->osize;
+	sc->hw.grsize = MAX(sc->isize, MAX(sc->osize, sc->fsize));
+	sc->hw.srsize = MAX(sc->isize, MAX(sc->osize, sc->fsize));
+
 	sc->ibuf = malloc(sc->isize, M_DEVBUF, M_WAITOK | M_ZERO);
 
 	sc->power_on = false;

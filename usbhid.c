@@ -372,9 +372,9 @@ usbhid_intr_setup(device_t dev, struct mtx *mtx, hid_intr_t intr,
 	sc->sc_config[USBHID_INTR_DT_WR].bufsize = sc->sc_osize;
 	sc->sc_config[USBHID_INTR_DT_RD].bufsize = sc->sc_isize;
 	sc->sc_config[USBHID_CTRL_DT_WR].bufsize =
-	    MAX(sc->sc_osize, sc->sc_fsize);
+	    MAX(sc->sc_isize, MAX(sc->sc_osize, sc->sc_fsize));
 	sc->sc_config[USBHID_CTRL_DT_RD].bufsize =
-	    MAX(sc->sc_isize, sc->sc_fsize);
+	    MAX(sc->sc_isize, MAX(sc->sc_osize, sc->sc_fsize));
 
 	if (sc->sc_intr_mtx == HID_SYSCONS_MTX) {
 		/*
@@ -399,6 +399,15 @@ usbhid_intr_setup(device_t dev, struct mtx *mtx, hid_intr_t intr,
 
 	if (error)
 		DPRINTF("error=%s\n", usbd_errstr(error));
+
+	sc->sc_hw.rdsize = usbd_xfer_max_len(sc->sc_xfer[USBHID_INTR_DT_RD]);
+	sc->sc_hw.grsize = usbd_xfer_max_len(sc->sc_xfer[USBHID_CTRL_DT_RD]);
+	sc->sc_hw.srsize = usbd_xfer_max_len(sc->sc_xfer[USBHID_CTRL_DT_WR]);
+	if (sc->sc_xfer[USBHID_INTR_DT_WR] != NULL)
+		sc->sc_hw.wrsize =
+		    usbd_xfer_max_len(sc->sc_xfer[USBHID_INTR_DT_WR]);
+	else
+		sc->sc_hw.wrsize = sc->sc_hw.srsize;
 }
 
 static void

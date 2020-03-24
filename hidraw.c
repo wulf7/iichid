@@ -107,6 +107,7 @@ struct hidraw_softc {
 	void *sc_repdesc;
 	int sc_repdesc_size;
 
+	int sc_rdsize;
 	uint8_t *sc_q;
 	uint16_t *sc_qlen;
 	int sc_head;
@@ -197,6 +198,7 @@ static int
 hidraw_attach(device_t self)
 {
 	struct hidraw_softc *sc = device_get_softc(self);
+	const struct hid_device_info *hw = hid_get_device_info(self);
 	struct make_dev_args mda;
 	uint16_t size;
 	void *desc;
@@ -220,7 +222,9 @@ hidraw_attach(device_t self)
 	sc->sc_isize = hid_report_size(desc, size, hid_input,   &sc->sc_iid);
 	sc->sc_osize = hid_report_size(desc, size, hid_output,  &sc->sc_oid);
 	sc->sc_fsize = hid_report_size(desc, size, hid_feature, &sc->sc_fid);
-	sc->sc_buf_size = imax(sc->sc_isize, imax(sc->sc_osize, sc->sc_fsize));
+
+	sc->sc_rdsize = hw->rdsize;
+	sc->sc_buf_size = MAX(hw->wrsize, MAX(hw->grsize, hw->srsize));
 
 	make_dev_args_init(&mda);
 	mda.mda_flags = MAKEDEV_WAITOK;
@@ -277,7 +281,7 @@ hidraw_intr(void *context, void *buf, uint16_t len)
 	if (next == sc->sc_head)
 		return;
 
-	bcopy(buf, sc->sc_q + sc->sc_tail * sc->sc_isize, len);
+	bcopy(buf, sc->sc_q + sc->sc_tail * sc->sc_rdsize, len);
 	sc->sc_qlen[sc->sc_tail] = len;
 	sc->sc_tail = next;
 
@@ -319,7 +323,7 @@ hidraw_open(struct cdev *dev, int flag, int mode, struct thread *td)
 	}
 
 	sx_xlock(&sc->sc_buf_lock);
-	sc->sc_q = malloc(sc->sc_isize * HIDRAW_BUFFER_SIZE, M_DEVBUF,
+	sc->sc_q = malloc(sc->sc_rdsize * HIDRAW_BUFFER_SIZE, M_DEVBUF,
 	    M_ZERO | M_WAITOK);
 	sc->sc_qlen = malloc(sizeof(uint16_t) * HIDRAW_BUFFER_SIZE, M_DEVBUF,
 	    M_ZERO | M_WAITOK);
@@ -433,7 +437,7 @@ hidraw_read(struct cdev *dev, struct uio *uio, int flag)
 			sx_unlock(&sc->sc_buf_lock);
 			return (0);
 		}
-		error = uiomove(sc->sc_q + head * sc->sc_isize, length, uio);
+		error = uiomove(sc->sc_q + head * sc->sc_rdsize, length, uio);
 		sx_unlock(&sc->sc_buf_lock);
 
 		mtx_lock(sc->sc_mtx);

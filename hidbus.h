@@ -40,6 +40,11 @@ struct hid_device_info {
 	uint16_t	idVendor;
 	uint16_t	idProduct;
 	uint16_t	idVersion;
+	/* Maximal sizes for HID requests supported by transport backend */
+	uint16_t	rdsize;
+	uint16_t	wrsize;
+	uint16_t	grsize;
+	uint16_t	srsize;
 };
 
 struct hidbus_ivars {
