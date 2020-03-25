@@ -253,9 +253,10 @@ hidraw_detach(device_t self)
 
 	DPRINTF("sc=%p\n", sc);
 
-	sc->dev->si_drv1 = NULL;
-	if (sc->dev != NULL)
+	if (sc->dev != NULL) {
+		sc->dev->si_drv1 = NULL;
 		destroy_dev(sc->dev);
+	}
 	sx_destroy(&sc->sc_buf_lock);
 	/* Avoid knlist_clear KASSERTion when hidbus lock is a newbus lock */
 	mtx_lock(sc->sc_mtx);
