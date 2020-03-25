@@ -212,6 +212,8 @@ hidraw_attach(device_t self)
 		return (error);
 	}
 
+	(void)make_dev_alias(sc->dev, "uhid%d", device_get_unit(self));
+
 	hidbus_set_intr(sc->sc_dev, hidraw_intr, sc);
 
 	return (0);
