@@ -1,15 +1,9 @@
-/*	$NetBSD: uhid.c,v 1.46 2001/11/13 06:24:55 lukem Exp $	*/
-
-/* Also already merged from NetBSD:
- *	$NetBSD: uhid.c,v 1.54 2002/09/23 05:51:21 simonb Exp $
- */
-
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-NetBSD
+ *
  * Copyright (c) 1998 The NetBSD Foundation, Inc.
  * All rights reserved.
+ * Copyright (c) 2020 Vladimir Kondratyev <wulf@FreeBSD.org>
  *
  * This code is derived from software contributed to The NetBSD Foundation
  * by Lennart Augustsson (lennart@augustsson.net) at
@@ -23,13 +17,6 @@ __FBSDID("$FreeBSD$");
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 3. All advertising materials mentioning features or use of this software
- *    must display the following acknowledgement:
- *        This product includes software developed by the NetBSD
- *        Foundation, Inc. and its contributors.
- * 4. Neither the name of The NetBSD Foundation nor the names of its
- *    contributors may be used to endorse or promote products derived
- *    from this software without specific prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED BY THE NETBSD FOUNDATION, INC. AND CONTRIBUTORS
  * ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
@@ -47,6 +34,9 @@ __FBSDID("$FreeBSD$");
 /*
  * HID spec: http://www.usb.org/developers/devclass_docs/HID1_11.pdf
  */
+
+#include <sys/cdefs.h>
+__FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -240,6 +230,7 @@ hidraw_attach(device_t self)
 		hidraw_detach(self);
 		return (error);
 	}
+	(void)make_dev_alias(sc->dev, "uhid%d", device_get_unit(self));
 
 	hidbus_set_intr(sc->sc_dev, hidraw_intr);
 
