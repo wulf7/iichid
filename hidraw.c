@@ -98,6 +98,7 @@ struct hidraw_softc {
 	int sc_repdesc_size;
 
 	int sc_rdsize;
+	int sc_wrsize;
 	uint8_t *sc_q;
 	uint16_t *sc_qlen;
 	int sc_head;
@@ -214,7 +215,8 @@ hidraw_attach(device_t self)
 	sc->sc_fsize = hid_report_size(desc, size, hid_feature, &sc->sc_fid);
 
 	sc->sc_rdsize = hw->rdsize;
-	sc->sc_buf_size = MAX(hw->wrsize, MAX(hw->grsize, hw->srsize));
+	sc->sc_wrsize = hw->wrsize;
+	sc->sc_buf_size = MAX(sc->sc_isize, MAX(sc->sc_osize, sc->sc_fsize));
 
 	make_dev_args_init(&mda);
 	mda.mda_flags = MAKEDEV_WAITOK;
@@ -230,7 +232,6 @@ hidraw_attach(device_t self)
 		hidraw_detach(self);
 		return (error);
 	}
-	(void)make_dev_alias(sc->dev, "uhid%d", device_get_unit(self));
 
 	hidbus_set_intr(sc->sc_dev, hidraw_intr);
 
@@ -455,8 +456,9 @@ hidraw_write(struct cdev *dev, struct uio *uio, int flag)
 {
 	struct hidraw_softc *sc;
 	int error;
-	int size, uio_size;
-	uint8_t *uio_buf, id = 0;
+	int size;
+	size_t buf_offset;
+	uint8_t id = 0;
 
 	DPRINTFN(1, "\n");
 
@@ -467,10 +469,10 @@ hidraw_write(struct cdev *dev, struct uio *uio, int flag)
 	if (sc->sc_osize == 0)
 		return (EOPNOTSUPP);
 
-	uio_buf = sc->sc_buf;
+	buf_offset = 0;
 	if (sc->sc_state.uhid) {
-		size = uio_size = sc->sc_osize;
-		if (uio->uio_resid != uio_size)
+		size = sc->sc_osize;
+		if (uio->uio_resid != size)
 			return (EINVAL);
 	} else {
 		size = uio->uio_resid;
@@ -480,17 +482,24 @@ hidraw_write(struct cdev *dev, struct uio *uio, int flag)
 		error = uiomove(&id, 1, uio);
 		if (error)
 			return (error);
-		if (id != 0) {
-			uio_buf++;
-			size = imin(sc->sc_osize, size);
-			uio_size = size - 1;
-		} else
-			size = uio_size = imin(sc->sc_osize, uio->uio_resid);
+		if (id != 0)
+			buf_offset++;
+		else
+			size--;
+		/* Check if underlying driver could process this request */
+		if (size > sc->sc_wrsize)
+			return (ENOBUFS);
 	}
 	sx_xlock(&sc->sc_buf_lock);
 	if (sc->sc_buf != NULL) {
+		/* Expand buf if needed as hidraw allows writes of any size. */
+		if (size > sc->sc_buf_size) {
+			free(sc->sc_buf, M_DEVBUF);
+			sc->sc_buf = malloc(sc->sc_wrsize, M_DEVBUF, M_WAITOK);
+			sc->sc_buf_size = sc->sc_wrsize;
+		}
 		sc->sc_buf[0] = id;
-		error = uiomove(uio_buf, uio_size, uio);
+		error = uiomove(sc->sc_buf + buf_offset, uio->uio_resid, uio);
 	} else
 		error = EIO;
 	if (error == 0)
