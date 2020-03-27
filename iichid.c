@@ -1051,9 +1051,8 @@ iichid_attach(device_t dev)
 	     le16toh(sc->desc.wReportDescLength), hid_feature, &sc->fid);
 
 	sc->hw.rdsize = sc->isize;
-	sc->hw.wrsize = sc->osize;
-	sc->hw.grsize = MAX(sc->isize, MAX(sc->osize, sc->fsize));
-	sc->hw.srsize = MAX(sc->isize, MAX(sc->osize, sc->fsize));
+	/* Write and get/set_report sizes are limited by I2C-HID protocol */
+	sc->hw.wrsize = sc->hw.grsize = sc->hw.srsize = UINT16_MAX - 2;
 
 	sc->ibuf = malloc(sc->isize, M_DEVBUF, M_WAITOK | M_ZERO);
 
