@@ -1017,10 +1017,7 @@ iichid_attach(device_t dev)
 	 * Windows driver sleeps for 1ms between the SET_POWER and RESET
 	 * commands. So we too as some devices may depend on this.
 	 */
-	if (cold)
-		DELAY(1000);
-	else
-		tsleep(sc, 0, "iichid", (hz + 999) / 1000);
+	pause("iichid", (hz + 999) / 1000);
 
 	error = iichid_reset(sc);
 	if (error) {
