@@ -659,6 +659,8 @@ usbhid_attach(device_t dev)
 {
 	struct usb_attach_arg *uaa = device_get_ivars(dev);
 	struct usbhid_softc *sc = device_get_softc(dev);
+	struct usb_interface *iface;
+	struct usb_hid_descriptor *hid;
 	char *sep;
 	int error = 0;
 
@@ -670,6 +672,17 @@ usbhid_attach(device_t dev)
 
 	sc->sc_iface_no = uaa->info.bIfaceNum;
 	sc->sc_iface_index = uaa->info.bIfaceIndex;
+
+	iface = usbd_get_iface(sc->sc_udev, sc->sc_iface_index);
+	if (iface != NULL && iface->idesc != NULL &&
+	    iface->idesc->bInterfaceClass == UICLASS_HID) {
+		hid = hid_get_descriptor_from_usb
+		    (usbd_get_config_descriptor(sc->sc_udev), iface->idesc);
+		if (hid != NULL)
+			sc->sc_hw.rdescsize =
+			    UGETW(hid->descrs[0].wDescriptorLength);
+	}
+	sc->sc_repdesc_size = sc->sc_hw.rdescsize;
 
 	if (uaa->info.idVendor == USB_VENDOR_WACOM) {
 
@@ -723,11 +736,14 @@ usbhid_attach(device_t dev)
 		sc->sc_flags.static_desc = true;
 	}
 	if (sc->sc_repdesc_ptr == NULL) {
-
-		error = usbd_req_get_hid_desc(uaa->device, NULL,
-		    &sc->sc_repdesc_ptr, &sc->sc_repdesc_size,
-		    M_USBDEV, uaa->info.bIfaceIndex);
-
+		if (sc->sc_repdesc_size == 0) {
+			device_printf(dev, "no report descriptor\n");
+			goto detach;
+		}
+		sc->sc_repdesc_ptr =
+		    malloc(sc->sc_repdesc_size, M_USBDEV, M_ZERO | M_WAITOK);
+		error = usbd_req_get_report_descriptor(sc->sc_udev, NULL,
+		    sc->sc_repdesc_ptr, sc->sc_repdesc_size, sc->sc_iface_index);
 		if (error) {
 			device_printf(dev, "no report descriptor\n");
 			goto detach;

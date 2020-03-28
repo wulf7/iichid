@@ -1000,6 +1000,7 @@ iichid_attach(device_t dev)
 	sc->hw.idVendor = le16toh(sc->desc.wVendorID);
 	sc->hw.idProduct = le16toh(sc->desc.wProductID);
 	sc->hw.idVersion = le16toh(sc->desc.wVersionID);
+	sc->hw.rdescsize = le16toh(sc->desc.wReportDescLength);
 
 	snprintf(sc->hw.name, sizeof(sc->hw.name), "%s:%02lX %04X:%04X",
 	    (device_info->Valid & ACPI_VALID_HID) ?
@@ -1027,10 +1028,8 @@ iichid_attach(device_t dev)
 		return (ENXIO);
 	}
 
-	sc->rep_desc = malloc(le16toh(sc->desc.wReportDescLength), M_DEVBUF,
-	    M_WAITOK | M_ZERO);
-	error = iichid_cmd_get_report_desc(sc, sc->rep_desc,
-	    le16toh(sc->desc.wReportDescLength));
+	sc->rep_desc = malloc(sc->hw.rdescsize, M_DEVBUF, M_WAITOK | M_ZERO);
+	error = iichid_cmd_get_report_desc(sc, sc->rep_desc, sc->hw.rdescsize);
 	if (error) {
 		device_printf(dev, "failed to fetch report descriptor: %d\n",
 		    error);
@@ -1042,12 +1041,12 @@ iichid_attach(device_t dev)
 	 * Do not rely on wMaxInputLength, as some devices may set it to
 	 * a wrong length. Traverse report descriptor and find the longest.
 	 */
-	sc->isize = hid_report_size(sc->rep_desc,
-	     le16toh(sc->desc.wReportDescLength), hid_input, &sc->iid);
-	sc->osize = hid_report_size(sc->rep_desc,
-	     le16toh(sc->desc.wReportDescLength), hid_output, &sc->oid);
-	sc->fsize = hid_report_size(sc->rep_desc,
-	     le16toh(sc->desc.wReportDescLength), hid_feature, &sc->fid);
+	sc->isize = hid_report_size(sc->rep_desc, sc->hw.rdescsize,
+	    hid_input, &sc->iid);
+	sc->osize = hid_report_size(sc->rep_desc, sc->hw.rdescsize,
+	    hid_output, &sc->oid);
+	sc->fsize = hid_report_size(sc->rep_desc, sc->hw.rdescsize,
+	    hid_feature, &sc->fid);
 
 	sc->hw.rdsize = sc->isize;
 	/* Write and get/set_report sizes are limited by I2C-HID protocol */

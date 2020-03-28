@@ -40,6 +40,7 @@ struct hid_device_info {
 	uint16_t	idVendor;
 	uint16_t	idProduct;
 	uint16_t	idVersion;
+	uint16_t	rdescsize;	/* Report descriptor size */
 	/* Maximal sizes for HID requests supported by transport backend */
 	uint16_t	rdsize;
 	uint16_t	wrsize;
