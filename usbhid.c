@@ -106,6 +106,7 @@ struct usbhid_softc {
 	hid_intr_t *sc_intr_handler;
 	void *sc_intr_context;
 	struct mtx *sc_intr_mtx;
+	void *sc_ibuf;
 
 	struct hid_device_info sc_hw;
 
@@ -113,7 +114,6 @@ struct usbhid_softc {
 	struct usb_xfer *sc_xfer[USBHID_N_TRANSFER];
 	struct usb_device *sc_udev;
 	void   *sc_repdesc_ptr;
-	void   *sc_ibuf;
 
 	uint32_t sc_isize;
 	uint32_t sc_osize;
@@ -212,11 +212,11 @@ usbhid_intr_rd_callback(struct usb_xfer *xfer, usb_error_t error)
 		 * If the ID byte is non zero we allow descriptors
 		 * having multiple sizes:
 		 */
-		if ((actlen >= (int)sc->sc_isize) ||
+		if ((actlen >= (int)sc->sc_hw.rdsize) ||
 		    ((actlen > 0) && (sc->sc_iid != 0))) {
 			/* limit report length to the maximum */
-			if (actlen > (int)sc->sc_isize)
-				actlen = sc->sc_isize;
+			if (actlen > (int)sc->sc_hw.rdsize)
+				actlen = sc->sc_hw.rdsize;
 			usbd_copy_out(pc, 0, sc->sc_ibuf, actlen);
 			sc->sc_intr_handler(sc->sc_intr_context, sc->sc_ibuf,
 			    actlen);
@@ -408,6 +408,8 @@ usbhid_intr_setup(device_t dev, struct mtx *mtx, hid_intr_t intr,
 		    usbd_xfer_max_len(sc->sc_xfer[USBHID_INTR_DT_WR]);
 	else
 		sc->sc_hw.wrsize = sc->sc_hw.srsize;
+
+	sc->sc_ibuf = malloc(sc->sc_hw.rdsize, M_USBDEV, M_ZERO | M_WAITOK);
 }
 
 static void
@@ -416,6 +418,7 @@ usbhid_intr_unsetup(device_t dev)
 	struct usbhid_softc* sc = device_get_softc(dev);
 
 	usbd_transfer_unsetup(sc->sc_xfer, USBHID_N_TRANSFER);
+	free(sc->sc_ibuf, M_USBDEV);
 }
 
 static int
@@ -764,7 +767,6 @@ usbhid_attach(device_t dev)
 		    sc->sc_fsize);
 		sc->sc_fsize = USBHID_RSIZE;
 	}
-	sc->sc_ibuf = malloc(sc->sc_isize, M_USBDEV, M_ZERO | M_WAITOK);
 
 	sc->sc_hw.parent = dev;
 	strlcpy(sc->sc_hw.name, device_get_desc(dev), sizeof(sc->sc_hw.name));
@@ -810,7 +812,6 @@ usbhid_detach(device_t dev)
 
 	if (!sc->sc_flags.static_desc)
 		free(sc->sc_repdesc_ptr, M_USBDEV);
-	free(sc->sc_ibuf, M_USBDEV);
 
 	return (0);
 }

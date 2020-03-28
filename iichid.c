@@ -106,9 +106,9 @@ struct iichid_softc {
 	hid_intr_t		*intr_handler;
 	void			*intr_context;
 	struct mtx		*intr_mtx;
+	uint8_t			*ibuf;
 
 	uint8_t			*rep_desc;
-	uint8_t			*ibuf;
 	int			isize;
 	int			osize;
 	int			fsize;
@@ -539,7 +539,7 @@ iichid_event_task(void *context, int pending)
 	if (iicbus_request_bus(parent, sc->dev, IIC_WAIT) != 0)
 		goto rearm;
 
-	maxlen = sc->power_on ? sc->isize : 0;
+	maxlen = sc->power_on ? sc->hw.rdsize : 0;
 	error = iichid_cmd_read(sc, sc->ibuf, maxlen, &actual);
 	iicbus_release_bus(parent, sc->dev);
 	if (error != 0) {
@@ -604,7 +604,7 @@ iichid_intr(void *context)
 	 * (to ON) before any other command. As some hardware requires reads to
 	 * acknoledge interrupts we fetch only length header and discard it.
 	 */
-	maxlen = sc->power_on ? sc->isize : 0;
+	maxlen = sc->power_on ? sc->hw.rdsize : 0;
 	error = iichid_cmd_read(sc, sc->ibuf, maxlen, &actual);
 	iicbus_release_bus(parent, sc->dev);
 	if (error != 0) {
@@ -831,6 +831,7 @@ iichid_intr_setup(device_t dev, struct mtx *mtx, hid_intr_t intr,
 	sc->intr_handler = intr;
 	sc->intr_context = context;
 	sc->intr_mtx = mtx;
+	sc->ibuf = malloc(sc->hw.rdsize, M_DEVBUF, M_WAITOK | M_ZERO);
 	taskqueue_start_threads(&sc->taskqueue, 1, PI_TTY,
 	    "%s taskq", device_get_nameunit(sc->dev));
 }
@@ -841,6 +842,7 @@ iichid_intr_unsetup(device_t dev)
 	struct iichid_softc* sc = device_get_softc(dev);
 
 	taskqueue_drain_all(sc->taskqueue);
+	free(sc->ibuf, M_DEVBUF);
 }
 
 static int
@@ -886,7 +888,7 @@ iichid_intr_poll(device_t dev)
 	uint16_t actual = 0;
 	int error;
 
-	error = iichid_cmd_read(sc, sc->ibuf, sc->isize, &actual);
+	error = iichid_cmd_read(sc, sc->ibuf, sc->hw.rdsize, &actual);
 	if (error == 0 && actual > (sc->iid != 0 ? 1 : 0) && sc->open)
 		sc->intr_handler(sc->intr_context, sc->ibuf, actual);
 }
@@ -1051,8 +1053,6 @@ iichid_attach(device_t dev)
 	/* Write and get/set_report sizes are limited by I2C-HID protocol */
 	sc->hw.wrsize = sc->hw.grsize = sc->hw.srsize = UINT16_MAX - 2;
 
-	sc->ibuf = malloc(sc->isize, M_DEVBUF, M_WAITOK | M_ZERO);
-
 	sc->power_on = false;
 	TASK_INIT(&sc->event_task, 0, iichid_event_task, sc);
 	TASK_INIT(&sc->power_task, 0, iichid_power_task, sc);
@@ -1200,7 +1200,6 @@ iichid_detach(device_t dev)
 	sc->taskqueue = NULL;
 
 	free(sc->rep_desc, M_DEVBUF);
-	free(sc->ibuf, M_DEVBUF);
 
 	return (0);
 }
