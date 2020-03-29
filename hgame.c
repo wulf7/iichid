@@ -219,16 +219,38 @@ hgame_probe(device_t dev)
 	if (error != 0 && error2 != 0)
 		return (error);
 
-	hidbus_set_desc(dev,
-		(hidbus_get_driver_info(dev) == HUG_GAME_PAD) ? "Gamepad" : "Joystick");
-
 	return (BUS_PROBE_DEFAULT);
+}
+
+static int
+hgame_attach(device_t dev)
+{
+	int error;
+
+	hidbus_set_desc(dev, hidbus_get_driver_info(dev) == HUG_GAME_PAD ?
+	    "Gamepad" : "Joystick");
+
+	if (hidbus_get_driver_info(dev) == XBOX_360) {
+		/*
+		 * Turn off the four LEDs on the gamepad which
+		 * are blinking by default:
+		 */
+		static const uint8_t reportbuf[3] = {1, 3, 0};
+		error = hid_set_report(dev, __DECONST(void *, reportbuf),
+		    sizeof(reportbuf), HID_OUTPUT_REPORT, 0);
+		if (error)
+                        DPRINTF("set output report failed, error=%d "
+                            "(ignored)\n", error);
+	}
+
+	return (hmap_attach(dev));
 }
 
 static devclass_t hgame_devclass;
 
 static device_method_t hgame_methods[] = {
-	DEVMETHOD(device_probe, hgame_probe),
+	DEVMETHOD(device_probe,		hgame_probe),
+	DEVMETHOD(device_attach,	hgame_attach),
 	DEVMETHOD_END
 };
 
