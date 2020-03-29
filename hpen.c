@@ -49,6 +49,8 @@ __FBSDID("$FreeBSD$");
 #include "hidbus.h"
 #include "hmap.h"
 
+#include "usbdevs.h"
+
 #define	HID_DEBUG_VAR	hpen_debug
 #include "hid_debug.h"
 
@@ -183,18 +185,43 @@ hpen_probe(device_t dev)
 	if (error != 0)
 		return (error);
 
+	return (BUS_PROBE_DEFAULT);
+}
+
+static int
+hpen_attach(device_t dev)
+{
+	const struct hid_device_info *hw = hid_get_device_info(dev);
+	int error;
+
 	if (hidbus_get_usage(dev) == HID_USAGE2(HUP_DIGITIZERS, HUD_DIGITIZER))
 		hidbus_set_desc(dev, "Digitizer");
 	else
 		hidbus_set_desc(dev, "Pen");
 
-	return (BUS_PROBE_DEFAULT);
+	if (hw->idBus == BUS_USB && hw->idVendor == USB_VENDOR_WACOM &&
+	    hw->idProduct == USB_PRODUCT_WACOM_GRAPHIRE3_4X5) {
+		static const uint8_t reportbuf[3] = {2, 2, 2};
+		/*
+		 * The Graphire3 needs 0x0202 to be written to
+		 * feature report ID 2 before it'll start
+		 * returning digitizer data.
+		 */
+		error = hid_set_report(dev, __DECONST(void *, reportbuf),
+		    sizeof(reportbuf), HID_FEATURE_REPORT, 2);
+		if (error)
+			DPRINTF("set feature report failed, error=%d "
+			    "(ignored)\n", error);
+	}
+
+	return (hmap_attach(dev));
 }
 
 static devclass_t hpen_devclass;
 
 static device_method_t hpen_methods[] = {
-	DEVMETHOD(device_probe, hpen_probe),
+	DEVMETHOD(device_probe,		hpen_probe),
+	DEVMETHOD(device_attach,	hpen_attach),
 	DEVMETHOD_END
 };
 
