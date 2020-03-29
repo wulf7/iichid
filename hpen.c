@@ -61,8 +61,13 @@ SYSCTL_INT(_hw_hid_hpen, OID_AUTO, debug, CTLFLAG_RWTUN,
 		&hpen_debug, 0, "Debug level");
 #endif
 
+#ifndef HUD_SEC_BARREL_SWITCH
+#define	HUD_SEC_BARREL_SWITCH	0x5a
+#endif
+
 static hmap_cb_t	hpen_battery_strenght_cb;
-static hmap_cb_t	hpen_compl_cb;
+static hmap_cb_t	hpen_compl_digi_cb;
+static hmap_cb_t	hpen_compl_pen_cb;
 
 #define HPEN_MAP_BUT(usage, code)        \
 	HMAP_KEY(#usage, HUP_DIGITIZERS, HUD_##usage, code)
@@ -73,7 +78,28 @@ static hmap_cb_t	hpen_compl_cb;
 #define HPEN_MAP_ABS_CB(usage, cb)       \
 	HMAP_ABS_CB(#usage, HUP_DIGITIZERS, HUD_##usage, cb)
 
-static const struct hmap_item hpen_map[] = {
+/* Generic map digitizer page map according to hut1_12v2.pdf */
+static const struct hmap_item hpen_map_digi[] = {
+    { HPEN_MAP_ABS_GD(X,		ABS_X),		  .required = true },
+    { HPEN_MAP_ABS_GD(Y,		ABS_Y),		  .required = true },
+    { HPEN_MAP_ABS(   TIP_PRESSURE,	ABS_PRESSURE) },
+    { HPEN_MAP_ABS(   X_TILT,		ABS_TILT_X) },
+    { HPEN_MAP_ABS(   Y_TILT,		ABS_TILT_Y) },
+    { HPEN_MAP_ABS_CB(BATTERY_STRENGTH,	hpen_battery_strenght_cb) },
+    { HPEN_MAP_BUT(   TOUCH,		BTN_TOUCH) },
+    { HPEN_MAP_BUT(   TIP_SWITCH,	BTN_TOUCH) },
+    { HPEN_MAP_BUT(   SEC_TIP_SWITCH,	BTN_TOUCH) },
+    { HPEN_MAP_BUT(   IN_RANGE,		BTN_TOOL_PEN) },
+    { HPEN_MAP_BUT(   BARREL_SWITCH,	BTN_STYLUS) },
+    { HPEN_MAP_BUT(   INVERT,		BTN_TOOL_RUBBER) },
+    { HPEN_MAP_BUT(   ERASER,		BTN_TOUCH) },
+    { HPEN_MAP_BUT(   TABLET_PICK,	BTN_STYLUS2) },
+    { HPEN_MAP_BUT(   SEC_BARREL_SWITCH,BTN_STYLUS2) },
+    { HMAP_COMPL_CB(  "COMPL_CB",	&hpen_compl_digi_cb) },
+};
+
+/* Microsoft-standardized pen support */
+static const struct hmap_item hpen_map_pen[] = {
     { HPEN_MAP_ABS_GD(X,		ABS_X),		  .required = true },
     { HPEN_MAP_ABS_GD(Y,		ABS_Y),		  .required = true },
     { HPEN_MAP_ABS(   TIP_PRESSURE,	ABS_PRESSURE),	  .required = true },
@@ -85,10 +111,11 @@ static const struct hmap_item hpen_map[] = {
     { HPEN_MAP_BUT(   BARREL_SWITCH,	BTN_STYLUS) },
     { HPEN_MAP_BUT(   INVERT,		BTN_TOOL_RUBBER), .required = true },
     { HPEN_MAP_BUT(   ERASER,		BTN_TOUCH),	  .required = true },
-    { HMAP_COMPL_CB(  "COMPL_CB",	&hpen_compl_cb) },
+    { HMAP_COMPL_CB(  "COMPL_CB",	&hpen_compl_pen_cb) },
 };
 
 static const struct hid_device_id hpen_devs[] = {
+	{ HID_TLC(HUP_DIGITIZERS, HUD_DIGITIZER) },
 	{ HID_TLC(HUP_DIGITIZERS, HUD_PEN) },
 };
 
@@ -112,7 +139,19 @@ hpen_battery_strenght_cb(HMAP_CB_ARGS)
 }
 
 static int
-hpen_compl_cb(HMAP_CB_ARGS)
+hpen_compl_digi_cb(HMAP_CB_ARGS)
+{
+	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV;
+
+	if (HMAP_CB_GET_STATE() == HMAP_CB_IS_ATTACHING)
+		evdev_support_prop(evdev, INPUT_PROP_POINTER);
+
+	/* Do not execute callback at interrupt handler and detach */
+	return (ENOSYS);
+}
+
+static int
+hpen_compl_pen_cb(HMAP_CB_ARGS)
 {
 	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV;
 
@@ -135,11 +174,19 @@ hpen_probe(device_t dev)
 	hmap_set_debug_var(dev, &HID_DEBUG_VAR);
 
 	/* Check if report descriptor belongs to a HID tablet device */
-	error = hmap_add_map(dev, hpen_map, nitems(hpen_map), NULL);
+	if (hidbus_get_usage(dev) == HID_USAGE2(HUP_DIGITIZERS, HUD_DIGITIZER))
+		error = hmap_add_map(dev, hpen_map_digi, nitems(hpen_map_digi),
+		    NULL);
+	else
+		error = hmap_add_map(dev, hpen_map_pen, nitems(hpen_map_pen),
+		    NULL);
 	if (error != 0)
 		return (error);
 
-	hidbus_set_desc(dev, "Pen");
+	if (hidbus_get_usage(dev) == HID_USAGE2(HUP_DIGITIZERS, HUD_DIGITIZER))
+		hidbus_set_desc(dev, "Digitizer");
+	else
+		hidbus_set_desc(dev, "Pen");
 
 	return (BUS_PROBE_DEFAULT);
 }
