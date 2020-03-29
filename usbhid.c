@@ -659,7 +659,6 @@ usbhid_attach(device_t dev)
 {
 	struct usb_attach_arg *uaa = device_get_ivars(dev);
 	struct usbhid_softc *sc = device_get_softc(dev);
-	struct usb_interface *iface;
 	struct usb_hid_descriptor *hid;
 	char *sep;
 	int error = 0;
@@ -686,11 +685,10 @@ usbhid_attach(device_t dev)
 	sc->sc_hw.idProduct = uaa->info.idProduct;
 	sc->sc_hw.idVersion = 0;
 
-	iface = usbd_get_iface(sc->sc_udev, sc->sc_iface_index);
-	if (iface != NULL && iface->idesc != NULL &&
-	    iface->idesc->bInterfaceClass == UICLASS_HID) {
-		hid = hid_get_descriptor_from_usb
-		    (usbd_get_config_descriptor(sc->sc_udev), iface->idesc);
+	if (uaa->iface != NULL && uaa->iface->idesc != NULL &&
+	    uaa->iface->idesc->bInterfaceClass == UICLASS_HID) {
+		hid = hid_get_descriptor_from_usb(usbd_get_config_descriptor(
+		    sc->sc_udev), uaa->iface->idesc);
 		if (hid != NULL)
 			sc->sc_hw.rdescsize =
 			    UGETW(hid->descrs[0].wDescriptorLength);
