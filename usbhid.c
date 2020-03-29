@@ -673,6 +673,19 @@ usbhid_attach(device_t dev)
 	sc->sc_iface_no = uaa->info.bIfaceNum;
 	sc->sc_iface_index = uaa->info.bIfaceIndex;
 
+	sc->sc_hw.parent = dev;
+	strlcpy(sc->sc_hw.name, device_get_desc(dev), sizeof(sc->sc_hw.name));
+	/* Strip extra parameters from device name created by usb_devinfo */
+	sep = strchr(sc->sc_hw.name, ',');
+	if (sep != NULL)
+		*sep = '\0';
+	strlcpy(sc->sc_hw.serial, usb_get_serial(uaa->device),
+	    sizeof(sc->sc_hw.serial));
+	sc->sc_hw.idBus = BUS_USB;
+	sc->sc_hw.idVendor = uaa->info.idVendor;
+	sc->sc_hw.idProduct = uaa->info.idProduct;
+	sc->sc_hw.idVersion = 0;
+
 	iface = usbd_get_iface(sc->sc_udev, sc->sc_iface_index);
 	if (iface != NULL && iface->idesc != NULL &&
 	    iface->idesc->bInterfaceClass == UICLASS_HID) {
@@ -684,17 +697,17 @@ usbhid_attach(device_t dev)
 	}
 	sc->sc_repdesc_size = sc->sc_hw.rdescsize;
 
-	if (uaa->info.idVendor == USB_VENDOR_WACOM) {
+	if (sc->sc_hw.idVendor == USB_VENDOR_WACOM) {
 
 		/* the report descriptor for the Wacom Graphire is broken */
 
-		if (uaa->info.idProduct == USB_PRODUCT_WACOM_GRAPHIRE) {
+		if (sc->sc_hw.idProduct == USB_PRODUCT_WACOM_GRAPHIRE) {
 
 			sc->sc_repdesc_size = sizeof(usbhid_graphire_report_descr);
 			sc->sc_repdesc_ptr = __DECONST(void *, &usbhid_graphire_report_descr);
 			sc->sc_flags.static_desc = true;
 
-		} else if (uaa->info.idProduct == USB_PRODUCT_WACOM_GRAPHIRE3_4X5) {
+		} else if (sc->sc_hw.idProduct == USB_PRODUCT_WACOM_GRAPHIRE3_4X5) {
 
 			static uint8_t reportbuf[] = {2, 2, 2};
 
@@ -771,19 +784,6 @@ usbhid_attach(device_t dev)
 		    sc->sc_fsize);
 		sc->sc_fsize = USBHID_RSIZE;
 	}
-
-	sc->sc_hw.parent = dev;
-	strlcpy(sc->sc_hw.name, device_get_desc(dev), sizeof(sc->sc_hw.name));
-	/* Strip extra parameters from device name created by usb_devinfo */
-	sep = strchr(sc->sc_hw.name, ',');
-	if (sep != NULL)
-		*sep = '\0';
-	strlcpy(sc->sc_hw.serial, usb_get_serial(uaa->device),
-	    sizeof(sc->sc_hw.serial));
-	sc->sc_hw.idBus = BUS_USB;
-	sc->sc_hw.idVendor = uaa->info.idVendor;
-	sc->sc_hw.idProduct = uaa->info.idProduct;
-	sc->sc_hw.idVersion = 0;
 
 	sc->sc_child = device_add_child(dev, "hidbus", -1);
 	if (sc->sc_child == NULL) {
