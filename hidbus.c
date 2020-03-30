@@ -73,7 +73,6 @@ struct hidbus_softc {
 
 	void				*rdesc_data;
 	uint16_t			rdesc_size;
-	bool				rdesc_static;
 	uint16_t			isize;
 	uint16_t			osize;
 	uint16_t			fsize;
@@ -165,18 +164,18 @@ hidbus_attach(device_t dev)
 	    devinfo->idProduct == USB_PRODUCT_WACOM_GRAPHIRE) {
 		/* the report descriptor for the Wacom Graphire is broken */
 		d_len = sizeof(usbhid_graphire_report_descr);
-		d_ptr = __DECONST(void *, &usbhid_graphire_report_descr);
-		sc->rdesc_static = true;
+		d_ptr = malloc(d_len, M_DEVBUF, M_ZERO | M_WAITOK);
+		bcopy(usbhid_graphire_report_descr, d_ptr, d_len);
 	} else if (devinfo->idVendor == USB_VENDOR_WACOM &&
 		   devinfo->idProduct == USB_PRODUCT_WACOM_GRAPHIRE3_4X5) {
 		d_len = sizeof(usbhid_graphire3_4x5_report_descr);
-		d_ptr = __DECONST(void *, &usbhid_graphire3_4x5_report_descr);
-		sc->rdesc_static = true;
+		d_ptr = malloc(d_len, M_DEVBUF, M_ZERO | M_WAITOK);
+		bcopy(usbhid_graphire3_4x5_report_descr, d_ptr, d_len);
 	} else if (devinfo->isXBox360GP) {
 		/* the Xbox 360 gamepad has no report descriptor */
 		d_len = sizeof(usbhid_xb360gp_report_descr);
-		d_ptr = __DECONST(void *, &usbhid_xb360gp_report_descr);
-		sc->rdesc_static = true;
+		d_ptr = malloc(d_len, M_DEVBUF, M_ZERO | M_WAITOK);
+		bcopy(usbhid_xb360gp_report_descr, d_ptr, d_len);
 	} else if (devinfo->rdescsize != 0) {
 		d_len = devinfo->rdescsize;
 		d_ptr = malloc(d_len, M_DEVBUF, M_ZERO | M_WAITOK);
@@ -256,8 +255,7 @@ hidbus_detach(device_t dev)
 	HID_INTR_UNSETUP(device_get_parent(dev));
 	mtx_destroy(&sc->mtx);
 
-	if (!sc->rdesc_static)
-		free(sc->rdesc_data, M_DEVBUF);
+	free(sc->rdesc_data, M_DEVBUF);
 
 	return (0);
 }
