@@ -66,22 +66,67 @@ static const uint8_t usbhid_xb360gp_report_descr[] = {UHID_XB360GP_REPORT_DESCR(
 static const uint8_t usbhid_graphire_report_descr[] = {UHID_GRAPHIRE_REPORT_DESCR()};
 static const uint8_t usbhid_graphire3_4x5_report_descr[] = {UHID_GRAPHIRE3_4X5_REPORT_DESCR()};
 
+struct hidbus_report_descr {
+	void		*data;
+	uint16_t	len;
+	uint16_t	isize;
+	uint16_t	osize;
+	uint16_t	fsize;
+	uint8_t		iid;
+	uint8_t		oid;
+	uint8_t		fid;
+	bool		is_keyboard;
+};
+
 struct hidbus_softc {
 	device_t			dev;
 	struct mtx			*lock;
 	struct mtx			mtx;
 
-	void				*rdesc_data;
-	uint16_t			rdesc_size;
-	uint16_t			isize;
-	uint16_t			osize;
-	uint16_t			fsize;
-	uint8_t				iid;
-	uint8_t				oid;
-	uint8_t				fid;
+	struct hidbus_report_descr	rdesc;
 
 	STAILQ_HEAD(, hidbus_ivars)	tlcs;
 };
+
+static int
+hidbus_fill_report_descr(struct hidbus_report_descr *hrd, void *data,
+    uint16_t len)
+{
+
+	hrd->data = data;
+	hrd->len = len;
+
+	/*
+	 * If report descriptor is not available yet, set maximal
+	 * report sizes high enough to allow hidraw to work.
+	 */
+	hrd->isize = len == 0 ? HID_RSIZE_MAX :
+	    hid_report_size(data, len, hid_input, &hrd->iid);
+	hrd->osize = len == 0 ? HID_RSIZE_MAX :
+	    hid_report_size(data, len, hid_output, &hrd->oid);
+	hrd->fsize = len == 0 ? HID_RSIZE_MAX :
+	    hid_report_size(data, len, hid_feature, &hrd->fid);
+
+	if (hrd->isize > HID_RSIZE_MAX) {
+		DPRINTF("input size is too large, %hu bytes (truncating)\n",
+		    hrd->isize);
+		hrd->isize = HID_RSIZE_MAX;
+	}
+	if (hrd->osize > HID_RSIZE_MAX) {
+		DPRINTF("output size is too large, %hu bytes (truncating)\n",
+		    hrd->osize);
+		hrd->osize = HID_RSIZE_MAX;
+	}
+	if (hrd->fsize > HID_RSIZE_MAX) {
+		DPRINTF("feature size is too large, %hu bytes (truncating)\n",
+		    hrd->fsize);
+		hrd->fsize = HID_RSIZE_MAX;
+	}
+
+	hrd->is_keyboard = hid_is_keyboard(data, len) != 0;
+
+	return (0);
+}
 
 static device_t
 hidbus_add_child(device_t dev, u_int order, const char *name, int unit)
@@ -155,7 +200,6 @@ hidbus_attach(device_t dev)
 	void *d_ptr = NULL;
 	uint16_t d_len = 0;
 	int error;
-	bool is_keyboard;
 
 	sc->dev = dev;
 	STAILQ_INIT(&sc->tlcs);
@@ -187,41 +231,12 @@ hidbus_attach(device_t dev)
 			d_ptr = NULL;
 		}
 	}
-	sc->rdesc_data = d_ptr;
-	sc->rdesc_size = d_len;
 
-	/*
-	 * If report descriptor is not available yet, set maximal
-	 * report sizes high enough to allow hidraw to work.
-	 */
-	sc->isize = d_len == 0 ? HID_RSIZE_MAX :
-	    hid_report_size(d_ptr, d_len, hid_input, &sc->iid);
-	sc->osize = d_len == 0 ? HID_RSIZE_MAX :
-	    hid_report_size(d_ptr, d_len, hid_output, &sc->oid);
-	sc->fsize = d_len == 0 ? HID_RSIZE_MAX :
-	    hid_report_size(d_ptr, d_len, hid_feature, &sc->fid);
+	hidbus_fill_report_descr(&sc->rdesc, d_ptr, d_len);
+	sc->lock = sc->rdesc.is_keyboard ? HID_SYSCONS_MTX : &sc->mtx;
 
-	if (sc->isize > HID_RSIZE_MAX) {
-		DPRINTF("input size is too large, %hu bytes (truncating)\n",
-		    sc->isize);
-		sc->isize = HID_RSIZE_MAX;
-	}
-	if (sc->osize > HID_RSIZE_MAX) {
-		DPRINTF("output size is too large, %hu bytes (truncating)\n",
-		    sc->osize);
-		sc->osize = HID_RSIZE_MAX;
-	}
-	if (sc->fsize > HID_RSIZE_MAX) {
-		DPRINTF("feature size is too large, %hu bytes (truncating)\n",
-		    sc->fsize);
-		sc->fsize = HID_RSIZE_MAX;
-	}
-
-	is_keyboard = hid_is_keyboard(d_ptr, d_len) != 0;
-	sc->lock = is_keyboard ? HID_SYSCONS_MTX : &sc->mtx;
-
-	HID_INTR_SETUP(parent, sc->lock, hidbus_intr, sc, sc->isize, sc->osize,
-	    sc->fsize);
+	HID_INTR_SETUP(parent, sc->lock, hidbus_intr, sc, sc->rdesc.isize,
+	    sc->rdesc.osize, sc->rdesc.fsize);
 
 	error = hidbus_enumerate_children(dev, d_ptr, d_len);
 	if (error != 0) {
@@ -230,7 +245,7 @@ hidbus_attach(device_t dev)
 	}
 
 	bus_generic_probe(dev);
-	if (is_keyboard)
+	if (sc->rdesc.is_keyboard)
 		error = bus_generic_attach(dev);
 	else
 #ifdef HAVE_BUS_DELAYED_ATTACH_CHILDREN
@@ -255,7 +270,7 @@ hidbus_detach(device_t dev)
 	HID_INTR_UNSETUP(device_get_parent(dev));
 	mtx_destroy(&sc->mtx);
 
-	free(sc->rdesc_data, M_DEVBUF);
+	free(sc->rdesc.data, M_DEVBUF);
 
 	return (0);
 }
@@ -453,13 +468,24 @@ hid_get_report_descr(device_t child, void **data, uint16_t *len)
 	device_t bus = device_get_parent(child);
 	struct hidbus_softc *sc = device_get_softc(bus);
 
-	if (sc->rdesc_data == NULL || sc->rdesc_size == 0)
+	if (sc->rdesc.data == NULL || sc->rdesc.len == 0)
 		return (ENXIO);
 
-	*data = sc->rdesc_data;
-	*len = sc->rdesc_size;
+	*data = sc->rdesc.data;
+	*len = sc->rdesc.len;
 
 	return (0);
+}
+
+int
+hid_set_report_descr(device_t child, void *data, uint16_t len)
+{
+	struct hidbus_report_descr rdesc;
+	int error;
+
+	error = hidbus_fill_report_descr(&rdesc, data, len);
+
+	return (error);
 }
 
 int
@@ -479,7 +505,7 @@ hid_write(device_t child, void *data, uint16_t len)
 
 	if (devinfo->noWriteEp) {
 		/* try to extract the ID byte */
-		id = (sc->oid & (len > 0)) ? *(uint8_t*)data : 0;
+		id = (sc->rdesc.oid & (len > 0)) ? *(uint8_t*)data : 0;
 		return (HID_SET_REPORT(device_get_parent(bus), data, len,
 		    UHID_OUTPUT_REPORT, id));
 	}
