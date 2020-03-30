@@ -108,14 +108,6 @@ struct iichid_softc {
 	struct mtx		*intr_mtx;
 	uint8_t			*ibuf;
 
-	uint8_t			*rep_desc;
-	int			isize;
-	int			osize;
-	int			fsize;
-	uint8_t			iid;
-	uint8_t			oid;
-	uint8_t			fid;
-
 	int			irq_rid;
 	struct resource		*irq_res;
 	void			*irq_cookie;
@@ -335,11 +327,11 @@ iichid_cmd_write(struct iichid_softc *sc, void *buf, int len)
 
 	if (le16toh(sc->desc.wMaxOutputLength) == 0)
 		return (IIC_ENOTSUPP);
-	if (len < (sc->iid != 0 ? 3 : 2))
+	if (len < 2)
 		return (IIC_ENOTSUPP);
 
-	DPRINTF(sc, "HID command I2C_HID_CMD_SET_OUTPUT_REPORT %d (len %d): "
-	    "%*D\n", sc->iid != 0 ? *(uint8_t *)buf : 0, len, len, buf, " ");
+	DPRINTF(sc, "HID command I2C_HID_CMD_WRITE (len %d): "
+	    "%*D\n", len, len, buf, " ");
 
 	return (iicbus_transfer(sc->dev, msgs, nitems(msgs)));
 }
@@ -552,7 +544,7 @@ iichid_event_task(void *context, int pending)
 
 	mtx_lock(sc->intr_mtx);
 	locked = true;
-	if (actual > (sc->iid != 0 ? 1 : 0)) {
+	if (actual > 0) {
 		if (sc->open)
 			sc->intr_handler(sc->intr_context, sc->ibuf, actual);
 #ifdef IICHID_SAMPLING
@@ -615,7 +607,7 @@ iichid_intr(void *context)
 	if (!sc->power_on)
 		return;
 
-	if (actual <= (sc->iid != 0 ? 1 : 0)) {
+	if (actual == 0) {
 		DPRINTF(sc, "no data received\n");
 		return;
 	}
@@ -824,9 +816,20 @@ iichid_sysctl_sampling_rate_handler(SYSCTL_HANDLER_ARGS)
 
 static void
 iichid_intr_setup(device_t dev, struct mtx *mtx, hid_intr_t intr,
-    void *context)
+    void *context, uint16_t isize, uint16_t osize, uint16_t fsize)
 {
 	struct iichid_softc* sc = device_get_softc(dev);
+
+	/*
+	 * Do not rely on wMaxInputLength, as some devices may set it to
+	 * a wrong length. Find the longest input report in report descriptor.
+	 */
+	sc->hw.rdsize = isize;
+	/* Write and get/set_report sizes are limited by I2C-HID protocol */
+	sc->hw.wrsize = sc->hw.grsize = sc->hw.srsize = UINT16_MAX - 2;
+
+	sc->hw.noWriteEp =
+	    (sc->desc.wOutputRegister == 0 || sc->desc.wMaxOutputLength == 0);
 
 	sc->intr_handler = intr;
 	sc->intr_context = context;
@@ -889,7 +892,7 @@ iichid_intr_poll(device_t dev)
 	int error;
 
 	error = iichid_cmd_read(sc, sc->ibuf, sc->hw.rdsize, &actual);
-	if (error == 0 && actual > (sc->iid != 0 ? 1 : 0) && sc->open)
+	if (error == 0 && actual != 0 && sc->open)
 		sc->intr_handler(sc->intr_context, sc->ibuf, actual);
 }
 
@@ -897,12 +900,17 @@ iichid_intr_poll(device_t dev)
  * HID interface
  */
 static int
-iichid_get_report_desc(device_t dev, void **buf, uint16_t *len)
+iichid_get_report_desc(device_t dev, void *buf, uint16_t len)
 {
 	struct iichid_softc* sc = device_get_softc(dev);
+	int error;
 
-	*buf = sc->rep_desc;
-	*len = le16toh(sc->desc.wReportDescLength);
+	error = iichid_cmd_get_report_desc(sc, buf, len);
+	if (error) {
+		device_printf(dev, "failed to fetch report descriptor: %d\n",
+		    error);
+		return (ENXIO);
+	}
 
 	return (0);
 }
@@ -1027,30 +1035,6 @@ iichid_attach(device_t dev)
 		device_printf(dev, "failed to reset hardware: %d\n", error);
 		return (ENXIO);
 	}
-
-	sc->rep_desc = malloc(sc->hw.rdescsize, M_DEVBUF, M_WAITOK | M_ZERO);
-	error = iichid_cmd_get_report_desc(sc, sc->rep_desc, sc->hw.rdescsize);
-	if (error) {
-		device_printf(dev, "failed to fetch report descriptor: %d\n",
-		    error);
-		free (sc->rep_desc, M_TEMP);
-		return (ENXIO);
-	}
-
-	/*
-	 * Do not rely on wMaxInputLength, as some devices may set it to
-	 * a wrong length. Traverse report descriptor and find the longest.
-	 */
-	sc->isize = hid_report_size(sc->rep_desc, sc->hw.rdescsize,
-	    hid_input, &sc->iid);
-	sc->osize = hid_report_size(sc->rep_desc, sc->hw.rdescsize,
-	    hid_output, &sc->oid);
-	sc->fsize = hid_report_size(sc->rep_desc, sc->hw.rdescsize,
-	    hid_feature, &sc->fid);
-
-	sc->hw.rdsize = sc->isize;
-	/* Write and get/set_report sizes are limited by I2C-HID protocol */
-	sc->hw.wrsize = sc->hw.grsize = sc->hw.srsize = UINT16_MAX - 2;
 
 	sc->power_on = false;
 	TASK_INIT(&sc->event_task, 0, iichid_event_task, sc);
@@ -1197,8 +1181,6 @@ iichid_detach(device_t dev)
 	if (sc->taskqueue)
 		taskqueue_free(sc->taskqueue);
 	sc->taskqueue = NULL;
-
-	free(sc->rep_desc, M_DEVBUF);
 
 	return (0);
 }

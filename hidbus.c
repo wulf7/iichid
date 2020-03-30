@@ -1,7 +1,7 @@
 /*-
  * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
  *
- * Copyright (c) 2019 Vladimir Kondratyev <wulf@FreeBSD.org>
+ * Copyright (c) 2019-2020 Vladimir Kondratyev <wulf@FreeBSD.org>
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -37,6 +37,9 @@ __FBSDID("$FreeBSD$");
 #include <sys/queue.h>
 #include <sys/systm.h>
 
+#include "usbdevs.h"
+#include <dev/usb/input/usb_rdesc.h>
+
 #include "hid.h"
 #include "hidbus.h"
 
@@ -51,16 +54,32 @@ __FBSDID("$FreeBSD$");
 #define HAVE_BUS_DELAYED_ATTACH_CHILDREN
 #endif
 
+#define	HID_RSIZE_MAX	1024
+
 static hid_intr_t	hidbus_intr;
 
 static device_probe_t	hidbus_probe;
 static device_attach_t	hidbus_attach;
 static device_detach_t	hidbus_detach;
 
+static const uint8_t usbhid_xb360gp_report_descr[] = {UHID_XB360GP_REPORT_DESCR()};
+static const uint8_t usbhid_graphire_report_descr[] = {UHID_GRAPHIRE_REPORT_DESCR()};
+static const uint8_t usbhid_graphire3_4x5_report_descr[] = {UHID_GRAPHIRE3_4X5_REPORT_DESCR()};
+
 struct hidbus_softc {
 	device_t			dev;
 	struct mtx			*lock;
 	struct mtx			mtx;
+
+	void				*rdesc_data;
+	uint16_t			rdesc_size;
+	bool				rdesc_static;
+	uint16_t			isize;
+	uint16_t			osize;
+	uint16_t			fsize;
+	uint8_t				iid;
+	uint8_t				oid;
+	uint8_t				fid;
 
 	STAILQ_HEAD(, hidbus_ivars)	tlcs;
 };
@@ -132,22 +151,78 @@ static int
 hidbus_attach(device_t dev)
 {
 	struct hidbus_softc *sc = device_get_softc(dev);
-	void *d_ptr;
-	uint16_t d_len;
+	struct hid_device_info *devinfo = device_get_ivars(dev);
+	device_t parent = device_get_parent(dev);
+	void *d_ptr = NULL;
+	uint16_t d_len = 0;
 	int error;
 	bool is_keyboard;
 
 	sc->dev = dev;
 	STAILQ_INIT(&sc->tlcs);
 
-	if (HID_GET_REPORT_DESCR(device_get_parent(dev), &d_ptr, &d_len) != 0)
-		return (ENXIO);
+	if (devinfo->idVendor == USB_VENDOR_WACOM &&
+	    devinfo->idProduct == USB_PRODUCT_WACOM_GRAPHIRE) {
+		/* the report descriptor for the Wacom Graphire is broken */
+		d_len = sizeof(usbhid_graphire_report_descr);
+		d_ptr = __DECONST(void *, &usbhid_graphire_report_descr);
+		sc->rdesc_static = true;
+	} else if (devinfo->idVendor == USB_VENDOR_WACOM &&
+		   devinfo->idProduct == USB_PRODUCT_WACOM_GRAPHIRE3_4X5) {
+		d_len = sizeof(usbhid_graphire3_4x5_report_descr);
+		d_ptr = __DECONST(void *, &usbhid_graphire3_4x5_report_descr);
+		sc->rdesc_static = true;
+	} else if (devinfo->isXBox360GP) {
+		/* the Xbox 360 gamepad has no report descriptor */
+		d_len = sizeof(usbhid_xb360gp_report_descr);
+		d_ptr = __DECONST(void *, &usbhid_xb360gp_report_descr);
+		sc->rdesc_static = true;
+	} else if (devinfo->rdescsize != 0) {
+		d_len = devinfo->rdescsize;
+		d_ptr = malloc(d_len, M_DEVBUF, M_ZERO | M_WAITOK);
+		error = HID_GET_REPORT_DESCR(parent, d_ptr, d_len);
+		if (error != 0) {
+			free(d_ptr, M_DEVBUF);
+			d_len = 0;
+			d_ptr = NULL;
+		}
+	}
+	sc->rdesc_data = d_ptr;
+	sc->rdesc_size = d_len;
+
+	/*
+	 * If report descriptor is not available yet, set maximal
+	 * report sizes high enough to allow hidraw to work.
+	 */
+	sc->isize = d_len == 0 ? HID_RSIZE_MAX :
+	    hid_report_size(d_ptr, d_len, hid_input, &sc->iid);
+	sc->osize = d_len == 0 ? HID_RSIZE_MAX :
+	    hid_report_size(d_ptr, d_len, hid_output, &sc->oid);
+	sc->fsize = d_len == 0 ? HID_RSIZE_MAX :
+	    hid_report_size(d_ptr, d_len, hid_feature, &sc->fid);
+
+	if (sc->isize > HID_RSIZE_MAX) {
+		DPRINTF("input size is too large, %hu bytes (truncating)\n",
+		    sc->isize);
+		sc->isize = HID_RSIZE_MAX;
+	}
+	if (sc->osize > HID_RSIZE_MAX) {
+		DPRINTF("output size is too large, %hu bytes (truncating)\n",
+		    sc->osize);
+		sc->osize = HID_RSIZE_MAX;
+	}
+	if (sc->fsize > HID_RSIZE_MAX) {
+		DPRINTF("feature size is too large, %hu bytes (truncating)\n",
+		    sc->fsize);
+		sc->fsize = HID_RSIZE_MAX;
+	}
 	is_keyboard = hid_is_keyboard(d_ptr, d_len) != 0;
 
 	mtx_init(&sc->mtx, "hidbus lock", NULL, MTX_DEF);
 	sc->lock = is_keyboard ? HID_SYSCONS_MTX : &sc->mtx;
 
-	HID_INTR_SETUP(device_get_parent(dev), sc->lock, hidbus_intr, sc);
+	HID_INTR_SETUP(parent, sc->lock, hidbus_intr, sc, sc->isize, sc->osize,
+	    sc->fsize);
 
 	error = hidbus_enumerate_children(dev, d_ptr, d_len);
 	if (error != 0) {
@@ -179,6 +254,9 @@ hidbus_detach(device_t dev)
 
 	HID_INTR_UNSETUP(device_get_parent(dev));
 	mtx_destroy(&sc->mtx);
+
+	if (!sc->rdesc_static)
+		free(sc->rdesc_data, M_DEVBUF);
 
 	return (0);
 }
@@ -371,10 +449,18 @@ hidbus_intr_poll(device_t child)
  * HID interface
  */
 int
-hid_get_report_descr(device_t bus, void **data, uint16_t *len)
+hid_get_report_descr(device_t child, void **data, uint16_t *len)
 {
+	device_t bus = device_get_parent(child);
+	struct hidbus_softc *sc = device_get_softc(bus);
 
-	return (HID_GET_REPORT_DESCR(device_get_parent(bus), data, len));
+	if (sc->rdesc_data == NULL || sc->rdesc_size == 0)
+		return (ENXIO);
+
+	*data = sc->rdesc_data;
+	*len = sc->rdesc_size;
+
+	return (0);
 }
 
 int
@@ -385,8 +471,19 @@ hid_read(device_t bus, void *data, uint16_t maxlen, uint16_t *actlen)
 }
 
 int
-hid_write(device_t bus, void *data, uint16_t len)
+hid_write(device_t child, void *data, uint16_t len)
 {
+	device_t bus = device_get_parent(child);
+	struct hidbus_softc *sc = device_get_softc(bus);
+	struct hid_device_info *devinfo = device_get_ivars(bus);
+	uint8_t id;
+
+	if (devinfo->noWriteEp) {
+		/* try to extract the ID byte */
+		id = (sc->oid & (len > 0)) ? *(uint8_t*)data : 0;
+		return (HID_SET_REPORT(device_get_parent(bus), data, len,
+		    UHID_OUTPUT_REPORT, id));
+	}
 
 	return (HID_WRITE(device_get_parent(bus), data, len));
 }
@@ -439,9 +536,7 @@ static device_method_t hidbus_methods[] = {
 	DEVMETHOD(bus_child_location_str,hidbus_child_location_str),
 
 	/* hid interface */
-	DEVMETHOD(hid_get_report_descr,	hid_get_report_descr),
 	DEVMETHOD(hid_read,		hid_read),
-	DEVMETHOD(hid_write,		hid_write),
 	DEVMETHOD(hid_get_report,       hid_get_report),
 	DEVMETHOD(hid_set_report,       hid_set_report),
 	DEVMETHOD(hid_set_idle,		hid_set_idle),

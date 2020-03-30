@@ -38,6 +38,8 @@ INTERFACE hid;
 # intr callback function which is called if input data is available.
 # context is the private softc pointer, which will be used to callback.
 # mtx is the private mutex protecting the transfer structure and the softc.
+# isize, osize and fsize are requested maximal sizes of input, output and
+# feature reports and used to determine sizes of driver internal buffers.
 # This function returns zero upon success. A non-zero return value indicates
 # failure.
 #
@@ -46,6 +48,9 @@ METHOD void intr_setup {
 	struct mtx *lock;
 	hid_intr_t intr;
 	void *context;
+	uint16_t isize;
+	uint16_t osize;
+	uint16_t fsize;
 };
 
 #
@@ -59,7 +64,7 @@ METHOD void intr_unsetup {
 
 #
 # Start the interrupt transfers if not already started. This function is always
-# non-blocking and must be called with the so-called private USB mutex locked.
+# non-blocking and must be called with the so-called private HID mutex locked.
 #
 METHOD int intr_start {
 	device_t dev;
@@ -67,7 +72,7 @@ METHOD int intr_start {
 
 #
 # Stop the interrupt transfers if not already stopped. This function is always
-# non-blocking and must be called with the so-called private USB mutex locked.
+# non-blocking and must be called with the so-called private HID mutex locked.
 #
 METHOD int intr_stop {
 	device_t dev;
@@ -88,8 +93,8 @@ METHOD void intr_poll {
 #
 METHOD int get_report_descr {
 	device_t dev;
-	void **data;
-	uint16_t *len;
+	void *data;
+	uint16_t len;
 };
 
 #
