@@ -28,6 +28,7 @@ SRCS	+= hidbus.c hidbus.h hid_if.c hid_if.h hid.c hid.h hid_lookup.c
 SRCS	+= hid_debug.h hid_debug.c
 SRCS	+= hmap.h hmap.c
 SRCS	+= usbdevs.h usbhid.c
+SRCS	+= hidraw.c hidraw.h
 SRCS	+= acpi_if.h bus_if.h device_if.h iicbus_if.h
 SRCS	+= opt_acpi.h opt_usb.h opt_evdev.h
 SRCS	+= strcasestr.c strcasestr.h

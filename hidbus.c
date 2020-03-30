@@ -230,6 +230,7 @@ hidbus_attach(device_t dev)
 		return (ENXIO);
 	}
 
+	bus_generic_probe(dev);
 	if (is_keyboard)
 		error = bus_generic_attach(dev);
 	else

@@ -116,20 +116,6 @@ to reprobe can be found with issuing of simple **usbconfig** command:
 $ sudo usbconfig
 ```
 
-## hidraw
-
-For now hidraw driver should be loaded after iichid to recognize hidbus
-properly. That is why it is made as separate kernel module - hidraw.ko.
-To build and install it issue following commands:
-
-```
-$ make -f Makefile.hidraw
-$ sudo make -f Makefile.hidraw install
-```
-
-To load the module at a boot time, add the module **hidraw** to **kld_list**
-variable in **/etc/rc.conf**
-
 ## Bug reporting
 
 You can report bugs at 'Project Issues' page
