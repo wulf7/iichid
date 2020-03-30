@@ -159,6 +159,7 @@ hidbus_attach(device_t dev)
 
 	sc->dev = dev;
 	STAILQ_INIT(&sc->tlcs);
+	mtx_init(&sc->mtx, "hidbus lock", NULL, MTX_DEF);
 
 	if (devinfo->idVendor == USB_VENDOR_WACOM &&
 	    devinfo->idProduct == USB_PRODUCT_WACOM_GRAPHIRE) {
@@ -215,9 +216,8 @@ hidbus_attach(device_t dev)
 		    sc->fsize);
 		sc->fsize = HID_RSIZE_MAX;
 	}
-	is_keyboard = hid_is_keyboard(d_ptr, d_len) != 0;
 
-	mtx_init(&sc->mtx, "hidbus lock", NULL, MTX_DEF);
+	is_keyboard = hid_is_keyboard(d_ptr, d_len) != 0;
 	sc->lock = is_keyboard ? HID_SYSCONS_MTX : &sc->mtx;
 
 	HID_INTR_SETUP(parent, sc->lock, hidbus_intr, sc, sc->isize, sc->osize,
