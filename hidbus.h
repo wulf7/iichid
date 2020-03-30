@@ -46,6 +46,8 @@ struct hid_device_info {
 	uint16_t	wrsize;
 	uint16_t	grsize;
 	uint16_t	srsize;
+	/* Quirks */
+	bool		isXBox360GP;	/* XBox360 Game Pad */
 };
 
 struct hidbus_ivars {

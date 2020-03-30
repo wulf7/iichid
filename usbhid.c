@@ -685,8 +685,13 @@ usbhid_attach(device_t dev)
 	sc->sc_hw.idProduct = uaa->info.idProduct;
 	sc->sc_hw.idVersion = 0;
 
-	if (uaa->iface != NULL && uaa->iface->idesc != NULL &&
-	    uaa->iface->idesc->bInterfaceClass == UICLASS_HID) {
+	/* Set quirks for devices which do not belong to HID class */
+	if ((uaa->info.bInterfaceClass == UICLASS_VENDOR) &&
+	    (uaa->info.bInterfaceSubClass == UISUBCLASS_XBOX360_CONTROLLER) &&
+	    (uaa->info.bInterfaceProtocol == UIPROTO_XBOX360_GAMEPAD))
+		sc->sc_hw.isXBox360GP = true;
+	else if (uaa->info.bInterfaceClass == UICLASS_HID &&
+		 uaa->iface != NULL && uaa->iface->idesc != NULL) {
 		hid = hid_get_descriptor_from_usb(usbd_get_config_descriptor(
 		    sc->sc_udev), uaa->iface->idesc);
 		if (hid != NULL)
@@ -711,9 +716,7 @@ usbhid_attach(device_t dev)
 			sc->sc_repdesc_ptr = __DECONST(void *, &usbhid_graphire3_4x5_report_descr);
 			sc->sc_flags.static_desc = true;
 		}
-	} else if ((uaa->info.bInterfaceClass == UICLASS_VENDOR) &&
-	    (uaa->info.bInterfaceSubClass == UISUBCLASS_XBOX360_CONTROLLER) &&
-	    (uaa->info.bInterfaceProtocol == UIPROTO_XBOX360_GAMEPAD)) {
+	} else if (sc->sc_hw.isXBox360GP) {
 		/* the Xbox 360 gamepad has no report descriptor */
 		sc->sc_repdesc_size = sizeof(usbhid_xb360gp_report_descr);
 		sc->sc_repdesc_ptr = __DECONST(void *, &usbhid_xb360gp_report_descr);

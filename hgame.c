@@ -122,12 +122,8 @@ static const struct hmap_item hgame_xb360_map[] = {
 	HGAME_MAP_BUT(11,		BTN_MODE),
 };
 
-#define	XBOX_360	360
-
 static const struct hid_device_id hgame_devs[] = {
 	{ HID_TLC(HUP_GENERIC_DESKTOP, HUG_JOYSTICK), HID_DRIVER_INFO(HUG_JOYSTICK) },
-	{ HID_TLC(HUP_GENERIC_DESKTOP, HUG_GAME_PAD),
-	  HID_VENDOR(USB_VENDOR_MICROSOFT), HID_DRIVER_INFO(XBOX_360) },
 	{ HID_TLC(HUP_GENERIC_DESKTOP, HUG_GAME_PAD), HID_DRIVER_INFO(HUG_GAME_PAD) },
 };
 
@@ -201,6 +197,7 @@ hgame_compl_cb(HMAP_CB_ARGS)
 static int
 hgame_probe(device_t dev)
 {
+	const struct hid_device_info *hw = hid_get_device_info(dev);
 	int error, error2;
 
 	error = hidbus_lookup_driver_info(dev, hgame_devs, sizeof(hgame_devs));
@@ -211,7 +208,7 @@ hgame_probe(device_t dev)
 
 	if (hidbus_get_driver_info(dev) == HUG_GAME_PAD)
 		error = hmap_add_map(dev, hgame_gamepad_map, nitems(hgame_gamepad_map), NULL);
-	else if (hidbus_get_driver_info(dev) == XBOX_360)
+	else if (hw->isXBox360GP)
 		error = hmap_add_map(dev, hgame_xb360_map, nitems(hgame_xb360_map), NULL);
 	else
 		error = hmap_add_map(dev, hgame_joystick_map, nitems(hgame_joystick_map), NULL);
@@ -225,12 +222,13 @@ hgame_probe(device_t dev)
 static int
 hgame_attach(device_t dev)
 {
+	const struct hid_device_info *hw = hid_get_device_info(dev);
 	int error;
 
 	hidbus_set_desc(dev, hidbus_get_driver_info(dev) == HUG_GAME_PAD ?
 	    "Gamepad" : "Joystick");
 
-	if (hidbus_get_driver_info(dev) == XBOX_360) {
+	if (hidbus_get_driver_info(dev) == HUG_GAME_PAD && hw->isXBox360GP) {
 		/*
 		 * Turn off the four LEDs on the gamepad which
 		 * are blinking by default:
