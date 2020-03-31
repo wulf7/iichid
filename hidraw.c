@@ -83,22 +83,13 @@ struct hidraw_softc {
 
 	struct mtx *sc_mtx;		/* hidbus private mutex */
 
-	int sc_isize;
-	int sc_osize;
-	int sc_fsize;
-	uint8_t sc_iid;
-	uint8_t sc_oid;
-	uint8_t sc_fid;
+	struct hidbus_report_descr *sc_rdesc;
+	const struct hid_device_info *sc_hw;
 
 	u_char *sc_buf;			/* user request proxy buffer */
 	int sc_buf_size;
 	struct sx sc_buf_lock;
 
-	void *sc_repdesc;
-	int sc_repdesc_size;
-
-	int sc_rdsize;
-	int sc_wrsize;
 	uint8_t *sc_q;
 	uint16_t *sc_qlen;
 	int sc_head;
@@ -113,7 +104,8 @@ struct hidraw_softc {
 		bool	owfl:1;		/* input queue is about to overflow */
 		bool	immed:1;	/* return read data immediately */
 		bool	uhid:1;		/* driver switched in to uhid mode */
-		u_char	reserved:2;
+		bool	quiet:1;	/* input data is ignored */
+		u_char	reserved:1;
 	} sc_state;
 	int sc_fflags;			/* access mode for open lifetime */
 
@@ -189,10 +181,7 @@ static int
 hidraw_attach(device_t self)
 {
 	struct hidraw_softc *sc = device_get_softc(self);
-	const struct hid_device_info *hw = hid_get_device_info(self);
 	struct make_dev_args mda;
-	uint16_t size;
-	void *desc;
 	int error;
 
 	hidbus_set_desc(self, "Raw HID Device");
@@ -200,23 +189,18 @@ hidraw_attach(device_t self)
 	sc->sc_dev = self;
 	sc->sc_mtx = hidbus_get_lock(self);
 
+	sc->sc_rdesc = hidbus_get_report_descr(self);
+	sc->sc_hw = hid_get_device_info(self);
+
 	/* Hidraw mode does not require report descriptor to work */
-	if (hid_get_report_descr(sc->sc_dev, &desc, &size) == 0) {
-		sc->sc_repdesc = desc;
-		sc->sc_repdesc_size = size;
-	} else
+	if (sc->sc_rdesc->data == NULL || sc->sc_rdesc->len == 0)
 		device_printf(self, "no report descriptor\n");
 
 	sx_init(&sc->sc_buf_lock, "hidraw sx");
 	knlist_init_mtx(&sc->sc_rsel.si_note, sc->sc_mtx);
 
-	sc->sc_isize = hid_report_size(desc, size, hid_input,   &sc->sc_iid);
-	sc->sc_osize = hid_report_size(desc, size, hid_output,  &sc->sc_oid);
-	sc->sc_fsize = hid_report_size(desc, size, hid_feature, &sc->sc_fid);
-
-	sc->sc_rdsize = hw->rdsize;
-	sc->sc_wrsize = hw->wrsize;
-	sc->sc_buf_size = MAX(sc->sc_isize, MAX(sc->sc_osize, sc->sc_fsize));
+	sc->sc_buf_size = MAX(sc->sc_rdesc->isize,
+	    MAX(sc->sc_rdesc->osize, sc->sc_rdesc->fsize));
 
 	make_dev_args_init(&mda);
 	mda.mda_flags = MAKEDEV_WAITOK;
@@ -267,6 +251,9 @@ hidraw_intr(void *context, void *buf, uint16_t len)
 	struct hidraw_softc *sc = device_get_softc(dev);
 	int next;
 
+	if (sc->sc_state.quiet)
+		return;
+
 	DPRINTFN(5, "len=%d\n", len);
 	DPRINTFN(5, "data = %*D\n", len, buf, " ");
 
@@ -274,7 +261,7 @@ hidraw_intr(void *context, void *buf, uint16_t len)
 	if (next == sc->sc_head)
 		return;
 
-	bcopy(buf, sc->sc_q + sc->sc_tail * sc->sc_rdsize, len);
+	bcopy(buf, sc->sc_q + sc->sc_tail * sc->sc_hw->rdsize, len);
 	sc->sc_qlen[sc->sc_tail] = len;
 	sc->sc_tail = next;
 
@@ -316,7 +303,7 @@ hidraw_open(struct cdev *dev, int flag, int mode, struct thread *td)
 	}
 
 	sx_xlock(&sc->sc_buf_lock);
-	sc->sc_q = malloc(sc->sc_rdsize * HIDRAW_BUFFER_SIZE, M_DEVBUF,
+	sc->sc_q = malloc(sc->sc_hw->rdsize * HIDRAW_BUFFER_SIZE, M_DEVBUF,
 	    M_ZERO | M_WAITOK);
 	sc->sc_qlen = malloc(sizeof(uint16_t) * HIDRAW_BUFFER_SIZE, M_DEVBUF,
 	    M_ZERO | M_WAITOK);
@@ -389,10 +376,11 @@ hidraw_read(struct cdev *dev, struct uio *uio, int flag)
 		DPRINTFN(1, "immed\n");
 
 		sx_xlock(&sc->sc_buf_lock);
-		error = hid_get_report(sc->sc_dev, sc->sc_buf, sc->sc_isize,
-		    NULL, HID_INPUT_REPORT, sc->sc_iid);
+		error = hid_get_report(sc->sc_dev, sc->sc_buf,
+		    sc->sc_rdesc->isize, NULL, HID_INPUT_REPORT,
+		    sc->sc_rdesc->iid);
 		if (error == 0)
-			error = uiomove(sc->sc_buf, sc->sc_isize, uio);
+			error = uiomove(sc->sc_buf, sc->sc_rdesc->isize, uio);
 		sx_unlock(&sc->sc_buf_lock);
 		return (error);
 	}
@@ -417,8 +405,8 @@ hidraw_read(struct cdev *dev, struct uio *uio, int flag)
 
 	while (sc->sc_tail != sc->sc_head && uio->uio_resid > 0 && !error) {
 		head = sc->sc_head;
-		length = min(uio->uio_resid,
-		    sc->sc_state.uhid ? sc->sc_isize : sc->sc_qlen[head]);
+		length = min(uio->uio_resid, sc->sc_state.uhid ?
+		    sc->sc_rdesc->isize : sc->sc_qlen[head]);
 		DPRINTFN(5, "got %lu chars\n", (u_long)length);
 		/* Remove a small chunk from the input queue. */
 		sc->sc_head = (head + 1) % HIDRAW_BUFFER_SIZE;
@@ -430,7 +418,8 @@ hidraw_read(struct cdev *dev, struct uio *uio, int flag)
 			sx_unlock(&sc->sc_buf_lock);
 			return (0);
 		}
-		error = uiomove(sc->sc_q + head * sc->sc_rdsize, length, uio);
+		error = uiomove(sc->sc_q + head * sc->sc_hw->rdsize, length,
+		    uio);
 		sx_unlock(&sc->sc_buf_lock);
 
 		mtx_lock(sc->sc_mtx);
@@ -466,12 +455,12 @@ hidraw_write(struct cdev *dev, struct uio *uio, int flag)
 	if (sc == NULL)
 		return (EIO);
 
-	if (sc->sc_osize == 0)
+	if (sc->sc_rdesc->osize == 0)
 		return (EOPNOTSUPP);
 
 	buf_offset = 0;
 	if (sc->sc_state.uhid) {
-		size = sc->sc_osize;
+		size = sc->sc_rdesc->osize;
 		if (uio->uio_resid != size)
 			return (EINVAL);
 	} else {
@@ -487,7 +476,7 @@ hidraw_write(struct cdev *dev, struct uio *uio, int flag)
 		else
 			size--;
 		/* Check if underlying driver could process this request */
-		if (size > sc->sc_wrsize)
+		if (size > sc->sc_hw->wrsize)
 			return (ENOBUFS);
 	}
 	sx_xlock(&sc->sc_buf_lock);
@@ -495,8 +484,9 @@ hidraw_write(struct cdev *dev, struct uio *uio, int flag)
 		/* Expand buf if needed as hidraw allows writes of any size. */
 		if (size > sc->sc_buf_size) {
 			free(sc->sc_buf, M_DEVBUF);
-			sc->sc_buf = malloc(sc->sc_wrsize, M_DEVBUF, M_WAITOK);
-			sc->sc_buf_size = sc->sc_wrsize;
+			sc->sc_buf = malloc
+			    (sc->sc_hw->wrsize, M_DEVBUF, M_WAITOK);
+			sc->sc_buf_size = sc->sc_hw->wrsize;
 		}
 		sc->sc_buf[0] = id;
 		error = uiomove(sc->sc_buf + buf_offset, uio->uio_resid, uio);
@@ -514,7 +504,6 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
     struct thread *td)
 {
 	struct hidraw_softc *sc;
-	const struct hid_device_info *hw;
 	struct usb_gen_descriptor *ugd;
 	struct hidraw_report_descriptor *hrd;
 	struct hidraw_devinfo *hdi;
@@ -558,21 +547,21 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		return (error);
 
 	case USB_GET_REPORT_DESC:
-		if (sc->sc_repdesc_size == 0)
+		if (sc->sc_rdesc->data == NULL || sc->sc_rdesc->len == 0)
 			return (EOPNOTSUPP);
 		mtx_lock(sc->sc_mtx);
 		sc->sc_state.uhid = true;
 		mtx_unlock(sc->sc_mtx);
 		ugd = (struct usb_gen_descriptor *)addr;
-		if (sc->sc_repdesc_size > ugd->ugd_maxlen) {
+		if (sc->sc_rdesc->len > ugd->ugd_maxlen) {
 			size = ugd->ugd_maxlen;
 		} else {
-			size = sc->sc_repdesc_size;
+			size = sc->sc_rdesc->len;
 		}
 		ugd->ugd_actlen = size;
 		if (ugd->ugd_data == NULL)
 			return (0);		/* descriptor length only */
-		return (copyout(sc->sc_repdesc, ugd->ugd_data, size));
+		return (copyout(sc->sc_rdesc->data, ugd->ugd_data, size));
 
 	case USB_SET_IMMED:
 		if (!(sc->sc_fflags & FREAD))
@@ -585,7 +574,8 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 				return (EIO);
 			}
 			error = hid_get_report(sc->sc_dev, sc->sc_buf,
-			    sc->sc_isize, NULL, UHID_INPUT_REPORT, sc->sc_iid);
+			    sc->sc_rdesc->isize, NULL, UHID_INPUT_REPORT,
+			    sc->sc_rdesc->iid);
 			sx_unlock(&sc->sc_buf_lock);
 			if (error)
 				return (EOPNOTSUPP);
@@ -606,16 +596,16 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		ugd = (struct usb_gen_descriptor *)addr;
 		switch (ugd->ugd_report_type) {
 		case UHID_INPUT_REPORT:
-			size = sc->sc_isize;
-			id = sc->sc_iid;
+			size = sc->sc_rdesc->isize;
+			id = sc->sc_rdesc->iid;
 			break;
 		case UHID_OUTPUT_REPORT:
-			size = sc->sc_osize;
-			id = sc->sc_oid;
+			size = sc->sc_rdesc->osize;
+			id = sc->sc_rdesc->oid;
 			break;
 		case UHID_FEATURE_REPORT:
-			size = sc->sc_fsize;
-			id = sc->sc_fid;
+			size = sc->sc_rdesc->fsize;
+			id = sc->sc_rdesc->fid;
 			break;
 		default:
 			return (EINVAL);
@@ -641,16 +631,16 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		ugd = (struct usb_gen_descriptor *)addr;
 		switch (ugd->ugd_report_type) {
 		case UHID_INPUT_REPORT:
-			size = sc->sc_isize;
-			id = sc->sc_iid;
+			size = sc->sc_rdesc->isize;
+			id = sc->sc_rdesc->iid;
 			break;
 		case UHID_OUTPUT_REPORT:
-			size = sc->sc_osize;
-			id = sc->sc_oid;
+			size = sc->sc_rdesc->osize;
+			id = sc->sc_rdesc->oid;
 			break;
 		case UHID_FEATURE_REPORT:
-			size = sc->sc_fsize;
-			id = sc->sc_fid;
+			size = sc->sc_rdesc->fsize;
+			id = sc->sc_rdesc->fid;
 			break;
 		default:
 			return (EINVAL);
@@ -674,7 +664,7 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		return (0);
 
 	case HIDIOCGRDESCSIZE:
-		*(int *)addr = sc->sc_repdesc_size;
+		*(int *)addr = sc->sc_rdesc->len;
 		return (0);
 
 	case HIDIOCGRDESC:
@@ -688,15 +678,14 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		 */
 		if (size >= HID_MAX_DESCRIPTOR_SIZE)
 			return (EINVAL);
-		size = MIN(size, sc->sc_repdesc_size);
-		return (copyout(sc->sc_repdesc, hrd->value, size));
+		size = MIN(size, sc->sc_rdesc->len);
+		return (copyout(sc->sc_rdesc->data, hrd->value, size));
 
 	case HIDIOCGRAWINFO:
-		hw = hid_get_device_info(sc->sc_dev);
 		hdi = (struct hidraw_devinfo *)addr;
-		hdi->bustype = hw->idBus;
-		hdi->vendor = hw->idVendor;
-		hdi->product = hw->idProduct;
+		hdi->bustype = sc->sc_hw->idBus;
+		hdi->vendor = sc->sc_hw->idVendor;
+		hdi->product = sc->sc_hw->idProduct;
 		return (0);
 	}
 
@@ -704,8 +693,7 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 	len = IOCPARM_LEN(cmd);
 	switch (IOCBASECMD(cmd)) {
 	case HIDIOCGRAWNAME(0):
-		hw = hid_get_device_info(sc->sc_dev);
-		strlcpy(addr, hw->name, len);
+		strlcpy(addr, sc->sc_hw->name, len);
 		return (0);
 
 	case HIDIOCGRAWPHYS(0):
@@ -739,9 +727,50 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		    HID_FEATURE_REPORT, id));
 
 	case HIDIOCGRAWUNIQ(0):
-		hw = hid_get_device_info(sc->sc_dev);
-		strlcpy(addr, hw->serial, len);
+		strlcpy(addr, sc->sc_hw->serial, len);
 		return (0);
+
+	case HIDIOCSRDESC(0):
+		if (!(sc->sc_fflags & FWRITE))
+			return (EPERM);
+
+		/* Stop interrupts and clear input report buffer */
+		mtx_lock(sc->sc_mtx);
+		sc->sc_state.quiet = true;
+		sc->sc_tail = sc->sc_head = 0;
+		mtx_unlock(sc->sc_mtx);
+
+		sx_xlock(&sc->sc_buf_lock);
+		/* Lock newbus around set_report_descr call */
+		mtx_lock(&Giant);
+		error = hid_set_report_descr(sc->sc_dev, addr, len);
+		mtx_unlock(&Giant);
+
+		/* Realloc all hidraw buffers */
+		free(sc->sc_q, M_DEVBUF);
+		free(sc->sc_qlen, M_DEVBUF);
+		free(sc->sc_buf, M_DEVBUF);
+
+		sc->sc_buf_size = MAX(sc->sc_rdesc->isize,
+		    MAX(sc->sc_rdesc->osize, sc->sc_rdesc->fsize));
+		sc->sc_q = malloc(sc->sc_hw->rdsize * HIDRAW_BUFFER_SIZE,
+		    M_DEVBUF, M_ZERO | M_WAITOK);
+		sc->sc_qlen = malloc(sizeof(uint16_t) * HIDRAW_BUFFER_SIZE,
+		    M_DEVBUF, M_ZERO | M_WAITOK);
+		sc->sc_buf = malloc(sc->sc_buf_size, M_DEVBUF, M_WAITOK);
+		sx_unlock(&sc->sc_buf_lock);
+
+		/* Start interrupts again */
+		mtx_lock(sc->sc_mtx);
+		sc->sc_state.quiet = false;
+		if (sc->sc_state.owfl) {
+			DPRINTFN(3, "queue freed. Start intr");
+			sc->sc_state.owfl = false;
+			if (sc->sc_state.open)
+				hidbus_intr_start(sc->sc_dev);
+		}
+		mtx_unlock(sc->sc_mtx);
+		return (error);
 	}
 
 	return (EINVAL);

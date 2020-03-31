@@ -55,4 +55,7 @@ struct hidraw_devinfo {
 #define	HIDIOCGFEATURE(len)	_IOC(IOC_INOUT, 'H', 0x07, len)
 #define	HIDIOCGRAWUNIQ(len)	_IOC(IOC_OUT, 'H', 0x08, len)
 
+/* FreeBSD extension. Set report descriptor. */
+#define	HIDIOCSRDESC(len)	_IOC(IOC_IN, 'H', 0x02, len)
+
 #endif	/* _HIDRAW_H */

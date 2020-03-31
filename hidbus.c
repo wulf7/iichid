@@ -66,18 +66,6 @@ static const uint8_t usbhid_xb360gp_report_descr[] = {UHID_XB360GP_REPORT_DESCR(
 static const uint8_t usbhid_graphire_report_descr[] = {UHID_GRAPHIRE_REPORT_DESCR()};
 static const uint8_t usbhid_graphire3_4x5_report_descr[] = {UHID_GRAPHIRE3_4X5_REPORT_DESCR()};
 
-struct hidbus_report_descr {
-	void		*data;
-	uint16_t	len;
-	uint16_t	isize;
-	uint16_t	osize;
-	uint16_t	fsize;
-	uint8_t		iid;
-	uint8_t		oid;
-	uint8_t		fid;
-	bool		is_keyboard;
-};
-
 struct hidbus_softc {
 	device_t			dev;
 	struct mtx			*lock;
@@ -520,6 +508,15 @@ hidbus_intr_poll(device_t child)
 	device_t bus = device_get_parent(child);
 
 	HID_INTR_POLL(device_get_parent(bus));
+}
+
+struct hidbus_report_descr *
+hidbus_get_report_descr(device_t child)
+{
+	device_t bus = device_get_parent(child);
+	struct hidbus_softc *sc = device_get_softc(bus);
+
+	return (&sc->rdesc);
 }
 
 /*

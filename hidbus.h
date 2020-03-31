@@ -51,6 +51,18 @@ struct hid_device_info {
 	bool		noWriteEp;	/* Do writes through CTRL endpoint */
 };
 
+struct hidbus_report_descr {
+	void		*data;
+	uint16_t	len;
+	uint16_t	isize;
+	uint16_t	osize;
+	uint16_t	fsize;
+	uint8_t		iid;
+	uint8_t		oid;
+	uint8_t		fid;
+	bool		is_keyboard;
+};
+
 struct hidbus_ivars {
 	device_t			child;
 	uint32_t			usage;
@@ -166,6 +178,7 @@ struct hid_device_id {
 
 const struct hid_device_id *hidbus_lookup_id(device_t,
 		    const struct hid_device_id *, size_t);
+struct hidbus_report_descr *hidbus_get_report_descr(device_t);
 int		hidbus_lookup_driver_info(device_t,
 		    const struct hid_device_id *, size_t);
 struct mtx *	hidbus_get_lock(device_t);
