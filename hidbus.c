@@ -88,10 +88,13 @@ struct hidbus_softc {
 	STAILQ_HEAD(, hidbus_ivars)	tlcs;
 };
 
+devclass_t hidbus_devclass;
+
 static int
 hidbus_fill_report_descr(struct hidbus_report_descr *hrd, void *data,
     uint16_t len)
 {
+	int error = 0;
 
 	hrd->data = data;
 	hrd->len = len;
@@ -111,21 +114,24 @@ hidbus_fill_report_descr(struct hidbus_report_descr *hrd, void *data,
 		DPRINTF("input size is too large, %hu bytes (truncating)\n",
 		    hrd->isize);
 		hrd->isize = HID_RSIZE_MAX;
+		error = EOVERFLOW;
 	}
 	if (hrd->osize > HID_RSIZE_MAX) {
 		DPRINTF("output size is too large, %hu bytes (truncating)\n",
 		    hrd->osize);
 		hrd->osize = HID_RSIZE_MAX;
+		error = EOVERFLOW;
 	}
 	if (hrd->fsize > HID_RSIZE_MAX) {
 		DPRINTF("feature size is too large, %hu bytes (truncating)\n",
 		    hrd->fsize);
 		hrd->fsize = HID_RSIZE_MAX;
+		error = EOVERFLOW;
 	}
 
 	hrd->is_keyboard = hid_is_keyboard(data, len) != 0;
 
-	return (0);
+	return (error);
 }
 
 static device_t
@@ -182,6 +188,83 @@ hidbus_enumerate_children(device_t dev, void* data, uint16_t len)
 }
 
 static int
+hidbus_attach_children(device_t dev)
+{
+	struct hidbus_softc *sc = device_get_softc(dev);
+	int error;
+
+	sc->lock = sc->rdesc.is_keyboard ? HID_SYSCONS_MTX : &sc->mtx;
+	HID_INTR_SETUP(device_get_parent(dev), sc->lock, hidbus_intr, sc,
+	    sc->rdesc.isize, sc->rdesc.osize, sc->rdesc.fsize);
+
+	error = hidbus_enumerate_children(dev, sc->rdesc.data, sc->rdesc.len);
+	if (error != 0)
+		return (error);
+
+	bus_generic_probe(dev);
+	if (sc->rdesc.is_keyboard)
+		error = bus_generic_attach(dev);
+	else
+#ifdef HAVE_BUS_DELAYED_ATTACH_CHILDREN
+		error = bus_delayed_attach_children(dev);
+#else
+		config_intrhook_oneshot((ich_func_t)bus_generic_attach, dev);
+#endif
+	if (error != 0)
+		device_printf(dev, "failed to attach child: error %d\n", error);
+
+	return (error);
+}
+
+static int
+hidbus_detach_children(device_t dev)
+{
+	device_t *children, bus;
+	bool is_bus;
+	int i, error;
+
+	error = 0;
+
+	is_bus = device_get_devclass(dev) == hidbus_devclass;
+	bus = is_bus ? dev : device_get_parent(dev);
+
+	KASSERT(device_get_class(bus) == hidbus_devclass,
+	    ("Device is not hidbus or it's child"));
+
+	if (is_bus) {
+		/* If hidbus is passed, delete all children. */
+		bus_generic_detach(bus);
+		device_delete_children(bus);
+	} else {
+		/*
+		 * If hidbus child is passed, delete all hidbus children
+		 * except caller. Deleting the caller may result in deadlock.
+		 */
+		error = device_get_children(bus, &children, &i);
+		if (error != 0)
+			return (error);
+		while (i-- > 0) {
+			if (children[i] == dev)
+				continue;
+			DPRINTF("Delete child. index=%d (%s)\n",
+			    hidbus_get_index(children[i]),
+			    device_get_nameunit(children[i]));
+			error = device_delete_child(bus, children[i]);
+			if (error) {
+				DPRINTF("Failed deleting %s\n",
+				    device_get_nameunit(children[i]));
+				break;
+			}
+		}
+		free(children, M_TEMP);
+	}
+
+	HID_INTR_UNSETUP(device_get_parent(bus));
+
+	return (error);
+}
+
+static int
 hidbus_probe(device_t dev)
 {
 
@@ -233,28 +316,12 @@ hidbus_attach(device_t dev)
 	}
 
 	hidbus_fill_report_descr(&sc->rdesc, d_ptr, d_len);
-	sc->lock = sc->rdesc.is_keyboard ? HID_SYSCONS_MTX : &sc->mtx;
 
-	HID_INTR_SETUP(parent, sc->lock, hidbus_intr, sc, sc->rdesc.isize,
-	    sc->rdesc.osize, sc->rdesc.fsize);
-
-	error = hidbus_enumerate_children(dev, d_ptr, d_len);
+	error = hidbus_attach_children(dev);
 	if (error != 0) {
 		hidbus_detach(dev);
 		return (ENXIO);
 	}
-
-	bus_generic_probe(dev);
-	if (sc->rdesc.is_keyboard)
-		error = bus_generic_attach(dev);
-	else
-#ifdef HAVE_BUS_DELAYED_ATTACH_CHILDREN
-		error = bus_delayed_attach_children(dev);
-#else
-		config_intrhook_oneshot((ich_func_t)bus_generic_attach, dev);
-#endif
-	if (error != 0)
-		device_printf(dev, "failed to attach child: error %d\n", error);
 
 	return (0);
 }
@@ -264,12 +331,8 @@ hidbus_detach(device_t dev)
 {
 	struct hidbus_softc *sc = device_get_softc(dev);
 
-	bus_generic_detach(dev);
-	device_delete_children(dev);
-
-	HID_INTR_UNSETUP(device_get_parent(dev));
+	hidbus_detach_children(dev);
 	mtx_destroy(&sc->mtx);
-
 	free(sc->rdesc.data, M_DEVBUF);
 
 	return (0);
@@ -478,12 +541,37 @@ hid_get_report_descr(device_t child, void **data, uint16_t *len)
 }
 
 int
-hid_set_report_descr(device_t child, void *data, uint16_t len)
+hid_set_report_descr(device_t dev, void *data, uint16_t len)
 {
 	struct hidbus_report_descr rdesc;
+	device_t bus;
+	struct hidbus_softc *sc;
 	int error;
 
+	GIANT_REQUIRED;
+
+	DPRINTFN(5, "len=%d\n", len);
+	DPRINTFN(5, "data = %*D\n", len, data, " ");
+
+	bus = device_get_devclass(dev) == hidbus_devclass ?
+	    dev : device_get_parent(dev);
+	sc = device_get_softc(bus);
+
 	error = hidbus_fill_report_descr(&rdesc, data, len);
+	if (error != 0)
+		return (error);
+
+	error = hidbus_detach_children(dev);
+	if (error != 0)
+		return(error);
+
+	/* Make private copy to handle a case of dynamicaly allocated data. */
+	rdesc.data = malloc(len, M_DEVBUF, M_ZERO | M_WAITOK);
+	bcopy(data, rdesc.data, len);
+	free(sc->rdesc.data, M_DEVBUF);
+	bcopy(&rdesc, &sc->rdesc, sizeof(struct hidbus_report_descr));
+
+	error = hidbus_attach_children(bus);
 
 	return (error);
 }
@@ -576,8 +664,6 @@ driver_t hidbus_driver = {
 	hidbus_methods,
 	sizeof(struct hidbus_softc),
 };
-
-devclass_t hidbus_devclass;
 
 MODULE_VERSION(hidbus, 1);
 DRIVER_MODULE(hidbus, usbhid, hidbus_driver, hidbus_devclass, 0, 0);
