@@ -520,19 +520,31 @@ hidbus_get_report_descr(device_t child)
 }
 
 /*
- * HID interface
+ * HID interface.
+ *
+ * Hidbus as well as any hidbus child can be passed as first arg.
  */
 int
-hid_get_report_descr(device_t child, void **data, uint16_t *len)
+hid_get_report_descr(device_t dev, void **data, uint16_t *len)
 {
-	device_t bus = device_get_parent(child);
-	struct hidbus_softc *sc = device_get_softc(bus);
+	device_t bus;
+	struct hidbus_softc *sc;
 
+	bus = device_get_devclass(dev) == hidbus_devclass ?
+	    dev : device_get_parent(dev);
+	sc = device_get_softc(bus);
+
+	/*
+	 * Do not send request to a transport backend.
+	 * Use cached report descriptor instead of it.
+         */
 	if (sc->rdesc.data == NULL || sc->rdesc.len == 0)
 		return (ENXIO);
 
-	*data = sc->rdesc.data;
-	*len = sc->rdesc.len;
+	if (data != NULL)
+		*data = sc->rdesc.data;
+	if (len != NULL)
+		*len = sc->rdesc.len;
 
 	return (0);
 }
@@ -574,59 +586,66 @@ hid_set_report_descr(device_t dev, void *data, uint16_t len)
 }
 
 int
-hid_read(device_t bus, void *data, uint16_t maxlen, uint16_t *actlen)
+hid_read(device_t dev, void *data, uint16_t maxlen, uint16_t *actlen)
 {
 
-	return (HID_READ(device_get_parent(bus), data, maxlen, actlen));
+	return (HID_READ(device_get_parent(dev), data, maxlen, actlen));
 }
 
 int
-hid_write(device_t child, void *data, uint16_t len)
+hid_write(device_t dev, void *data, uint16_t len)
 {
-	device_t bus = device_get_parent(child);
-	struct hidbus_softc *sc = device_get_softc(bus);
-	struct hid_device_info *devinfo = device_get_ivars(bus);
+	struct hidbus_softc *sc;
+	struct hid_device_info *devinfo;
 	uint8_t id;
 
-	if (devinfo->noWriteEp) {
-		/* try to extract the ID byte */
-		id = (sc->rdesc.oid & (len > 0)) ? *(uint8_t*)data : 0;
-		return (HID_SET_REPORT(device_get_parent(bus), data, len,
-		    UHID_OUTPUT_REPORT, id));
+	if (device_get_devclass(dev) == hidbus_devclass) {
+		devinfo = device_get_ivars(dev);
+		/*
+		 * Output interrupt endpoint is often optional. If HID device
+		 * do not provide it, send reports via control pipe.
+		 */
+		if (devinfo->noWriteEp) {
+			sc = device_get_softc(dev);
+			/* try to extract the ID byte */
+			id = (sc->rdesc.oid & (len > 0)) ? *(uint8_t*)data : 0;
+			return (HID_SET_REPORT(device_get_parent(dev),
+			   data, len, UHID_OUTPUT_REPORT, id));
+		}
 	}
 
-	return (HID_WRITE(device_get_parent(bus), data, len));
+	return (HID_WRITE(device_get_parent(dev), data, len));
 }
 
 int
-hid_get_report(device_t bus, void *data, uint16_t maxlen, uint16_t *actlen,
+hid_get_report(device_t dev, void *data, uint16_t maxlen, uint16_t *actlen,
     uint8_t type, uint8_t id)
 {
 
-	return (HID_GET_REPORT(device_get_parent(bus),
+	return (HID_GET_REPORT(device_get_parent(dev),
 	    data, maxlen, actlen, type, id));
 }
 
 int
-hid_set_report(device_t bus, void *data, uint16_t len, uint8_t type,
+hid_set_report(device_t dev, void *data, uint16_t len, uint8_t type,
     uint8_t id)
 {
 
-	return (HID_SET_REPORT(device_get_parent(bus), data, len, type, id));
+	return (HID_SET_REPORT(device_get_parent(dev), data, len, type, id));
 }
 
 int
-hid_set_idle(device_t bus, uint16_t duration, uint8_t id)
+hid_set_idle(device_t dev, uint16_t duration, uint8_t id)
 {
 
-	return (HID_SET_IDLE(device_get_parent(bus), duration, id));
+	return (HID_SET_IDLE(device_get_parent(dev), duration, id));
 }
 
 int
-hid_set_protocol(device_t bus, uint16_t protocol)
+hid_set_protocol(device_t dev, uint16_t protocol)
 {
 
-	return (HID_SET_PROTOCOL(device_get_parent(bus), protocol));
+	return (HID_SET_PROTOCOL(device_get_parent(dev), protocol));
 }
 
 static device_method_t hidbus_methods[] = {
@@ -647,6 +666,7 @@ static device_method_t hidbus_methods[] = {
 
 	/* hid interface */
 	DEVMETHOD(hid_read,		hid_read),
+	DEVMETHOD(hid_write,		hid_write),
 	DEVMETHOD(hid_get_report,       hid_get_report),
 	DEVMETHOD(hid_set_report,       hid_set_report),
 	DEVMETHOD(hid_set_idle,		hid_set_idle),
