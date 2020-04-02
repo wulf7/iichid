@@ -121,12 +121,11 @@ struct usbhid_softc {
 
 	struct usb_config sc_config[USBHID_N_TRANSFER];
 	struct usb_xfer *sc_xfer[USBHID_N_TRANSFER];
-	struct usb_device *sc_udev;
+	struct usbhid_xfer_ctx sc_xfer_ctx[USBHID_N_TRANSFER];
 
+	struct usb_device *sc_udev;
 	uint8_t	sc_iface_no;
 	uint8_t	sc_iface_index;
-
-	struct usbhid_xfer_ctx sc_tr;
 };
 
 /* prototypes */
@@ -358,7 +357,7 @@ usbhid_intr_setup(device_t dev, struct mtx *mtx, hid_intr_t intr,
 	for (n = 0; n != USBHID_N_TRANSFER; n++) {
 		error = usbd_transfer_setup(sc->sc_udev, &sc->sc_iface_index,
 		    sc->sc_xfer + n, sc->sc_config + n, 1,
-		    n == USBHID_INTR_DT_RD ? (void *)sc : (void *)&sc->sc_tr,
+		    n == USBHID_INTR_DT_RD ? (void *)sc : (void *)(sc->sc_xfer_ctx + n),
 		    sc->sc_intr_mtx);
 		if (error)
 			break;
@@ -426,46 +425,48 @@ usbhid_sync_xfer(struct usbhid_softc* sc, int xfer_idx,
     struct usb_device_request *req, void *buf, uint16_t len)
 {
 	int error, timeout;
-	struct usbhid_xfer_ctx save;
+	struct usbhid_xfer_ctx *xfer_ctx, save;
+
+	xfer_ctx = sc->sc_xfer_ctx + xfer_idx;
 
 	if (HID_IN_POLLING_MODE_FUNC()) {
-		save = sc->sc_tr;
+		save = *xfer_ctx;
 	} else {
 		mtx_lock(sc->sc_intr_mtx);
-		++sc->sc_tr.waiters;
-		while (sc->sc_tr.influx)
-			mtx_sleep(&sc->sc_tr.waiters, sc->sc_intr_mtx, 0,
+		++xfer_ctx->waiters;
+		while (xfer_ctx->influx)
+			mtx_sleep(&xfer_ctx->waiters, sc->sc_intr_mtx, 0,
 			    "usbhid wt", 0);
-		--sc->sc_tr.waiters;
-		sc->sc_tr.influx = true;
+		--xfer_ctx->waiters;
+		xfer_ctx->influx = true;
 	}
 
-	sc->sc_tr.buf = buf;
-	sc->sc_tr.len = len;
-	sc->sc_tr.req = req;
-	sc->sc_tr.error = ETIMEDOUT;
+	xfer_ctx->buf = buf;
+	xfer_ctx->len = len;
+	xfer_ctx->req = req;
+	xfer_ctx->error = ETIMEDOUT;
 	timeout = USB_DEFAULT_TIMEOUT;
 	usbd_transfer_start(sc->sc_xfer[xfer_idx]);
 
 	if (HID_IN_POLLING_MODE_FUNC())
-		while (timeout > 0 && sc->sc_tr.error == ETIMEDOUT) {
+		while (timeout > 0 && xfer_ctx->error == ETIMEDOUT) {
 			usbd_transfer_poll(sc->sc_xfer + xfer_idx, 1);
 			DELAY(1000);
 			timeout--;
                 }
 	 else
-		msleep_sbt(&sc->sc_tr, sc->sc_intr_mtx, 0, "usbhid io",
+		msleep_sbt(xfer_ctx, sc->sc_intr_mtx, 0, "usbhid io",
 		    SBT_1MS * timeout, 0, C_HARDCLOCK);
 
 	usbd_transfer_stop(sc->sc_xfer[xfer_idx]);
-	error = sc->sc_tr.error;
+	error = xfer_ctx->error;
 
 	if (HID_IN_POLLING_MODE_FUNC()) {
-		sc->sc_tr = save;
+		*xfer_ctx = save;
 	} else {
-		sc->sc_tr.influx = false;
-		if (sc->sc_tr.waiters != 0)
-			wakeup_one(&sc->sc_tr.waiters);
+		xfer_ctx->influx = false;
+		if (xfer_ctx->waiters != 0)
+			wakeup_one(&xfer_ctx->waiters);
 		mtx_unlock(sc->sc_intr_mtx);
 	}
 
