@@ -143,24 +143,24 @@ static usb_callback_t usbhid_ctrl_rd_callback;
 static void
 usbhid_intr_wr_callback(struct usb_xfer *xfer, usb_error_t error)
 {
-	struct usbhid_softc *sc = usbd_xfer_softc(xfer);
+	struct usbhid_xfer_ctx *xfer_ctx = usbd_xfer_softc(xfer);
 	struct usb_page_cache *pc;
 
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_SETUP:
-		if (sc->sc_tr.len > usbd_xfer_max_len(xfer)) {
-			sc->sc_tr.error = ENOBUFS;
+		if (xfer_ctx->len > usbd_xfer_max_len(xfer)) {
+			xfer_ctx->error = ENOBUFS;
 			goto tr_exit;
 		}
 tr_setup:
 		pc = usbd_xfer_get_frame(xfer, 0);
-		usbd_copy_in(pc, 0, sc->sc_tr.buf, sc->sc_tr.len);
-		usbd_xfer_set_frame_len(xfer, 0, sc->sc_tr.len);
+		usbd_copy_in(pc, 0, xfer_ctx->buf, xfer_ctx->len);
+		usbd_xfer_set_frame_len(xfer, 0, xfer_ctx->len);
 		usbd_transfer_submit(xfer);
 		return;
 
 	case USB_ST_TRANSFERRED:
-		sc->sc_tr.error = 0;
+		xfer_ctx->error = 0;
 		goto tr_exit;
 
 	default:			/* Error */
@@ -169,10 +169,10 @@ tr_setup:
 			usbd_xfer_set_stall(xfer);
 			goto tr_setup;
 		}
-		sc->sc_tr.error = EIO;
+		xfer_ctx->error = EIO;
 tr_exit:
 		if (!HID_IN_POLLING_MODE_FUNC())
-			wakeup(&sc->sc_tr);
+			wakeup(xfer_ctx);
 		return;
 	}
 }
@@ -217,40 +217,40 @@ re_submit:
 static void
 usbhid_ctrl_wr_callback(struct usb_xfer *xfer, usb_error_t error)
 {
-	struct usbhid_softc *sc = usbd_xfer_softc(xfer);
+	struct usbhid_xfer_ctx *xfer_ctx = usbd_xfer_softc(xfer);
 	struct usb_page_cache *pc;
 
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_SETUP:
-		if (sc->sc_tr.len > usbd_xfer_max_len(xfer)) {
-			sc->sc_tr.error = ENOBUFS;
+		if (xfer_ctx->len > usbd_xfer_max_len(xfer)) {
+			xfer_ctx->error = ENOBUFS;
 			goto tr_exit;
 		}
 
-		if (sc->sc_tr.len > 0) {
+		if (xfer_ctx->len > 0) {
 			pc = usbd_xfer_get_frame(xfer, 1);
-			usbd_copy_in(pc, 0, sc->sc_tr.buf, sc->sc_tr.len);
-			usbd_xfer_set_frame_len(xfer, 1, sc->sc_tr.len);
+			usbd_copy_in(pc, 0, xfer_ctx->buf, xfer_ctx->len);
+			usbd_xfer_set_frame_len(xfer, 1, xfer_ctx->len);
 		}
 
 		pc = usbd_xfer_get_frame(xfer, 0);
-		usbd_copy_in(pc, 0, sc->sc_tr.req, sizeof(*sc->sc_tr.req));
-		usbd_xfer_set_frame_len(xfer, 0, sizeof(*sc->sc_tr.req));
+		usbd_copy_in(pc, 0, xfer_ctx->req, sizeof(*xfer_ctx->req));
+		usbd_xfer_set_frame_len(xfer, 0, sizeof(*xfer_ctx->req));
 
-		usbd_xfer_set_frames(xfer, sc->sc_tr.len > 0 ? 2 : 1);
+		usbd_xfer_set_frames(xfer, xfer_ctx->len > 0 ? 2 : 1);
 		usbd_transfer_submit(xfer);
 		return;
 
 	case USB_ST_TRANSFERRED:
-		sc->sc_tr.error = 0;
+		xfer_ctx->error = 0;
 		goto tr_exit;
 
 	default:			/* Error */
 		DPRINTFN(1, "error=%s\n", usbd_errstr(error));
-		sc->sc_tr.error = EIO;
+		xfer_ctx->error = EIO;
 tr_exit:
 		if (!HID_IN_POLLING_MODE_FUNC())
-			wakeup(&sc->sc_tr);
+			wakeup(xfer_ctx);
 		return;
 	}
 }
@@ -258,38 +258,38 @@ tr_exit:
 static void
 usbhid_ctrl_rd_callback(struct usb_xfer *xfer, usb_error_t error)
 {
-	struct usbhid_softc *sc = usbd_xfer_softc(xfer);
+	struct usbhid_xfer_ctx *xfer_ctx = usbd_xfer_softc(xfer);
 	struct usb_page_cache *pc;
 
 	pc = usbd_xfer_get_frame(xfer, 0);
 
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_SETUP:
-		if (sc->sc_tr.len > usbd_xfer_max_len(xfer)) {
-			sc->sc_tr.error = ENOBUFS;
+		if (xfer_ctx->len > usbd_xfer_max_len(xfer)) {
+			xfer_ctx->error = ENOBUFS;
 			goto tr_exit;
 		}
 
-		usbd_copy_in(pc, 0, sc->sc_tr.req, sizeof(*sc->sc_tr.req));
-		usbd_xfer_set_frame_len(xfer, 0, sizeof(*sc->sc_tr.req));
-		usbd_xfer_set_frame_len(xfer, 1, sc->sc_tr.len);
-		usbd_xfer_set_frames(xfer, sc->sc_tr.len != 0 ? 2 : 1);
+		usbd_copy_in(pc, 0, xfer_ctx->req, sizeof(*xfer_ctx->req));
+		usbd_xfer_set_frame_len(xfer, 0, sizeof(*xfer_ctx->req));
+		usbd_xfer_set_frame_len(xfer, 1, xfer_ctx->len);
+		usbd_xfer_set_frames(xfer, xfer_ctx->len != 0 ? 2 : 1);
 		usbd_transfer_submit(xfer);
 		return;
 
 	case USB_ST_TRANSFERRED:
-		usbd_copy_out(pc, sizeof(*sc->sc_tr.req), sc->sc_tr.buf,
-		    sc->sc_tr.len);
-		sc->sc_tr.error = 0;
+		usbd_copy_out(pc, sizeof(*xfer_ctx->req), xfer_ctx->buf,
+		    xfer_ctx->len);
+		xfer_ctx->error = 0;
 		goto tr_exit;
 
 	default:			/* Error */
 		/* bomb out */
 		DPRINTFN(1, "error=%s\n", usbd_errstr(error));
-		sc->sc_tr.error = EIO;
+		xfer_ctx->error = EIO;
 tr_exit:
 		if (!HID_IN_POLLING_MODE_FUNC())
-			wakeup(&sc->sc_tr);
+			wakeup(xfer_ctx);
 		return;
 	}
 }
@@ -349,25 +349,19 @@ usbhid_intr_setup(device_t dev, struct mtx *mtx, hid_intr_t intr,
 	sc->sc_config[USBHID_CTRL_DT_RD].bufsize =
 	    MAX(isize, MAX(osize, fsize));
 
-	if (sc->sc_intr_mtx == HID_SYSCONS_MTX) {
-		/*
-		 * Setup the USB transfers one by one, so they are memory
-		 * independent which allows for handling panics triggered by
-		 * the HID drivers itself, typically by hkbd via CTRL+ALT+ESC
-		 * sequences. Or if the HID keyboard driver was processing a
-		 * key at the moment of panic.
-		 */
-		for (n = 0; n != USBHID_N_TRANSFER; n++) {
-			error = usbd_transfer_setup(sc->sc_udev,
-			   &sc->sc_iface_index, sc->sc_xfer + n,
-			   sc->sc_config + n, 1, sc, sc->sc_intr_mtx);
-			if (error)
-				break;
-		}
-	} else {
-		error = usbd_transfer_setup(sc->sc_udev,
-		    &sc->sc_iface_index, sc->sc_xfer, sc->sc_config,
-		    USBHID_N_TRANSFER, sc, sc->sc_intr_mtx);
+	/*
+	 * Setup the USB transfers one by one, so they are memory independent
+	 * which allows for handling panics triggered by the HID drivers
+	 * itself, typically by hkbd via CTRL+ALT+ESC sequences. Or if the HID
+	 * keyboard driver was processing a key at the moment of panic.
+	 */
+	for (n = 0; n != USBHID_N_TRANSFER; n++) {
+		error = usbd_transfer_setup(sc->sc_udev, &sc->sc_iface_index,
+		    sc->sc_xfer + n, sc->sc_config + n, 1,
+		    n == USBHID_INTR_DT_RD ? (void *)sc : (void *)&sc->sc_tr,
+		    sc->sc_intr_mtx);
+		if (error)
+			break;
 	}
 
 	if (error)
