@@ -111,8 +111,6 @@ hidbus_fill_report_descr(struct hidbus_report_descr *hrd, void *data,
 		error = EOVERFLOW;
 	}
 
-	hrd->is_keyboard = hid_is_keyboard(data, len) != 0;
-
 	return (error);
 }
 
@@ -176,9 +174,12 @@ static int
 hidbus_attach_children(device_t dev)
 {
 	struct hidbus_softc *sc = device_get_softc(dev);
+	bool is_sc_kbd;
 	int error;
 
-	sc->lock = sc->rdesc.is_keyboard ? HID_SYSCONS_MTX : &sc->mtx;
+	/* syscons(4)/vt(4) - compatible drivers must be run under Giant */
+	is_sc_kbd = hid_is_keyboard(sc->rdesc.data, sc->rdesc.len) != 0;
+	sc->lock = is_sc_kbd ? HID_SYSCONS_MTX : &sc->mtx;
 	HID_INTR_SETUP(device_get_parent(dev), sc->lock, hidbus_intr, sc,
 	    sc->rdesc.isize, sc->rdesc.osize, sc->rdesc.fsize);
 
@@ -197,7 +198,7 @@ hidbus_attach_children(device_t dev)
 	if (sc->nest != 0)
 		return (0);
 
-	if (sc->rdesc.is_keyboard)
+	if (is_sc_kbd)
 		error = bus_generic_attach(dev);
 	else
 #ifdef HAVE_BUS_DELAYED_ATTACH_CHILDREN

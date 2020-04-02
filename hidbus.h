@@ -62,7 +62,6 @@ struct hidbus_report_descr {
 	uint8_t		iid;
 	uint8_t		oid;
 	uint8_t		fid;
-	bool		is_keyboard;
 	bool		overloaded;
 };
 
