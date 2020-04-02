@@ -49,6 +49,8 @@ struct hid_device_info {
 	/* Quirks */
 	bool		isXBox360GP;	/* XBox360 Game Pad */
 	bool		noWriteEp;	/* Do writes through CTRL endpoint */
+	bool		pBootKbd;	/* Support Keyboard Boot Protocol */
+	bool		pBootMouse;	/* Support Mouse Boot Protocol */
 };
 
 struct hidbus_report_descr {
@@ -61,6 +63,7 @@ struct hidbus_report_descr {
 	uint8_t		oid;
 	uint8_t		fid;
 	bool		is_keyboard;
+	bool		overloaded;
 };
 
 struct hidbus_ivars {
@@ -198,10 +201,6 @@ int	hid_set_report(device_t, void *, uint16_t, uint8_t, uint8_t);
 int	hid_set_idle(device_t, uint16_t, uint8_t);
 int	hid_set_protocol(device_t, uint16_t);
 
-static inline const struct hid_device_info *
-hid_get_device_info(device_t child)
-{
-	return (device_get_ivars(device_get_parent(child)));
-}
+const struct hid_device_info *hid_get_device_info(device_t);
 
 #endif	/* _HIDBUS_H_ */

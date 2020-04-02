@@ -56,6 +56,35 @@ SYSCTL_INT(_hw_hid_hms, OID_AUTO, debug, CTLFLAG_RWTUN,
     &hms_debug, 0, "Debug level");
 #endif
 
+static const uint8_t hms_boot_desc[] = {
+	0x05, 0x01,	// Usage Page (Generic Desktop Ctrls)
+	0x09, 0x02,	// Usage (Mouse)
+	0xA1, 0x01,	// Collection (Application)
+	0x09, 0x01,	//   Usage (Pointer)
+	0xA1, 0x00,	//   Collection (Physical)
+	0x95, 0x03,	//     Report Count (3)
+	0x75, 0x01,	//     Report Size (1)
+	0x05, 0x09,	//     Usage Page (Button)
+	0x19, 0x01,	//     Usage Minimum (0x01)
+	0x29, 0x03,	//     Usage Maximum (0x03)
+	0x15, 0x00,	//     Logical Minimum (0)
+	0x25, 0x01,	//     Logical Maximum (1)
+	0x81, 0x02,	//     Input (Data,Var,Abs)
+	0x95, 0x01,	//     Report Count (1)
+	0x75, 0x05,	//     Report Size (5)
+	0x81, 0x03,	//     Input (Const)
+	0x75, 0x08,	//     Report Size (8)
+	0x95, 0x02,	//     Report Count (2)
+	0x05, 0x01,	//     Usage Page (Generic Desktop Ctrls)
+	0x09, 0x30,	//     Usage (X)
+	0x09, 0x31,	//     Usage (Y)
+	0x15, 0x81,	//     Logical Minimum (-127)
+	0x25, 0x7F,	//     Logical Maximum (127)
+	0x81, 0x06,	//     Input (Data,Var,Rel)
+	0xC0,		//   End Collection
+	0xC0,		// End Collection
+};
+
 enum {
 	HMS_REL_X,
 	HMS_REL_Y,
@@ -156,6 +185,20 @@ hms_compl_cb(HMAP_CB_ARGS)
 	return (ENOSYS);
 }
 
+static void
+hms_identify(driver_t *driver, device_t parent)
+{
+	const struct hid_device_info *hw = hid_get_device_info(parent);
+
+	/*
+	 * If device claimed boot protocol support but do not have report
+	 * descriptor, load one defined in "Appendix B.2" of HID1_11.pdf
+	 */
+	if (hid_get_report_descr(parent, NULL, NULL) != 0 && hw->pBootMouse)
+		(void)hid_set_report_descr(parent,
+		    __DECONST(void *, hms_boot_desc), sizeof(hms_boot_desc));
+}
+
 static int
 hms_probe(device_t dev)
 {
@@ -188,15 +231,22 @@ hms_attach(device_t dev)
 {
 	struct hms_softc *sc = device_get_softc(dev);
 	struct hmap_hid_item *hi;
+	void *d_ptr;
+	uint16_t d_len;
+	bool set_report_proto;
 	int error, nbuttons = 0;
 
 	/*
-         * Force the report (non-boot) protocol.
-         *
-         * Mice without boot protocol support may choose not to implement
-         * Set_Protocol at all; Ignore any error.
-         */
-	(void)hid_set_protocol(dev, 1);
+	 * Set the report (non-boot) protocol if report descriptor has not been
+	 * overloaded with boot protocol report descriptor.
+	 *
+	 * Mice without boot protocol support may choose not to implement
+	 * Set_Protocol at all; Ignore any error.
+	 */
+	error = hid_get_report_descr(dev, &d_ptr, &d_len);
+	set_report_proto = !(error == 0 && d_len == sizeof(hms_boot_desc) &&
+	    memcmp(d_ptr, hms_boot_desc, sizeof(hms_boot_desc)) == 0);
+	(void)hid_set_protocol(dev, set_report_proto ? 1 : 0);
 
 #ifdef NOT_YET
 	if (usb_test_quirk(uaa, UQ_MS_REVZ)) {
@@ -240,8 +290,9 @@ hms_attach(device_t dev)
 
 static devclass_t hms_devclass;
 static device_method_t hms_methods[] = {
-	DEVMETHOD(device_probe, hms_probe),
-	DEVMETHOD(device_attach, hms_attach),
+	DEVMETHOD(device_identify,	hms_identify),
+	DEVMETHOD(device_probe,		hms_probe),
+	DEVMETHOD(device_attach,	hms_attach),
 	DEVMETHOD_END
 };
 

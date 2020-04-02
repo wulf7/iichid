@@ -647,6 +647,16 @@ usbhid_attach(device_t dev)
 	sc->sc_hw.idProduct = uaa->info.idProduct;
 	sc->sc_hw.idVersion = 0;
 
+	if (uaa->info.bInterfaceClass == UICLASS_HID &&
+	    uaa->info.bInterfaceSubClass == UISUBCLASS_BOOT &&
+	    uaa->info.bInterfaceProtocol == UIPROTO_BOOT_KEYBOARD)
+		sc->sc_hw.pBootKbd = true;
+
+	if (uaa->info.bInterfaceClass == UICLASS_HID &&
+	    uaa->info.bInterfaceSubClass == UISUBCLASS_BOOT &&
+	    uaa->info.bInterfaceProtocol == UIPROTO_MOUSE)
+		sc->sc_hw.pBootMouse = true;
+
 	/* Set quirks for devices which do not belong to HID class */
 	if ((uaa->info.bInterfaceClass == UICLASS_VENDOR) &&
 	    (uaa->info.bInterfaceSubClass == UISUBCLASS_XBOX360_CONTROLLER) &&

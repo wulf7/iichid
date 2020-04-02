@@ -72,6 +72,7 @@ struct hidbus_softc {
 	struct mtx			mtx;
 
 	struct hidbus_report_descr	rdesc;
+	int				nest;	/* Child attach nesting lvl */
 
 	STAILQ_HEAD(, hidbus_ivars)	tlcs;
 };
@@ -151,6 +152,9 @@ hidbus_enumerate_children(device_t dev, void* data, uint16_t len)
 	device_t child;
 	uint8_t index = 0;
 
+	if (data == NULL || len == 0)
+		return (ENXIO);
+
 	/* Add a child for each top level collection */
 	hd = hid_start_parse(data, len, 1 << hid_input);
 	while (hid_get_item(hd, &hi)) {
@@ -187,9 +191,19 @@ hidbus_attach_children(device_t dev)
 
 	error = hidbus_enumerate_children(dev, sc->rdesc.data, sc->rdesc.len);
 	if (error != 0)
-		return (error);
+		DPRINTF("failed to enumerate children: error %d\n", error);
 
+	/*
+	 * hidbus_attach_children() can recurse through device_identify->
+	 * hid_set_report_descr() call sequence. Do not perform children
+	 * attach twice in that case.
+	 */
+	sc->nest++;
 	bus_generic_probe(dev);
+	sc->nest--;
+	if (sc->nest != 0)
+		return (0);
+
 	if (sc->rdesc.is_keyboard)
 		error = bus_generic_attach(dev);
 	else
@@ -549,22 +563,40 @@ hid_get_report_descr(device_t dev, void **data, uint16_t *len)
 	return (0);
 }
 
+/*
+ * Replace cached report descriptor with top level driver provided one.
+ *
+ * It deletes all hidbus children except caller and enumerates them again after
+ * new descriptor has been registered. Currently it can not be called from
+ * autoenumerated (by report's TLC) child device context as it results in child
+ * duplication. To overcome this limitation hid_set_report_descr() should be
+ * called from device_identify driver's handler with hidbus itself passed as
+ * 'device_t dev' parameter.
+ */
 int
 hid_set_report_descr(device_t dev, void *data, uint16_t len)
 {
 	struct hidbus_report_descr rdesc;
 	device_t bus;
 	struct hidbus_softc *sc;
+	bool is_bus;
 	int error;
 
 	GIANT_REQUIRED;
 
+	is_bus = device_get_devclass(dev) == hidbus_devclass;
+	bus = is_bus ? dev : device_get_parent(dev);
+	sc = device_get_softc(bus);
+
+	/*
+	 * Do not overload already overloaded report descriptor in
+	 * device_identify handler. It causes infinite recursion loop.
+	 */
+	if (is_bus && sc->rdesc.overloaded)
+		return(0);
+
 	DPRINTFN(5, "len=%d\n", len);
 	DPRINTFN(5, "data = %*D\n", len, data, " ");
-
-	bus = device_get_devclass(dev) == hidbus_devclass ?
-	    dev : device_get_parent(dev);
-	sc = device_get_softc(bus);
 
 	error = hidbus_fill_report_descr(&rdesc, data, len);
 	if (error != 0)
@@ -577,6 +609,7 @@ hid_set_report_descr(device_t dev, void *data, uint16_t len)
 	/* Make private copy to handle a case of dynamicaly allocated data. */
 	rdesc.data = malloc(len, M_DEVBUF, M_ZERO | M_WAITOK);
 	bcopy(data, rdesc.data, len);
+	rdesc.overloaded = true;
 	free(sc->rdesc.data, M_DEVBUF);
 	bcopy(&rdesc, &sc->rdesc, sizeof(struct hidbus_report_descr));
 
@@ -646,6 +679,17 @@ hid_set_protocol(device_t dev, uint16_t protocol)
 {
 
 	return (HID_SET_PROTOCOL(device_get_parent(dev), protocol));
+}
+
+const struct hid_device_info *
+hid_get_device_info(device_t dev)
+{
+	device_t bus;
+
+	bus = device_get_devclass(dev) == hidbus_devclass ?
+	    dev : device_get_parent(dev);
+
+	return (device_get_ivars(bus));
 }
 
 static device_method_t hidbus_methods[] = {
