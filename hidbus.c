@@ -37,9 +37,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/queue.h>
 #include <sys/systm.h>
 
-#include "usbdevs.h"
-#include <dev/usb/input/usb_rdesc.h>
-
 #include "hid.h"
 #include "hidbus.h"
 
@@ -61,10 +58,6 @@ static hid_intr_t	hidbus_intr;
 static device_probe_t	hidbus_probe;
 static device_attach_t	hidbus_attach;
 static device_detach_t	hidbus_detach;
-
-static const uint8_t usbhid_xb360gp_report_descr[] = {UHID_XB360GP_REPORT_DESCR()};
-static const uint8_t usbhid_graphire_report_descr[] = {UHID_GRAPHIRE_REPORT_DESCR()};
-static const uint8_t usbhid_graphire3_4x5_report_descr[] = {UHID_GRAPHIRE3_4X5_REPORT_DESCR()};
 
 struct hidbus_softc {
 	device_t			dev;
@@ -283,31 +276,15 @@ hidbus_attach(device_t dev)
 	struct hid_device_info *devinfo = device_get_ivars(dev);
 	device_t parent = device_get_parent(dev);
 	void *d_ptr = NULL;
-	uint16_t d_len = 0;
+	uint16_t d_len;
 	int error;
 
 	sc->dev = dev;
 	STAILQ_INIT(&sc->tlcs);
 	mtx_init(&sc->mtx, "hidbus lock", NULL, MTX_DEF);
 
-	if (devinfo->idVendor == USB_VENDOR_WACOM &&
-	    devinfo->idProduct == USB_PRODUCT_WACOM_GRAPHIRE) {
-		/* the report descriptor for the Wacom Graphire is broken */
-		d_len = sizeof(usbhid_graphire_report_descr);
-		d_ptr = malloc(d_len, M_DEVBUF, M_ZERO | M_WAITOK);
-		bcopy(usbhid_graphire_report_descr, d_ptr, d_len);
-	} else if (devinfo->idVendor == USB_VENDOR_WACOM &&
-		   devinfo->idProduct == USB_PRODUCT_WACOM_GRAPHIRE3_4X5) {
-		d_len = sizeof(usbhid_graphire3_4x5_report_descr);
-		d_ptr = malloc(d_len, M_DEVBUF, M_ZERO | M_WAITOK);
-		bcopy(usbhid_graphire3_4x5_report_descr, d_ptr, d_len);
-	} else if (devinfo->isXBox360GP) {
-		/* the Xbox 360 gamepad has no report descriptor */
-		d_len = sizeof(usbhid_xb360gp_report_descr);
-		d_ptr = malloc(d_len, M_DEVBUF, M_ZERO | M_WAITOK);
-		bcopy(usbhid_xb360gp_report_descr, d_ptr, d_len);
-	} else if (devinfo->rdescsize != 0) {
-		d_len = devinfo->rdescsize;
+	d_len = devinfo->rdescsize;
+	if (d_len != 0) {
 		d_ptr = malloc(d_len, M_DEVBUF, M_ZERO | M_WAITOK);
 		error = HID_GET_REPORT_DESCR(parent, d_ptr, d_len);
 		if (error != 0) {

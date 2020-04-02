@@ -45,11 +45,12 @@ __FBSDID("$FreeBSD$");
 #include <dev/evdev/input.h>
 #include <dev/evdev/evdev.h>
 
+#include "usbdevs.h"
+#include <dev/usb/input/usb_rdesc.h>
+
 #include "hid.h"
 #include "hidbus.h"
 #include "hmap.h"
-
-#include "usbdevs.h"
 
 #define	HID_DEBUG_VAR	hpen_debug
 #include "hid_debug.h"
@@ -66,6 +67,11 @@ SYSCTL_INT(_hw_hid_hpen, OID_AUTO, debug, CTLFLAG_RWTUN,
 #ifndef HUD_SEC_BARREL_SWITCH
 #define	HUD_SEC_BARREL_SWITCH	0x5a
 #endif
+
+static const uint8_t	hpen_graphire_report_descr[] =
+			   { UHID_GRAPHIRE_REPORT_DESCR() };
+static const uint8_t	hpen_graphire3_4x5_report_descr[] =
+			   { UHID_GRAPHIRE3_4X5_REPORT_DESCR() };
 
 static hmap_cb_t	hpen_battery_strenght_cb;
 static hmap_cb_t	hpen_compl_digi_cb;
@@ -164,6 +170,29 @@ hpen_compl_pen_cb(HMAP_CB_ARGS)
 	return (ENOSYS);
 }
 
+static void
+hpen_identify(driver_t *driver, device_t parent)
+{
+	const struct hid_device_info *hw = hid_get_device_info(parent);
+
+	/* the report descriptor for the Wacom Graphire is broken */
+	if (hw->idBus == BUS_USB && hw->idVendor == USB_VENDOR_WACOM) {
+		switch (hw->idProduct) {
+		case USB_PRODUCT_WACOM_GRAPHIRE:
+			hid_set_report_descr(parent,
+			    __DECONST(void *, hpen_graphire_report_descr),
+	                    sizeof(hpen_graphire_report_descr));
+	                break;
+
+		case USB_PRODUCT_WACOM_GRAPHIRE3_4X5:
+			hid_set_report_descr(parent,
+			    __DECONST(void *, hpen_graphire3_4x5_report_descr),
+	                    sizeof(hpen_graphire3_4x5_report_descr));
+	                break;
+		}
+	}
+}
+
 static int
 hpen_probe(device_t dev)
 {
@@ -220,6 +249,7 @@ hpen_attach(device_t dev)
 static devclass_t hpen_devclass;
 
 static device_method_t hpen_methods[] = {
+	DEVMETHOD(device_identify,	hpen_identify),
 	DEVMETHOD(device_probe,		hpen_probe),
 	DEVMETHOD(device_attach,	hpen_attach),
 	DEVMETHOD_END

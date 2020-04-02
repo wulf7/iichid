@@ -46,6 +46,8 @@ __FBSDID("$FreeBSD$");
 #include <dev/evdev/evdev.h>
 
 #include "usbdevs.h"
+#include <dev/usb/input/usb_rdesc.h>
+
 #include "hid.h"
 #include "hidbus.h"
 #include "hmap.h"
@@ -61,6 +63,8 @@ static SYSCTL_NODE(_hw_hid, OID_AUTO, hgame, CTLFLAG_RW, 0,
 SYSCTL_INT(_hw_hid_hgame, OID_AUTO, debug, CTLFLAG_RWTUN,
 		&hgame_debug, 0, "Debug level");
 #endif
+
+static const uint8_t	hgame_xb360gp_rdesc[] = {UHID_XB360GP_REPORT_DESCR()};
 
 static hmap_cb_t	hgame_dpad_cb;
 static hmap_cb_t	hgame_compl_cb;
@@ -194,6 +198,18 @@ hgame_compl_cb(HMAP_CB_ARGS)
         return (ENOSYS);
 }
 
+static void
+hgame_identify(driver_t *driver, device_t parent)
+{
+	const struct hid_device_info *hw = hid_get_device_info(parent);
+
+	/* the Xbox 360 gamepad has no report descriptor */
+	if (hw->isXBox360GP)
+		hid_set_report_descr(parent,
+		    __DECONST(void *, hgame_xb360gp_rdesc),
+		    sizeof(hgame_xb360gp_rdesc));
+}
+
 static int
 hgame_probe(device_t dev)
 {
@@ -247,6 +263,7 @@ hgame_attach(device_t dev)
 static devclass_t hgame_devclass;
 
 static device_method_t hgame_methods[] = {
+	DEVMETHOD(device_identify,	hgame_identify),
 	DEVMETHOD(device_probe,		hgame_probe),
 	DEVMETHOD(device_attach,	hgame_attach),
 	DEVMETHOD_END
