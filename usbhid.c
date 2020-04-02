@@ -99,6 +99,16 @@ enum {
 	USBHID_N_TRANSFER,
 };
 
+/* Syncronous USB transfer context */
+struct usbhid_xfer_ctx {
+	struct usb_device_request *req;
+	uint8_t *buf;
+	uint16_t len;
+	int error;
+	int waiters;
+	bool influx;
+};
+
 struct usbhid_softc {
 	device_t sc_child;
 
@@ -116,12 +126,7 @@ struct usbhid_softc {
 	uint8_t	sc_iface_no;
 	uint8_t	sc_iface_index;
 
-	struct usb_device_request *sc_tr_req;
-	uint8_t *sc_tr_buf;
-	uint16_t sc_tr_len;
-	int sc_tr_error;
-	int sc_tr_waiters;
-	bool sc_tr_influx;
+	struct usbhid_xfer_ctx sc_tr;
 };
 
 /* prototypes */
@@ -143,19 +148,19 @@ usbhid_intr_wr_callback(struct usb_xfer *xfer, usb_error_t error)
 
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_SETUP:
-		if (sc->sc_tr_len > usbd_xfer_max_len(xfer)) {
-			sc->sc_tr_error = ENOBUFS;
+		if (sc->sc_tr.len > usbd_xfer_max_len(xfer)) {
+			sc->sc_tr.error = ENOBUFS;
 			goto tr_exit;
 		}
 tr_setup:
 		pc = usbd_xfer_get_frame(xfer, 0);
-		usbd_copy_in(pc, 0, sc->sc_tr_buf, sc->sc_tr_len);
-		usbd_xfer_set_frame_len(xfer, 0, sc->sc_tr_len);
+		usbd_copy_in(pc, 0, sc->sc_tr.buf, sc->sc_tr.len);
+		usbd_xfer_set_frame_len(xfer, 0, sc->sc_tr.len);
 		usbd_transfer_submit(xfer);
 		return;
 
 	case USB_ST_TRANSFERRED:
-		sc->sc_tr_error = 0;
+		sc->sc_tr.error = 0;
 		goto tr_exit;
 
 	default:			/* Error */
@@ -164,10 +169,10 @@ tr_setup:
 			usbd_xfer_set_stall(xfer);
 			goto tr_setup;
 		}
-		sc->sc_tr_error = EIO;
+		sc->sc_tr.error = EIO;
 tr_exit:
 		if (!HID_IN_POLLING_MODE_FUNC())
-			wakeup(sc);
+			wakeup(&sc->sc_tr);
 		return;
 	}
 }
@@ -217,35 +222,35 @@ usbhid_ctrl_wr_callback(struct usb_xfer *xfer, usb_error_t error)
 
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_SETUP:
-		if (sc->sc_tr_len > usbd_xfer_max_len(xfer)) {
-			sc->sc_tr_error = ENOBUFS;
+		if (sc->sc_tr.len > usbd_xfer_max_len(xfer)) {
+			sc->sc_tr.error = ENOBUFS;
 			goto tr_exit;
 		}
 
-		if (sc->sc_tr_len > 0) {
+		if (sc->sc_tr.len > 0) {
 			pc = usbd_xfer_get_frame(xfer, 1);
-			usbd_copy_in(pc, 0, sc->sc_tr_buf, sc->sc_tr_len);
-			usbd_xfer_set_frame_len(xfer, 1, sc->sc_tr_len);
+			usbd_copy_in(pc, 0, sc->sc_tr.buf, sc->sc_tr.len);
+			usbd_xfer_set_frame_len(xfer, 1, sc->sc_tr.len);
 		}
 
 		pc = usbd_xfer_get_frame(xfer, 0);
-		usbd_copy_in(pc, 0, sc->sc_tr_req, sizeof(*sc->sc_tr_req));
-		usbd_xfer_set_frame_len(xfer, 0, sizeof(*sc->sc_tr_req));
+		usbd_copy_in(pc, 0, sc->sc_tr.req, sizeof(*sc->sc_tr.req));
+		usbd_xfer_set_frame_len(xfer, 0, sizeof(*sc->sc_tr.req));
 
-		usbd_xfer_set_frames(xfer, sc->sc_tr_len > 0 ? 2 : 1);
+		usbd_xfer_set_frames(xfer, sc->sc_tr.len > 0 ? 2 : 1);
 		usbd_transfer_submit(xfer);
 		return;
 
 	case USB_ST_TRANSFERRED:
-		sc->sc_tr_error = 0;
+		sc->sc_tr.error = 0;
 		goto tr_exit;
 
 	default:			/* Error */
 		DPRINTFN(1, "error=%s\n", usbd_errstr(error));
-		sc->sc_tr_error = EIO;
+		sc->sc_tr.error = EIO;
 tr_exit:
 		if (!HID_IN_POLLING_MODE_FUNC())
-			wakeup(sc);
+			wakeup(&sc->sc_tr);
 		return;
 	}
 }
@@ -260,31 +265,31 @@ usbhid_ctrl_rd_callback(struct usb_xfer *xfer, usb_error_t error)
 
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_SETUP:
-		if (sc->sc_tr_len > usbd_xfer_max_len(xfer)) {
-			sc->sc_tr_error = ENOBUFS;
+		if (sc->sc_tr.len > usbd_xfer_max_len(xfer)) {
+			sc->sc_tr.error = ENOBUFS;
 			goto tr_exit;
 		}
 
-		usbd_copy_in(pc, 0, sc->sc_tr_req, sizeof(*sc->sc_tr_req));
-		usbd_xfer_set_frame_len(xfer, 0, sizeof(*sc->sc_tr_req));
-		usbd_xfer_set_frame_len(xfer, 1, sc->sc_tr_len);
-		usbd_xfer_set_frames(xfer, sc->sc_tr_len != 0 ? 2 : 1);
+		usbd_copy_in(pc, 0, sc->sc_tr.req, sizeof(*sc->sc_tr.req));
+		usbd_xfer_set_frame_len(xfer, 0, sizeof(*sc->sc_tr.req));
+		usbd_xfer_set_frame_len(xfer, 1, sc->sc_tr.len);
+		usbd_xfer_set_frames(xfer, sc->sc_tr.len != 0 ? 2 : 1);
 		usbd_transfer_submit(xfer);
 		return;
 
 	case USB_ST_TRANSFERRED:
-		usbd_copy_out(pc, sizeof(*sc->sc_tr_req), sc->sc_tr_buf,
-		    sc->sc_tr_len);
-		sc->sc_tr_error = 0;
+		usbd_copy_out(pc, sizeof(*sc->sc_tr.req), sc->sc_tr.buf,
+		    sc->sc_tr.len);
+		sc->sc_tr.error = 0;
 		goto tr_exit;
 
 	default:			/* Error */
 		/* bomb out */
 		DPRINTFN(1, "error=%s\n", usbd_errstr(error));
-		sc->sc_tr_error = EIO;
+		sc->sc_tr.error = EIO;
 tr_exit:
 		if (!HID_IN_POLLING_MODE_FUNC())
-			wakeup(sc);
+			wakeup(&sc->sc_tr);
 		return;
 	}
 }
@@ -426,55 +431,47 @@ static int
 usbhid_sync_xfer(struct usbhid_softc* sc, int xfer_idx,
     struct usb_device_request *req, void *buf, uint16_t len)
 {
-	int error, save_error, timeout;
-	struct usb_device_request *save_req;
-	void *save_buf;
-	uint16_t save_len;
+	int error, timeout;
+	struct usbhid_xfer_ctx save;
 
 	if (HID_IN_POLLING_MODE_FUNC()) {
-		save_buf = sc->sc_tr_buf;
-		save_len = sc->sc_tr_len;
-		save_req = sc->sc_tr_req;
-		save_error = sc->sc_tr_error;
+		save = sc->sc_tr;
 	} else {
 		mtx_lock(sc->sc_intr_mtx);
-		++sc->sc_tr_waiters;
-		while (sc->sc_tr_influx)
-			mtx_sleep(&sc->sc_tr_waiters, sc->sc_intr_mtx, 0,
+		++sc->sc_tr.waiters;
+		while (sc->sc_tr.influx)
+			mtx_sleep(&sc->sc_tr.waiters, sc->sc_intr_mtx, 0,
 			    "usbhid wt", 0);
-		--sc->sc_tr_waiters;
-		sc->sc_tr_influx = true;
+		--sc->sc_tr.waiters;
+		sc->sc_tr.influx = true;
 	}
 
-	sc->sc_tr_buf = buf;
-	sc->sc_tr_len = len;
-	sc->sc_tr_req = req;
-	sc->sc_tr_error = ETIMEDOUT;
+	sc->sc_tr.buf = buf;
+	sc->sc_tr.len = len;
+	sc->sc_tr.req = req;
+	sc->sc_tr.error = ETIMEDOUT;
 	timeout = USB_DEFAULT_TIMEOUT;
 	usbd_transfer_start(sc->sc_xfer[xfer_idx]);
 
 	if (HID_IN_POLLING_MODE_FUNC())
-		while (timeout > 0 && sc->sc_tr_error == ETIMEDOUT) {
+		while (timeout > 0 && sc->sc_tr.error == ETIMEDOUT) {
 			usbd_transfer_poll(sc->sc_xfer + xfer_idx, 1);
 			DELAY(1000);
 			timeout--;
                 }
 	 else
-		msleep_sbt(sc, sc->sc_intr_mtx, 0, "usbhid io",
+		msleep_sbt(&sc->sc_tr, sc->sc_intr_mtx, 0, "usbhid io",
 		    SBT_1MS * timeout, 0, C_HARDCLOCK);
 
 	usbd_transfer_stop(sc->sc_xfer[xfer_idx]);
-	error = sc->sc_tr_error;
+	error = sc->sc_tr.error;
 
 	if (HID_IN_POLLING_MODE_FUNC()) {
-		sc->sc_tr_buf = save_buf;
-		sc->sc_tr_len = save_len;
-		sc->sc_tr_req = save_req;
-		sc->sc_tr_error = save_error;
+		sc->sc_tr = save;
 	} else {
-		sc->sc_tr_influx = false;
-		if (sc->sc_tr_waiters != 0)
-			wakeup_one(&sc->sc_tr_waiters);
+		sc->sc_tr.influx = false;
+		if (sc->sc_tr.waiters != 0)
+			wakeup_one(&sc->sc_tr.waiters);
 		mtx_unlock(sc->sc_intr_mtx);
 	}
 
