@@ -229,6 +229,12 @@ hidraw_detach(device_t self)
 
 	DPRINTF("sc=%p\n", sc);
 
+	mtx_lock(sc->sc_mtx);
+	sc->sc_state.open = false;
+	/* Wake everyone */
+	hidraw_notify(sc);
+	mtx_unlock(sc->sc_mtx);
+
 	if (sc->dev != NULL) {
 		sc->dev->si_drv1 = NULL;
 		destroy_dev(sc->dev);
@@ -336,6 +342,7 @@ hidraw_dtor(void *data)
 	if (!sc->sc_state.owfl)
 		hidbus_intr_stop(sc->sc_dev);
 	sc->sc_tail = sc->sc_head = 0;
+	sc->sc_async = 0;
 	mtx_unlock(sc->sc_mtx);
 
 	sx_xlock(&sc->sc_buf_lock);
@@ -347,9 +354,6 @@ hidraw_dtor(void *data)
 
 	mtx_lock(sc->sc_mtx);
 	sc->sc_state.open = false;
-	/* Wake everyone */
-	hidraw_notify(sc);
-	sc->sc_async = 0;
 	mtx_unlock(sc->sc_mtx);
 }
 
