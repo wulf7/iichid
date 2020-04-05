@@ -731,14 +731,9 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		mtx_lock(&Giant);
 		error = hid_set_report_descr(sc->sc_dev, addr, len);
 		mtx_unlock(&Giant);
-
-		/* Realloc all hidraw buffers */
+		/* Realloc hidraw input queue */
 		free(sc->sc_q, M_DEVBUF);
-		free(sc->sc_qlen, M_DEVBUF);
-
 		sc->sc_q = malloc(sc->sc_hw->rdsize * HIDRAW_BUFFER_SIZE,
-		    M_DEVBUF, M_ZERO | M_WAITOK);
-		sc->sc_qlen = malloc(sizeof(uint16_t) * HIDRAW_BUFFER_SIZE,
 		    M_DEVBUF, M_ZERO | M_WAITOK);
 		sx_unlock(&sc->sc_buf_lock);
 
