@@ -76,7 +76,16 @@ SYSCTL_INT(_hw_hid_hidraw, OID_AUTO, debug, CTLFLAG_RWTUN,
     &hidraw_debug, 0, "Debug level");
 #endif
 
-#define	HIDRAW_INDEX	0xFF	/* Arbitrary high value */
+#define	HIDRAW_INDEX		0xFF	/* Arbitrary high value */
+
+#define	HIDRAW_LOCAL_BUFSIZE	64	/* Size of on-stack buffer. */
+#define	HIDRAW_LOCAL_ALLOC(local_buf, size)		\
+	(sizeof(local_buf) > (size) ? (local_buf) :	\
+	    malloc((size), M_DEVBUF, M_ZERO | M_WAITOK))
+#define	HIDRAW_LOCAL_FREE(local_buf, buf)		\
+	if ((local_buf) != (buf)) {			\
+		free((buf), M_DEVBUF);			\
+	}
 
 struct hidraw_softc {
 	device_t sc_dev;		/* base device */
@@ -86,8 +95,6 @@ struct hidraw_softc {
 	struct hidbus_report_descr *sc_rdesc;
 	const struct hid_device_info *sc_hw;
 
-	u_char *sc_buf;			/* user request proxy buffer */
-	int sc_buf_size;
 	struct sx sc_buf_lock;
 
 	uint8_t *sc_q;
@@ -198,9 +205,6 @@ hidraw_attach(device_t self)
 
 	sx_init(&sc->sc_buf_lock, "hidraw sx");
 	knlist_init_mtx(&sc->sc_rsel.si_note, sc->sc_mtx);
-
-	sc->sc_buf_size = MAX(sc->sc_rdesc->isize,
-	    MAX(sc->sc_rdesc->osize, sc->sc_rdesc->fsize));
 
 	make_dev_args_init(&mda);
 	mda.mda_flags = MAKEDEV_WAITOK;
@@ -313,7 +317,6 @@ hidraw_open(struct cdev *dev, int flag, int mode, struct thread *td)
 	    M_ZERO | M_WAITOK);
 	sc->sc_qlen = malloc(sizeof(uint16_t) * HIDRAW_BUFFER_SIZE, M_DEVBUF,
 	    M_ZERO | M_WAITOK);
-	sc->sc_buf = malloc(sc->sc_buf_size, M_DEVBUF, M_WAITOK);
 	sx_unlock(&sc->sc_buf_lock);
 
 	/* Set up interrupt pipe. */
@@ -348,8 +351,7 @@ hidraw_dtor(void *data)
 	sx_xlock(&sc->sc_buf_lock);
 	free(sc->sc_q, M_DEVBUF);
 	free(sc->sc_qlen, M_DEVBUF);
-	free(sc->sc_buf, M_DEVBUF);
-	sc->sc_q = sc->sc_buf = NULL;
+	sc->sc_q = NULL;
 	sx_unlock(&sc->sc_buf_lock);
 
 	mtx_lock(sc->sc_mtx);
@@ -380,11 +382,11 @@ hidraw_read(struct cdev *dev, struct uio *uio, int flag)
 		DPRINTFN(1, "immed\n");
 
 		sx_xlock(&sc->sc_buf_lock);
-		error = hid_get_report(sc->sc_dev, sc->sc_buf,
+		error = hid_get_report(sc->sc_dev, sc->sc_q,
 		    sc->sc_rdesc->isize, NULL, HID_INPUT_REPORT,
 		    sc->sc_rdesc->iid);
 		if (error == 0)
-			error = uiomove(sc->sc_buf, sc->sc_rdesc->isize, uio);
+			error = uiomove(sc->sc_q, sc->sc_rdesc->isize, uio);
 		sx_unlock(&sc->sc_buf_lock);
 		return (error);
 	}
@@ -447,6 +449,7 @@ hidraw_read(struct cdev *dev, struct uio *uio, int flag)
 static int
 hidraw_write(struct cdev *dev, struct uio *uio, int flag)
 {
+	uint8_t local_buf[HIDRAW_LOCAL_BUFSIZE], *buf;
 	struct hidraw_softc *sc;
 	int error;
 	int size;
@@ -483,22 +486,12 @@ hidraw_write(struct cdev *dev, struct uio *uio, int flag)
 		if (size > sc->sc_hw->wrsize)
 			return (ENOBUFS);
 	}
-	sx_xlock(&sc->sc_buf_lock);
-	if (sc->sc_buf != NULL) {
-		/* Expand buf if needed as hidraw allows writes of any size. */
-		if (size > sc->sc_buf_size) {
-			free(sc->sc_buf, M_DEVBUF);
-			sc->sc_buf = malloc
-			    (sc->sc_hw->wrsize, M_DEVBUF, M_WAITOK);
-			sc->sc_buf_size = sc->sc_hw->wrsize;
-		}
-		sc->sc_buf[0] = id;
-		error = uiomove(sc->sc_buf + buf_offset, uio->uio_resid, uio);
-	} else
-		error = EIO;
+	buf = HIDRAW_LOCAL_ALLOC(local_buf, size);
+	buf[0] = id;
+	error = uiomove(buf + buf_offset, uio->uio_resid, uio);
 	if (error == 0)
-		error = hid_write(sc->sc_dev, sc->sc_buf, size);
-	sx_unlock(&sc->sc_buf_lock);
+		error = hid_write(sc->sc_dev, buf, size);
+	HIDRAW_LOCAL_FREE(local_buf, buf);
 
 	return (error);
 }
@@ -507,6 +500,7 @@ static int
 hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
     struct thread *td)
 {
+	uint8_t local_buf[HIDRAW_LOCAL_BUFSIZE], *buf;
 	struct hidraw_softc *sc;
 	struct usb_gen_descriptor *ugd;
 	struct hidraw_report_descriptor *hrd;
@@ -572,15 +566,11 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 			return (EPERM);
 		if (*(int *)addr) {
 			/* XXX should read into ibuf, but does it matter? */
-			sx_xlock(&sc->sc_buf_lock);
-			if (sc->sc_buf == NULL) {
-				sx_unlock(&sc->sc_buf_lock);
-				return (EIO);
-			}
-			error = hid_get_report(sc->sc_dev, sc->sc_buf,
-			    sc->sc_rdesc->isize, NULL, UHID_INPUT_REPORT,
-			    sc->sc_rdesc->iid);
-			sx_unlock(&sc->sc_buf_lock);
+			size = sc->sc_rdesc->isize;
+			buf = HIDRAW_LOCAL_ALLOC(local_buf, size);
+			error = hid_get_report(sc->sc_dev, buf, size, NULL,
+			    UHID_INPUT_REPORT, sc->sc_rdesc->iid);
+			HIDRAW_LOCAL_FREE(local_buf, buf);
 			if (error)
 				return (EOPNOTSUPP);
 
@@ -617,16 +607,12 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		if (id != 0)
 			copyin(ugd->ugd_data, &id, 1);
 		size = MIN(ugd->ugd_maxlen, size);
-		sx_xlock(&sc->sc_buf_lock);
-		if (sc->sc_buf == NULL) {
-			sx_unlock(&sc->sc_buf_lock);
-			return (EIO);
-		}
-		error = hid_get_report(sc->sc_dev, sc->sc_buf, size, NULL,
+		buf = HIDRAW_LOCAL_ALLOC(local_buf, size);
+		error = hid_get_report(sc->sc_dev, buf, size, NULL,
 		    ugd->ugd_report_type, id);
 		if (!error)
-			error = copyout(sc->sc_buf, ugd->ugd_data, size);
-		sx_unlock(&sc->sc_buf_lock);
+			error = copyout(buf, ugd->ugd_data, size);
+		HIDRAW_LOCAL_FREE(local_buf, buf);
 		return (error);
 
 	case USB_SET_REPORT:
@@ -650,17 +636,13 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 			return (EINVAL);
 		}
 		size = MIN(ugd->ugd_maxlen, size);
-		sx_xlock(&sc->sc_buf_lock);
-		if (sc->sc_buf == NULL) {
-			sx_unlock(&sc->sc_buf_lock);
-			return (EIO);
-		}
-		copyin(ugd->ugd_data, sc->sc_buf, size);
+		buf = HIDRAW_LOCAL_ALLOC(local_buf, size);
+		copyin(ugd->ugd_data, buf, size);
 		if (id != 0)
-			id = sc->sc_buf[0];
-		error = hid_set_report(sc->sc_dev, sc->sc_buf, size,
+			id = buf[0];
+		error = hid_set_report(sc->sc_dev, buf, size,
 		    ugd->ugd_report_type, id);
-		sx_unlock(&sc->sc_buf_lock);
+		HIDRAW_LOCAL_FREE(local_buf, buf);
 		return (error);
 
 	case USB_GET_REPORT_ID:
@@ -753,15 +735,11 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		/* Realloc all hidraw buffers */
 		free(sc->sc_q, M_DEVBUF);
 		free(sc->sc_qlen, M_DEVBUF);
-		free(sc->sc_buf, M_DEVBUF);
 
-		sc->sc_buf_size = MAX(sc->sc_rdesc->isize,
-		    MAX(sc->sc_rdesc->osize, sc->sc_rdesc->fsize));
 		sc->sc_q = malloc(sc->sc_hw->rdsize * HIDRAW_BUFFER_SIZE,
 		    M_DEVBUF, M_ZERO | M_WAITOK);
 		sc->sc_qlen = malloc(sizeof(uint16_t) * HIDRAW_BUFFER_SIZE,
 		    M_DEVBUF, M_ZERO | M_WAITOK);
-		sc->sc_buf = malloc(sc->sc_buf_size, M_DEVBUF, M_WAITOK);
 		sx_unlock(&sc->sc_buf_lock);
 
 		/* Start interrupts again */
