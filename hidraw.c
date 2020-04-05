@@ -111,8 +111,7 @@ struct hidraw_softc {
 		bool	owfl:1;		/* input queue is about to overflow */
 		bool	immed:1;	/* return read data immediately */
 		bool	uhid:1;		/* driver switched in to uhid mode */
-		bool	quiet:1;	/* input data is ignored */
-		u_char	reserved:1;
+		u_char	reserved:2;
 	} sc_state;
 	int sc_fflags;			/* access mode for open lifetime */
 
@@ -260,9 +259,6 @@ hidraw_intr(void *context, void *buf, uint16_t len)
 	device_t dev = context;
 	struct hidraw_softc *sc = device_get_softc(dev);
 	int next;
-
-	if (sc->sc_state.quiet)
-		return;
 
 	DPRINTFN(5, "len=%d\n", len);
 	DPRINTFN(5, "data = %*D\n", len, buf, " ");
@@ -722,8 +718,12 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 
 		/* Stop interrupts and clear input report buffer */
 		mtx_lock(sc->sc_mtx);
-		sc->sc_state.quiet = true;
 		sc->sc_tail = sc->sc_head = 0;
+		if (!sc->sc_state.owfl) {
+			sc->sc_state.owfl = false;
+			if (sc->sc_state.open)
+				hidbus_intr_stop(sc->sc_dev);
+		}
 		mtx_unlock(sc->sc_mtx);
 
 		sx_xlock(&sc->sc_buf_lock);
@@ -739,13 +739,7 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 
 		/* Start interrupts again */
 		mtx_lock(sc->sc_mtx);
-		sc->sc_state.quiet = false;
-		if (sc->sc_state.owfl) {
-			DPRINTFN(3, "queue freed. Start intr");
-			sc->sc_state.owfl = false;
-			if (sc->sc_state.open)
-				hidbus_intr_start(sc->sc_dev);
-		}
+		hidbus_intr_start(sc->sc_dev);
 		mtx_unlock(sc->sc_mtx);
 		return (error);
 	}
