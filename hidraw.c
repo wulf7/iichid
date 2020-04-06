@@ -231,16 +231,15 @@ hidraw_detach(device_t self)
 
 	DPRINTF("sc=%p\n", sc);
 
-	mtx_lock(sc->sc_mtx);
-	sc->sc_state.open = false;
-	/* Wake everyone */
-	hidraw_notify(sc);
-	mtx_unlock(sc->sc_mtx);
-
 	if (sc->dev != NULL) {
+		mtx_lock(sc->sc_mtx);
 		sc->dev->si_drv1 = NULL;
+		/* Wake everyone */
+		hidraw_notify(sc);
+		mtx_unlock(sc->sc_mtx);
 		destroy_dev(sc->dev);
 	}
+
 	/* Avoid knlist_clear KASSERTion when hidbus lock is a newbus lock */
 	mtx_lock(sc->sc_mtx);
 	knlist_clear(&sc->sc_rsel.si_note, 1);
@@ -401,10 +400,10 @@ hidraw_read(struct cdev *dev, struct uio *uio, int flag)
 
 	sc = dev->si_drv1;
 	if (sc == NULL)
-		return (ENXIO);
+		return (EIO);
 
 	mtx_lock(sc->sc_mtx);
-	error = hidraw_lock_queue(sc, false);
+	error = dev->si_drv1 == NULL ? EIO : hidraw_lock_queue(sc, false);
 	if (error != 0) {
 		mtx_unlock(sc->sc_mtx);
 		return (error);
@@ -435,7 +434,7 @@ hidraw_read(struct cdev *dev, struct uio *uio, int flag)
 		error = mtx_sleep(&sc->sc_q, sc->sc_mtx, PZERO | PCATCH,
 		    "hidrawrd", 0);
 		DPRINTFN(5, "woke, error=%d\n", error);
-		if (!sc->sc_state.open)
+		if (dev->si_drv1 == NULL)
 			error = EIO;
 		if (error) {
 			sc->sc_state.aslp = false;
@@ -794,24 +793,20 @@ hidraw_poll(struct cdev *dev, int events, struct thread *td)
 
 	sc = dev->si_drv1;
 	if (sc == NULL)
-		return (POLLERR);
-
-	mtx_lock(sc->sc_mtx);
-	if (!sc->sc_state.open) {
-		mtx_unlock(sc->sc_mtx);
 		return (POLLHUP);
-	}
+
 	if (events & (POLLOUT | POLLWRNORM) && (sc->sc_fflags & FWRITE))
 		revents |= events & (POLLOUT | POLLWRNORM);
 	if (events & (POLLIN | POLLRDNORM) && (sc->sc_fflags & FREAD)) {
+		mtx_lock(sc->sc_mtx);
 		if (sc->sc_head != sc->sc_tail)
 			revents |= events & (POLLIN | POLLRDNORM);
 		else {
 			sc->sc_state.sel = true;
 			selrecord(td, &sc->sc_rsel);
 		}
+		mtx_unlock(sc->sc_mtx);
 	}
-	mtx_unlock(sc->sc_mtx);
 
 	return (revents);
 }
@@ -851,7 +846,7 @@ hidraw_kqread(struct knote *kn, long hint)
 
 	mtx_assert(sc->sc_mtx, MA_OWNED);
 
-	if (!sc->sc_state.open) {
+	if (sc->dev->si_drv1 == NULL) {
 		kn->kn_flags |= EV_EOF;
 		ret = 1;
 	} else
