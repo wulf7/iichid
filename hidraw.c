@@ -419,15 +419,13 @@ hidraw_read(struct cdev *dev, struct uio *uio, int flag)
 		if (error == 0)
 			error = uiomove(sc->sc_q, sc->sc_rdesc->isize, uio);
 		mtx_lock(sc->sc_mtx);
-		hidraw_unlock_queue(sc);
-		mtx_unlock(sc->sc_mtx);
-		return (error);
+		goto exit;
 	}
 
 	while (sc->sc_tail == sc->sc_head && !sc->sc_state.flush) {
 		if (flag & O_NONBLOCK) {
 			error = EWOULDBLOCK;
-			break;
+			goto exit;
 		}
 		sc->sc_state.aslp = true;
 		DPRINTFN(5, "sleep on %p\n", &sc->sc_q);
@@ -438,23 +436,23 @@ hidraw_read(struct cdev *dev, struct uio *uio, int flag)
 			error = EIO;
 		if (error) {
 			sc->sc_state.aslp = false;
-			break;
+			goto exit;
 		}
 	}
 
-	while (sc->sc_tail != sc->sc_head && uio->uio_resid > 0 && !error) {
+	while (sc->sc_tail != sc->sc_head && uio->uio_resid > 0) {
 		length = min(uio->uio_resid, sc->sc_state.uhid ?
 		    sc->sc_rdesc->isize : sc->sc_qlen[sc->sc_head]);
-		DPRINTFN(5, "got %lu chars\n", (u_long)length);
 		mtx_unlock(sc->sc_mtx);
 
 		/* Copy the data to the user process. */
+		DPRINTFN(5, "got %lu chars\n", (u_long)length);
 		error = uiomove(sc->sc_q + sc->sc_head * sc->sc_hw->rdsize,
 		    length, uio);
 
 		mtx_lock(sc->sc_mtx);
 		if (error != 0)
-			break;
+			goto exit;
 		/* Remove a small chunk from the input queue. */
 		sc->sc_head = (sc->sc_head + 1) % HIDRAW_BUFFER_SIZE;
 		if (sc->sc_state.owfl) {
@@ -467,8 +465,9 @@ hidraw_read(struct cdev *dev, struct uio *uio, int flag)
 		 * packets are transferred one by one due to different length.
 		 */
 		if (!sc->sc_state.uhid)
-			break;
+			goto exit;
 	}
+exit:
 	hidraw_unlock_queue(sc);
 	mtx_unlock(sc->sc_mtx);
 
