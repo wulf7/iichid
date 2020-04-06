@@ -96,7 +96,7 @@ struct hidraw_softc {
 	const struct hid_device_info *sc_hw;
 
 	struct sx sc_buf_lock;
-
+	int sc_setdesc_nest;
 	uint8_t *sc_q;
 	uint16_t *sc_qlen;
 	int sc_head;
@@ -308,12 +308,10 @@ hidraw_open(struct cdev *dev, int flag, int mode, struct thread *td)
 		return (error);
 	}
 
-	sx_xlock(&sc->sc_buf_lock);
 	sc->sc_q = malloc(sc->sc_hw->rdsize * HIDRAW_BUFFER_SIZE, M_DEVBUF,
 	    M_ZERO | M_WAITOK);
 	sc->sc_qlen = malloc(sizeof(uint16_t) * HIDRAW_BUFFER_SIZE, M_DEVBUF,
 	    M_ZERO | M_WAITOK);
-	sx_unlock(&sc->sc_buf_lock);
 
 	/* Set up interrupt pipe. */
 	mtx_lock(sc->sc_mtx);
@@ -344,11 +342,9 @@ hidraw_dtor(void *data)
 	sc->sc_async = 0;
 	mtx_unlock(sc->sc_mtx);
 
-	sx_xlock(&sc->sc_buf_lock);
 	free(sc->sc_q, M_DEVBUF);
 	free(sc->sc_qlen, M_DEVBUF);
 	sc->sc_q = NULL;
-	sx_unlock(&sc->sc_buf_lock);
 
 	mtx_lock(sc->sc_mtx);
 	sc->sc_state.open = false;
@@ -368,16 +364,20 @@ hidraw_read(struct cdev *dev, struct uio *uio, int flag)
 	if (sc == NULL)
 		return (ENXIO);
 
+	error = sx_xlock_sig(&sc->sc_buf_lock);
+	if (error)
+		return (error);
+
 	mtx_lock(sc->sc_mtx);
 	if (!sc->sc_state.open) {
 		mtx_unlock(sc->sc_mtx);
+		sx_unlock(&sc->sc_buf_lock);
 		return (EIO);
 	}
 	if (sc->sc_state.immed) {
 		mtx_unlock(sc->sc_mtx);
 		DPRINTFN(1, "immed\n");
 
-		sx_xlock(&sc->sc_buf_lock);
 		error = hid_get_report(sc->sc_dev, sc->sc_q,
 		    sc->sc_rdesc->isize, NULL, HID_INPUT_REPORT,
 		    sc->sc_rdesc->iid);
@@ -415,14 +415,8 @@ hidraw_read(struct cdev *dev, struct uio *uio, int flag)
 		mtx_unlock(sc->sc_mtx);
 
 		/* Copy the data to the user process. */
-		sx_slock(&sc->sc_buf_lock);
-		if (sc->sc_q == NULL) {
-			sx_unlock(&sc->sc_buf_lock);
-			return (0);
-		}
 		error = uiomove(sc->sc_q + head * sc->sc_hw->rdsize, length,
 		    uio);
-		sx_unlock(&sc->sc_buf_lock);
 
 		mtx_lock(sc->sc_mtx);
 		if (sc->sc_state.owfl) {
@@ -438,6 +432,7 @@ hidraw_read(struct cdev *dev, struct uio *uio, int flag)
 			break;
 	}
 	mtx_unlock(sc->sc_mtx);
+	sx_unlock(&sc->sc_buf_lock);
 
 	return (error);
 }
@@ -719,32 +714,40 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 
 		/* Stop interrupts and clear input report buffer */
 		mtx_lock(sc->sc_mtx);
-		sc->sc_tail = sc->sc_head = 0;
-		if (!sc->sc_state.owfl) {
-			sc->sc_state.owfl = false;
-			if (sc->sc_state.open)
-				hidbus_intr_stop(sc->sc_dev);
+		if (sc->sc_setdesc_nest == 0) {
+			sc->sc_tail = sc->sc_head = 0;
+			if (!sc->sc_state.owfl) {
+				sc->sc_state.owfl = false;
+				if (sc->sc_state.open)
+					hidbus_intr_stop(sc->sc_dev);
+			}
+			hidraw_notify(sc);
 		}
+		++sc->sc_setdesc_nest;
 		mtx_unlock(sc->sc_mtx);
 
-		sx_xlock(&sc->sc_buf_lock);
-		/* Lock newbus around set_report_descr call */
-		mtx_lock(&Giant);
-		ordsize = sc->sc_hw->rdsize;
-		error = hid_set_report_descr(sc->sc_dev, addr, len);
-		mtx_unlock(&Giant);
-		/* Realloc hidraw input queue */
-		if (error == 0 && ordsize != sc->sc_hw->rdsize) {
-			free(sc->sc_q, M_DEVBUF);
-			sc->sc_q = malloc(
-			    sc->sc_hw->rdsize * HIDRAW_BUFFER_SIZE,
-			    M_DEVBUF, M_ZERO | M_WAITOK);
+		error = sx_xlock_sig(&sc->sc_buf_lock);
+		if (error == 0) {
+			/* Lock newbus around set_report_descr call */
+			mtx_lock(&Giant);
+			ordsize = sc->sc_hw->rdsize;
+			error = hid_set_report_descr(sc->sc_dev, addr, len);
+			mtx_unlock(&Giant);
+			/* Realloc hidraw input queue */
+			if (error == 0 && ordsize != sc->sc_hw->rdsize) {
+				free(sc->sc_q, M_DEVBUF);
+				sc->sc_q = malloc(
+				    sc->sc_hw->rdsize * HIDRAW_BUFFER_SIZE,
+				    M_DEVBUF, M_ZERO | M_WAITOK);
+			}
+			sx_unlock(&sc->sc_buf_lock);
 		}
-		sx_unlock(&sc->sc_buf_lock);
 
 		/* Start interrupts again */
 		mtx_lock(sc->sc_mtx);
-		hidbus_intr_start(sc->sc_dev);
+		--sc->sc_setdesc_nest;
+		if (sc->sc_setdesc_nest == 0)
+			hidbus_intr_start(sc->sc_dev);
 		mtx_unlock(sc->sc_mtx);
 		return (error);
 	}
