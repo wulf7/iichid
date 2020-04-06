@@ -393,8 +393,8 @@ static int
 hidraw_read(struct cdev *dev, struct uio *uio, int flag)
 {
 	struct hidraw_softc *sc;
-	int head, error = 0;
 	size_t length;
+	int error;
 
 	DPRINTFN(1, "\n");
 
@@ -443,19 +443,20 @@ hidraw_read(struct cdev *dev, struct uio *uio, int flag)
 	}
 
 	while (sc->sc_tail != sc->sc_head && uio->uio_resid > 0 && !error) {
-		head = sc->sc_head;
 		length = min(uio->uio_resid, sc->sc_state.uhid ?
-		    sc->sc_rdesc->isize : sc->sc_qlen[head]);
+		    sc->sc_rdesc->isize : sc->sc_qlen[sc->sc_head]);
 		DPRINTFN(5, "got %lu chars\n", (u_long)length);
-		/* Remove a small chunk from the input queue. */
-		sc->sc_head = (head + 1) % HIDRAW_BUFFER_SIZE;
 		mtx_unlock(sc->sc_mtx);
 
 		/* Copy the data to the user process. */
-		error = uiomove(sc->sc_q + head * sc->sc_hw->rdsize, length,
-		    uio);
+		error = uiomove(sc->sc_q + sc->sc_head * sc->sc_hw->rdsize,
+		    length, uio);
 
 		mtx_lock(sc->sc_mtx);
+		if (error != 0)
+			break;
+		/* Remove a small chunk from the input queue. */
+		sc->sc_head = (sc->sc_head + 1) % HIDRAW_BUFFER_SIZE;
 		if (sc->sc_state.owfl) {
 			DPRINTFN(3, "queue freed. Start intr");
 			sc->sc_state.owfl = false;
