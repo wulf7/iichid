@@ -502,6 +502,7 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 	struct hidraw_report_descriptor *hrd;
 	struct hidraw_devinfo *hdi;
 	uint32_t size;
+	uint16_t ordsize;
 	int id, len;
 	int error = 0;
 
@@ -729,12 +730,16 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		sx_xlock(&sc->sc_buf_lock);
 		/* Lock newbus around set_report_descr call */
 		mtx_lock(&Giant);
+		ordsize = sc->sc_hw->rdsize;
 		error = hid_set_report_descr(sc->sc_dev, addr, len);
 		mtx_unlock(&Giant);
 		/* Realloc hidraw input queue */
-		free(sc->sc_q, M_DEVBUF);
-		sc->sc_q = malloc(sc->sc_hw->rdsize * HIDRAW_BUFFER_SIZE,
-		    M_DEVBUF, M_ZERO | M_WAITOK);
+		if (error == 0 && ordsize != sc->sc_hw->rdsize) {
+			free(sc->sc_q, M_DEVBUF);
+			sc->sc_q = malloc(
+			    sc->sc_hw->rdsize * HIDRAW_BUFFER_SIZE,
+			    M_DEVBUF, M_ZERO | M_WAITOK);
+		}
 		sx_unlock(&sc->sc_buf_lock);
 
 		/* Start interrupts again */
