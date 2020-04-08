@@ -249,8 +249,8 @@ hgame_attach(device_t dev)
 		 * are blinking by default:
 		 */
 		static const uint8_t reportbuf[3] = {1, 3, 0};
-		error = hid_set_report(dev, __DECONST(void *, reportbuf),
-		    sizeof(reportbuf), HID_OUTPUT_REPORT, 0);
+		error = hid_set_report(dev, reportbuf, sizeof(reportbuf),
+		    HID_OUTPUT_REPORT, 0);
 		if (error)
                         DPRINTF("set output report failed, error=%d "
                             "(ignored)\n", error);

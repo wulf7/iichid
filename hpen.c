@@ -236,8 +236,8 @@ hpen_attach(device_t dev)
 		 * feature report ID 2 before it'll start
 		 * returning digitizer data.
 		 */
-		error = hid_set_report(dev, __DECONST(void *, reportbuf),
-		    sizeof(reportbuf), HID_FEATURE_REPORT, 2);
+		error = hid_set_report(dev, reportbuf, sizeof(reportbuf),
+		    HID_FEATURE_REPORT, 2);
 		if (error)
 			DPRINTF("set feature report failed, error=%d "
 			    "(ignored)\n", error);

@@ -484,7 +484,7 @@ iichid_cmd_get_report(struct iichid_softc* sc, void *buf, uint16_t maxlen,
 }
 
 static int
-iichid_cmd_set_report(struct iichid_softc* sc, void *buf, int len,
+iichid_cmd_set_report(struct iichid_softc* sc, const void *buf, int len,
     uint8_t type, uint8_t id)
 {
 	/*
@@ -509,8 +509,8 @@ iichid_cmd_set_report(struct iichid_softc* sc, void *buf, int len,
 			};
 	int cmdlen    =	    (id >= 15 ?		9	:	8	  );
 	struct iic_msg msgs[] = {
-	    { sc->addr, IIC_M_WR | IIC_M_NOSTOP, cmdlen, cmd },
-	    { sc->addr, IIC_M_WR | IIC_M_NOSTART, len, buf },
+	    {sc->addr, IIC_M_WR | IIC_M_NOSTOP, cmdlen, cmd},
+	    {sc->addr, IIC_M_WR | IIC_M_NOSTART, len, __DECONST(void *, buf)},
 	};
 
 	DPRINTF(sc, "HID command I2C_HID_CMD_SET_REPORT %d (type %d, len %d): "
@@ -950,7 +950,7 @@ iichid_get_report(device_t dev, void *buf, uint16_t maxlen, uint16_t *actlen,
 }
 
 static int
-iichid_set_report(device_t dev, void *buf, uint16_t len, uint8_t type,
+iichid_set_report(device_t dev, const void *buf, uint16_t len, uint8_t type,
     uint8_t id)
 {
 	struct iichid_softc* sc = device_get_softc(dev);

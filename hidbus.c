@@ -638,7 +638,7 @@ hid_get_report(device_t dev, void *data, uint16_t maxlen, uint16_t *actlen,
 }
 
 int
-hid_set_report(device_t dev, void *data, uint16_t len, uint8_t type,
+hid_set_report(device_t dev, const void *data, uint16_t len, uint8_t type,
     uint8_t id)
 {
 

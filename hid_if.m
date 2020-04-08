@@ -143,7 +143,7 @@ METHOD int get_report {
 #
 METHOD int set_report {
 	device_t dev;
-	void *data;
+	const void *data;
 	uint16_t len;
 	uint8_t type;
 	uint8_t id;
