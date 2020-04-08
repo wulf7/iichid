@@ -114,7 +114,7 @@ METHOD int read {
 #
 METHOD int write {
 	device_t dev;
-	void *data;
+	const void *data;
 	uint16_t len;
 };
 

@@ -314,15 +314,15 @@ iichid_cmd_read(struct iichid_softc* sc, void *buf, uint16_t maxlen,
 }
 
 static int
-iichid_cmd_write(struct iichid_softc *sc, void *buf, int len)
+iichid_cmd_write(struct iichid_softc *sc, const void *buf, int len)
 {
 	/* 6.2.3 - Sending Output Reports */
 	uint8_t *cmdreg = (uint8_t *)&sc->desc.wOutputRegister;
 	uint16_t replen = 2 + len;
 	uint8_t cmd[4] = { cmdreg[0], cmdreg[1], replen & 0xFF, replen >> 8 };
 	struct iic_msg msgs[] = {
-	    { sc->addr, IIC_M_WR | IIC_M_NOSTOP, sizeof(cmd), cmd },
-	    { sc->addr, IIC_M_WR | IIC_M_NOSTART, len, buf },
+	    {sc->addr, IIC_M_WR | IIC_M_NOSTOP, sizeof(cmd), cmd},
+	    {sc->addr, IIC_M_WR | IIC_M_NOSTART, len, __DECONST(void *, buf)},
 	};
 
 	if (le16toh(sc->desc.wMaxOutputLength) == 0)
@@ -932,7 +932,7 @@ iichid_read(device_t dev, void *buf, uint16_t maxlen, uint16_t *actlen)
 }
 
 static int
-iichid_write(device_t dev, void *buf, uint16_t len)
+iichid_write(device_t dev, const void *buf, uint16_t len)
 {
 	struct iichid_softc* sc = device_get_softc(dev);
 

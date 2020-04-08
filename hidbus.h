@@ -193,7 +193,7 @@ void		hidbus_set_desc(device_t, const char *);
 int	hid_get_report_descr(device_t, void **, uint16_t *);
 int	hid_set_report_descr(device_t, const void *, uint16_t);
 int	hid_read(device_t, void *, uint16_t, uint16_t *);
-int	hid_write(device_t, void *, uint16_t);
+int	hid_write(device_t, const void *, uint16_t);
 int	hid_get_report(device_t, void *, uint16_t, uint16_t *, uint8_t,
 	    uint8_t);
 int	hid_set_report(device_t, const void *, uint16_t, uint8_t, uint8_t);

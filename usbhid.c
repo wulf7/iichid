@@ -539,11 +539,12 @@ usbhid_read(device_t dev, void *buf, uint16_t maxlen, uint16_t *actlen)
 }
 
 static int
-usbhid_write(device_t dev, void *buf, uint16_t len)
+usbhid_write(device_t dev, const void *buf, uint16_t len)
 {
 	struct usbhid_softc* sc = device_get_softc(dev);
 
-	return (usbhid_sync_xfer(sc, USBHID_INTR_DT_WR, NULL, buf, len));
+	return (usbhid_sync_xfer(sc, USBHID_INTR_DT_WR, NULL,
+	    __DECONST(void *, buf), len));
 }
 
 static int

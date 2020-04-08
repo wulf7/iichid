@@ -604,7 +604,7 @@ hid_read(device_t dev, void *data, uint16_t maxlen, uint16_t *actlen)
 }
 
 int
-hid_write(device_t dev, void *data, uint16_t len)
+hid_write(device_t dev, const void *data, uint16_t len)
 {
 	struct hidbus_softc *sc;
 	struct hid_device_info *devinfo;
@@ -619,7 +619,8 @@ hid_write(device_t dev, void *data, uint16_t len)
 		if (devinfo->noWriteEp) {
 			sc = device_get_softc(dev);
 			/* try to extract the ID byte */
-			id = (sc->rdesc.oid & (len > 0)) ? *(uint8_t*)data : 0;
+			id = (sc->rdesc.oid & (len > 0)) ?
+			    ((const uint8_t*)data)[0] : 0;
 			return (HID_SET_REPORT(device_get_parent(dev),
 			   data, len, UHID_OUTPUT_REPORT, id));
 		}
