@@ -180,14 +180,14 @@ hpen_identify(driver_t *driver, device_t parent)
 		switch (hw->idProduct) {
 		case USB_PRODUCT_WACOM_GRAPHIRE:
 			hid_set_report_descr(parent,
-			    __DECONST(void *, hpen_graphire_report_descr),
-	                    sizeof(hpen_graphire_report_descr));
+			    hpen_graphire_report_descr,
+			    sizeof(hpen_graphire_report_descr));
 	                break;
 
 		case USB_PRODUCT_WACOM_GRAPHIRE3_4X5:
 			hid_set_report_descr(parent,
-			    __DECONST(void *, hpen_graphire3_4x5_report_descr),
-	                    sizeof(hpen_graphire3_4x5_report_descr));
+			    hpen_graphire3_4x5_report_descr,
+			    sizeof(hpen_graphire3_4x5_report_descr));
 	                break;
 		}
 	}

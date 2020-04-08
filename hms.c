@@ -195,8 +195,8 @@ hms_identify(driver_t *driver, device_t parent)
 	 * descriptor, load one defined in "Appendix B.2" of HID1_11.pdf
 	 */
 	if (hid_get_report_descr(parent, NULL, NULL) != 0 && hw->pBootMouse)
-		(void)hid_set_report_descr(parent,
-		    __DECONST(void *, hms_boot_desc), sizeof(hms_boot_desc));
+		(void)hid_set_report_descr(parent, hms_boot_desc,
+		    sizeof(hms_boot_desc));
 }
 
 static int

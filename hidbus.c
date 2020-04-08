@@ -73,12 +73,12 @@ struct hidbus_softc {
 devclass_t hidbus_devclass;
 
 static int
-hidbus_fill_report_descr(struct hidbus_report_descr *hrd, void *data,
+hidbus_fill_report_descr(struct hidbus_report_descr *hrd, const void *data,
     uint16_t len)
 {
 	int error = 0;
 
-	hrd->data = data;
+	hrd->data = __DECONST(void *, data);
 	hrd->len = len;
 
 	/*
@@ -136,7 +136,7 @@ hidbus_add_child(device_t dev, u_int order, const char *name, int unit)
 }
 
 static int
-hidbus_enumerate_children(device_t dev, void* data, uint16_t len)
+hidbus_enumerate_children(device_t dev, const void* data, uint16_t len)
 {
 	struct hid_data *hd;
 	struct hid_item hi;
@@ -552,7 +552,7 @@ hid_get_report_descr(device_t dev, void **data, uint16_t *len)
  * 'device_t dev' parameter.
  */
 int
-hid_set_report_descr(device_t dev, void *data, uint16_t len)
+hid_set_report_descr(device_t dev, const void *data, uint16_t len)
 {
 	struct hidbus_report_descr rdesc;
 	device_t bus;

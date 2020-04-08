@@ -205,8 +205,7 @@ hgame_identify(driver_t *driver, device_t parent)
 
 	/* the Xbox 360 gamepad has no report descriptor */
 	if (hw->isXBox360GP)
-		hid_set_report_descr(parent,
-		    __DECONST(void *, hgame_xb360gp_rdesc),
+		hid_set_report_descr(parent, hgame_xb360gp_rdesc,
 		    sizeof(hgame_xb360gp_rdesc));
 }
 
