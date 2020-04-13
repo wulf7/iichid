@@ -72,11 +72,6 @@ static device_probe_t hmap_probe;
 static evdev_open_t hmap_ev_open;
 static evdev_close_t hmap_ev_close;
 
-static const struct evdev_methods hmap_evdev_methods = {
-	.ev_open = &hmap_ev_open,
-	.ev_close = &hmap_ev_close,
-};
-
 #define HMAP_FOREACH_ITEM(sc, mi, uoff)			\
 	for (u_int _map = 0, _item = 0, _uoff_int = -1;	\
 	    ((mi) = hmap_get_next_map_item(		\
@@ -675,6 +670,10 @@ hmap_attach(device_t dev)
 	    M_DEVBUF, M_WAITOK | M_ZERO);
 
 	hidbus_set_intr(dev, hmap_intr);
+	sc->evdev_methods = (struct evdev_methods) {
+		.ev_open = &hmap_ev_open,
+		.ev_close = &hmap_ev_close,
+	};
 
 	sc->evdev = evdev_alloc();
 	evdev_set_name(sc->evdev, device_get_desc(dev));
@@ -683,13 +682,13 @@ hmap_attach(device_t dev)
 	    hw->idVersion);
 	evdev_set_serial(sc->evdev, hw->serial);
 	evdev_support_event(sc->evdev, EV_SYN);
-	evdev_set_methods(sc->evdev, dev, &hmap_evdev_methods);
 	error = hmap_parse_hid_descr(sc, hidbus_get_index(dev));
 	if (error) {
 		hmap_detach(dev);
 		return (ENXIO);
 	}
 
+	evdev_set_methods(sc->evdev, dev, &sc->evdev_methods);
 	sc->cb_state = HMAP_CB_IS_RUNNING;
 
 	error = evdev_register_mtx(sc->evdev, hidbus_get_lock(dev));

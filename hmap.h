@@ -156,6 +156,7 @@ struct hmap_softc {
 	device_t		dev;
 
 	struct evdev_dev	*evdev;
+	struct evdev_methods	evdev_methods;
 
 	/* Scatter-gather list of maps */
 	int			nmaps;
