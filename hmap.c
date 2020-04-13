@@ -309,7 +309,6 @@ can_map_arr_range(struct hid_item *hi, const struct hmap_item *mi,
 	return ((hi->flags & HIO_VARIABLE) == 0 && !mi->has_cb &&
 	    hi->usage_minimum <= mi->usage + usage_offset &&
 	    hi->usage_maximum >= mi->usage + usage_offset &&
-	    (hi->flags & HIO_RELATIVE) == 0 &&
 	    mi->type == EV_KEY &&
 	    (mi->code != KEY_RESERVED && mi->code != HMAP_KEY_NULL));
 }
@@ -321,7 +320,6 @@ can_map_arr_list(struct hid_item *hi, const struct hmap_item *mi,
 
 	return ((hi->flags & HIO_VARIABLE) == 0 && !mi->has_cb &&
 	    usage == mi->usage + usage_offset &&
-	    (hi->flags & HIO_RELATIVE) == 0 &&
 	    mi->type == EV_KEY &&
 	    (mi->code != KEY_RESERVED && mi->code != HMAP_KEY_NULL));
 }
