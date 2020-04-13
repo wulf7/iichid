@@ -449,7 +449,12 @@ hmap_add_map(device_t dev, const struct hmap_item *map, int nmap_items,
 	uint32_t items;
 	void *d_ptr;
 	uint16_t d_len;
-	int error;
+	int i, error;
+
+	/* Avoid double-adding of map in probe() handler */
+	for (i = 0; i < sc->nmaps; i++)
+		if (sc->map[i] == map)
+			return (0);
 
 	error = hid_get_report_descr(dev, &d_ptr, &d_len);
 	if (error != 0) {
