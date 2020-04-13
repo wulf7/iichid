@@ -44,6 +44,8 @@ enum hmap_cb_state {
 	HMAP_CB_IS_DETACHING,
 };
 
+#define	HMAP_KEY_NULL	0xFF	/* Special event code to discard input */
+
 #define	HMAP_CB_ARGS	\
     struct hmap_softc *super_sc, struct hmap_hid_item *hi, intptr_t ctx
 #define	HMAP_CB_GET_STATE(...)	\

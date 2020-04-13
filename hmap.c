@@ -152,7 +152,7 @@ hmap_intr(void *context, void *buf, uint16_t len)
 	int32_t data;
 	uint16_t key, uoff;
 	uint8_t id = 0;
-	bool do_sync = false;
+	bool found, do_sync = false;
 
 	mtx_assert(hidbus_get_lock(dev), MA_OWNED);
 
@@ -244,18 +244,20 @@ hmap_intr(void *context, void *buf, uint16_t len)
 			 * an index in the usage range list.
 			 */
 			usage = data - hi->lmin + hi->umin;
+			found = false;
 			HMAP_FOREACH_ITEM(sc, mi, uoff) {
 				if (usage == mi->usage + uoff &&
 				    mi->type == EV_KEY && !mi->has_cb) {
 					key = mi->code;
+					found = true;
 					break;
 				}
 			}
-			if (key == KEY_RESERVED)
+			if (!found)
 				DPRINTF(sc, "Can not map unknown HID "
 				    "usage: %08x\n", usage);
 report_key:
-			if (key == hi->last_key)
+			if (key == HMAP_KEY_NULL || key == hi->last_key)
 				continue;
 			if (hi->last_key != KEY_RESERVED)
 				evdev_push_key(sc->evdev, hi->last_key, 0);
@@ -308,7 +310,8 @@ can_map_arr_range(struct hid_item *hi, const struct hmap_item *mi,
 	    hi->usage_minimum <= mi->usage + usage_offset &&
 	    hi->usage_maximum >= mi->usage + usage_offset &&
 	    (hi->flags & HIO_RELATIVE) == 0 &&
-	    mi->type == EV_KEY);
+	    mi->type == EV_KEY &&
+	    (mi->code != KEY_RESERVED && mi->code != HMAP_KEY_NULL));
 }
 
 static inline bool
@@ -319,7 +322,8 @@ can_map_arr_list(struct hid_item *hi, const struct hmap_item *mi,
 	return ((hi->flags & HIO_VARIABLE) == 0 && !mi->has_cb &&
 	    usage == mi->usage + usage_offset &&
 	    (hi->flags & HIO_RELATIVE) == 0 &&
-	    mi->type == EV_KEY);
+	    mi->type == EV_KEY &&
+	    (mi->code != KEY_RESERVED && mi->code != HMAP_KEY_NULL));
 }
 
 static bool
