@@ -15,6 +15,7 @@ Current drivers and respective HID devices supported by them are following:
   and precission touchpads.
 * **hconf** - Mouse/touchpad mode switches on precission touchpads.
 * **hkbd** - HID keyboards. AT-key subset.
+* **hskbd** - Simple evdev-only HID keyboard driver.
 * **hpen**  - Generic / MS Windows compatible HID pen tablets.
 * **hcons** - Consumer page AKA Multimedia keys.
 * **hsctrl** - System Controls page (Power/Sleep keys).
