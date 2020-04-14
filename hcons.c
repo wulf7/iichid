@@ -270,6 +270,9 @@ hcons_rel_volume_cb(HMAP_CB_ARGS)
 		break;
 	case HMAP_CB_IS_RUNNING:
 		data = ctx;
+		/* Nothing to report. */
+		if (data == 0)
+			return (ENOMSG);
 		code = data > 0 ? KEY_VOLUMEUP : KEY_VOLUMEDOWN;
 		for (nrepeats = abs(data); nrepeats > 0; nrepeats--) {
 			evdev_push_key(evdev, code, 1);
