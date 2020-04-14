@@ -159,6 +159,9 @@ hms_wheel_cb(HMAP_CB_ARGS)
 		break;
 	case HMAP_CB_IS_RUNNING:
 		data = ctx;
+		/* No movement. Nothing to report. */
+		if (data == 0)
+			return (ENOMSG);
 		if (sc->rev_wheel)
 			data = -data;
 		evdev_push_rel(evdev, REL_WHEEL, data);
