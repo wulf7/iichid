@@ -148,8 +148,8 @@ struct hms_softc {
 static int
 hms_wheel_cb(HMAP_CB_ARGS)
 {
-	struct hms_softc *sc = HMAP_CB_GET_SOFTC;
-	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV;
+	struct hms_softc *sc = HMAP_CB_GET_SOFTC();
+	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV();
 	int32_t data;
 
 	switch (HMAP_CB_GET_STATE()) {
@@ -170,8 +170,8 @@ hms_wheel_cb(HMAP_CB_ARGS)
 static int
 hms_compl_cb(HMAP_CB_ARGS)
 {
-	struct hms_softc *sc = HMAP_CB_GET_SOFTC;
-	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV;
+	struct hms_softc *sc = HMAP_CB_GET_SOFTC();
+	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV();
 
 	if (HMAP_CB_GET_STATE() == HMAP_CB_IS_ATTACHING) {
 		if (hmap_test_cap(sc->caps, HMS_ABS_X) ||

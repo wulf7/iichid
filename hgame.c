@@ -144,8 +144,8 @@ struct hgame_softc {
 static int
 hgame_dpad_cb(HMAP_CB_ARGS)
 {
-	struct hgame_softc *sc = HMAP_CB_GET_SOFTC;
-	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV;
+	struct hgame_softc *sc = HMAP_CB_GET_SOFTC();
+	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV();
 
 	switch (HMAP_CB_GET_STATE()) {
 	case HMAP_CB_IS_ATTACHING:
@@ -155,7 +155,7 @@ hgame_dpad_cb(HMAP_CB_ARGS)
 		break;
 
 	case HMAP_CB_IS_RUNNING:
-		switch (HMAP_CB_GET_MAP_ITEM->usage) {
+		switch (HMAP_CB_MAP_ITEM->usage) {
 		case HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_D_PAD_UP):
 			if (sc->dpad_down)
 				break;
@@ -189,7 +189,7 @@ hgame_dpad_cb(HMAP_CB_ARGS)
 static int
 hgame_compl_cb(HMAP_CB_ARGS)
 {
-	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV;
+	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV();
 
 	if (HMAP_CB_GET_STATE() == HMAP_CB_IS_ATTACHING)
 		evdev_support_prop(evdev, INPUT_PROP_DIRECT);

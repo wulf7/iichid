@@ -257,7 +257,7 @@ static const struct hid_device_id hcons_devs[] = {
 static int
 hcons_rel_volume_cb(HMAP_CB_ARGS)
 {
-	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV;
+	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV();
 	int32_t data;
 	int32_t code;
 	int nrepeats;

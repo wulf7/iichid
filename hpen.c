@@ -130,7 +130,7 @@ static const struct hid_device_id hpen_devs[] = {
 static int
 hpen_battery_strenght_cb(HMAP_CB_ARGS)
 {
-	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV;
+	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV();
 	int32_t data;
 
 	switch (HMAP_CB_GET_STATE()) {
@@ -149,7 +149,7 @@ hpen_battery_strenght_cb(HMAP_CB_ARGS)
 static int
 hpen_compl_digi_cb(HMAP_CB_ARGS)
 {
-	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV;
+	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV();
 
 	if (HMAP_CB_GET_STATE() == HMAP_CB_IS_ATTACHING)
 		evdev_support_prop(evdev, INPUT_PROP_POINTER);
@@ -161,7 +161,7 @@ hpen_compl_digi_cb(HMAP_CB_ARGS)
 static int
 hpen_compl_pen_cb(HMAP_CB_ARGS)
 {
-	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV;
+	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV();
 
 	if (HMAP_CB_GET_STATE() == HMAP_CB_IS_ATTACHING)
 		evdev_support_prop(evdev, INPUT_PROP_DIRECT);
