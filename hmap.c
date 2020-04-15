@@ -742,12 +742,7 @@ static device_method_t hmap_methods[] = {
 	DEVMETHOD_END
 };
 
-driver_t hmap_driver = {
-	.name = "hmap",
-	.methods = hmap_methods,
-	.size = sizeof(struct hmap_softc),
-};
-
+DEFINE_CLASS_0(hmap, hmap_driver, hmap_methods, sizeof(struct hmap_softc));
 DRIVER_MODULE(hmap, hidbus, hmap_driver, hmap_devclass, NULL, 0);
 MODULE_DEPEND(hmap, hid, 1, 1, 1);
 MODULE_DEPEND(hmap, evdev, 1, 1, 1);
