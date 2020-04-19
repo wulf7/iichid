@@ -111,8 +111,18 @@ static struct hmap_item hskbd_map[256] = {
 	HSKBD_KEY("0x03", 0x03, KEY_RESERVED),	/* Error Undefined */
 	HSKBD_COMPL_CB(hskbd_compl_cb),
 };
-/* Map items starting from 5-th are filled by MOD_LOAD handler */
+/* Map items starting from 5-th are filled by SYSINIT handler */
 static int hskbd_nmap_items = 5;
+static void
+hskbd_init(void)
+{
+	uint16_t code, i;
+
+	for (i = 4; i < 0x100; i++)
+		if ((code = evdev_hid2key(i)) != KEY_RESERVED)
+			hskbd_map[hskbd_nmap_items++] =
+			    (struct hmap_item) HSKBD_KEY("K", i, code);
+}
 
 static const struct hid_device_id hskbd_devs[] = {
 	{ HID_TLC(HUP_GENERIC_DESKTOP, HUG_KEYBOARD) },
@@ -211,8 +221,8 @@ hskbd_ev_event(struct evdev_dev *evdev, uint16_t type, uint16_t code,
 static int
 hskbd_compl_cb(HMAP_CB_ARGS)
 {
-	struct hskbd_softc *sc = HMAP_CB_GET_SOFTC;
-	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV;
+	struct hskbd_softc *sc = HMAP_CB_GET_SOFTC();
+	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV();
 
 	if (HMAP_CB_GET_STATE() == HMAP_CB_IS_ATTACHING) {
 		if (sc->sc_numlock_exists || sc->sc_capslock_exists ||
@@ -327,20 +337,6 @@ hskbd_attach(device_t dev)
 	return (hmap_attach(dev));
 }
 
-static int
-hskbd_driver_load(module_t mod, int what, void *arg)
-{
-	uint16_t code, i;
-
-	if (what == MOD_LOAD) {
-		for (i = 4; i < 0x100; i++)
-			if ((code = evdev_hid2key(i)) != KEY_RESERVED)
-				hskbd_map[hskbd_nmap_items++] =
-				    (struct hmap_item) HSKBD_KEY("K", i, code);
-	}
-        return (0);
-}
-
 static devclass_t hskbd_devclass;
 static device_method_t hskbd_methods[] = {
 	DEVMETHOD(device_identify,	hskbd_identify),
@@ -349,10 +345,11 @@ static device_method_t hskbd_methods[] = {
 	DEVMETHOD_END
 };
 
+SYSINIT(hskbd_init, SI_SUB_DRIVERS, SI_ORDER_ANY, hskbd_init, NULL);
+
 DEFINE_CLASS_1(hskbd, hskbd_driver, hskbd_methods, sizeof(struct hskbd_softc),
     hmap_driver);
-DRIVER_MODULE(hskbd, hidbus, hskbd_driver, hskbd_devclass, hskbd_driver_load,
-    0);
+DRIVER_MODULE(hskbd, hidbus, hskbd_driver, hskbd_devclass, NULL, 0);
 MODULE_DEPEND(hskbd, hid, 1, 1, 1);
 MODULE_DEPEND(hskbd, hmap, 1, 1, 1);
 MODULE_DEPEND(hskbd, evdev, 1, 1, 1);
