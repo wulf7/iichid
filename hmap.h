@@ -52,8 +52,8 @@ enum hmap_cb_state {
     ((super_sc == NULL) ? HMAP_CB_IS_PROBING : super_sc->cb_state)
 #define	HMAP_CB_GET_SOFTC(...)	((void *)super_sc)
 #define	HMAP_CB_GET_EVDEV(...)	(super_sc->evdev)
-#define	HMAP_CB_MAP_ITEM	(hi->map)
 #define	HMAP_CB_UDATA		(hi->udata)
+#define	HMAP_CB_UDATA64		(hi->udata64)
 typedef int hmap_cb_t(HMAP_CB_ARGS);
 
 enum hmap_relabs {
@@ -135,7 +135,7 @@ enum hmap_type {
 struct hmap_hid_item {
 	enum hmap_type		type;
 	union {
-		const struct hmap_item	*map;	/* Callback */
+		hmap_cb_t	*cb;		/* Callback */
 		struct {			/* Variable */
 			uint16_t	evtype;	/* Evdev event type */
 			uint16_t	code;	/* Evdev event code */
@@ -148,7 +148,8 @@ struct hmap_hid_item {
 	int32_t			lmin;		/* HID item logical minimum */
 	int32_t			lmax;		/* HID item logical maximum */
 	union {
-		intptr_t	udata;		/* Callback private context */
+		void		*udata;		/* Callback private context */
+		uint64_t	udata64;
 		int32_t		last_val;	/* Last reported value (var) */
 		uint16_t	last_key;	/* Last reported key (array) */
 	};

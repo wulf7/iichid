@@ -146,35 +146,38 @@ hgame_dpad_cb(HMAP_CB_ARGS)
 {
 	struct hgame_softc *sc = HMAP_CB_GET_SOFTC();
 	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV();
+	struct hid_item *hid_item;
 
 	switch (HMAP_CB_GET_STATE()) {
 	case HMAP_CB_IS_ATTACHING:
+		hid_item = (struct hid_item *)ctx;
+		HMAP_CB_UDATA64 = HID_GET_USAGE(hid_item->usage);
 		evdev_support_event(evdev, EV_ABS);
 		evdev_support_abs(evdev, ABS_HAT0X, 0, -1, 1, 0, 0, 0);
 		evdev_support_abs(evdev, ABS_HAT0Y, 0, -1, 1, 0, 0, 0);
 		break;
 
 	case HMAP_CB_IS_RUNNING:
-		switch (HMAP_CB_MAP_ITEM->usage) {
-		case HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_D_PAD_UP):
+		switch (HMAP_CB_UDATA64) {
+		case HUG_D_PAD_UP:
 			if (sc->dpad_down)
 				break;
 			evdev_push_abs(evdev, ABS_HAT0Y, (ctx == 0) ? 0 : -1);
 			sc->dpad_up = (ctx != 0);
 			break;
-		case HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_D_PAD_DOWN):
+		case HUG_D_PAD_DOWN:
 			if (sc->dpad_up)
 				break;
 			evdev_push_abs(evdev, ABS_HAT0Y, (ctx == 0) ? 0 : 1);
 			sc->dpad_down = (ctx != 0);
 			break;
-		case HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_D_PAD_RIGHT):
+		case HUG_D_PAD_RIGHT:
 			if (sc->dpad_left)
 				break;
 			evdev_push_abs(evdev, ABS_HAT0X, (ctx == 0) ? 0 : 1);
 			sc->dpad_right = (ctx != 0);
 			break;
-		case HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_D_PAD_LEFT):
+		case HUG_D_PAD_LEFT:
 			if (sc->dpad_right)
 				break;
 			evdev_push_abs(evdev, ABS_HAT0X, (ctx == 0) ? 0 : -1);

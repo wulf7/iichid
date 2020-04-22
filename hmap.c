@@ -180,7 +180,7 @@ hmap_intr(void *context, void *buf, uint16_t len)
 
 		switch (hi->type) {
 		case HMAP_TYPE_CALLBACK:
-			if (hi->map->cb(sc, hi, data) != 0)
+			if (hi->cb(sc, hi, data) != 0)
 				continue;
 			break;
 
@@ -337,9 +337,9 @@ hmap_probe_hid_item(struct hid_item *hi, const struct hmap_item *map,
 	HMAP_FOREACH_INDEX(map, nmap_items, i, uoff) {
 		if (can_map_callback(hi, map + i, uoff)) {
 			bzero(&hi_temp, sizeof(hi_temp));
-			hi_temp.map = map + i;
+			hi_temp.cb = map[i].cb;
 			hi_temp.type = HMAP_TYPE_CALLBACK;
-			if (hi_temp.map->cb(NULL, &hi_temp, (intptr_t)hi) != 0)
+			if (hi_temp.cb(NULL, &hi_temp, (intptr_t)hi) != 0)
 				break;
 			bit_set(caps, i);
 			return (true);
@@ -491,7 +491,7 @@ hmap_parse_hid_item(struct hmap_softc *sc, struct hid_item *hi,
 	HMAP_FOREACH_ITEM(sc, mi, uoff) {
 		if (can_map_callback(hi, mi, uoff)) {
 			bzero(&hi_temp, sizeof(hi_temp));
-			hi_temp.map = mi;
+			hi_temp.cb = mi->cb;
 			hi_temp.type = HMAP_TYPE_CALLBACK;
 			/*
 			 * Values returned by probe- and attach-stage
@@ -714,7 +714,7 @@ hmap_detach(device_t dev)
 		for (hi = sc->hid_items; hi < sc->hid_items + sc->nhid_items;
 		    hi++)
 			if (hi->type == HMAP_TYPE_CALLBACK)
-				hi->map->cb(sc, hi, 0);
+				hi->cb(sc, hi, 0);
 			else if (hi->type == HMAP_TYPE_ARR_LIST)
 				free(hi->codes, M_DEVBUF);
 		free(sc->hid_items, M_DEVBUF);
