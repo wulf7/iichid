@@ -159,8 +159,8 @@ hidbus_enumerate_children(device_t dev, const void* data, uint16_t len)
 		hidbus_set_index(child, index);
 		hidbus_set_usage(child, hi.usage);
 		index++;
-		DPRINTF("Add child TLC: 0x%04hx:0x%04hx\n",
-		    (uint16_t)(hi.usage >> 16), (uint16_t)(hi.usage & 0xFFFF));
+		DPRINTF("Add child TLC: 0x%04x:0x%04x\n",
+		    HID_GET_USAGE_PAGE(hi.usage), HID_GET_USAGE(hi.usage));
 	}
 	hid_end_parse(hd);
 
@@ -401,8 +401,9 @@ hidbus_child_pnpinfo_str(device_t bus, device_t child, char *buf,
 
 	snprintf(buf, buflen, "page=0x%04x usage=0x%04x bus=0x%02hx "
 	    "vendor=0x%04hx product=0x%04hx version=0x%04hx",
-	    tlc->usage >> 16, tlc->usage & 0xFFFF, devinfo->idBus,
-	    devinfo->idVendor, devinfo->idProduct, devinfo->idVersion);
+	    HID_GET_USAGE_PAGE(tlc->usage), HID_GET_USAGE(tlc->usage),
+	    devinfo->idBus, devinfo->idVendor, devinfo->idProduct,
+	    devinfo->idVersion);
 	return (0);
 }
 

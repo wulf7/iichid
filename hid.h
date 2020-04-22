@@ -62,6 +62,9 @@ struct hid_absinfo {
 
 
 /* OpenBSD/NetBSD compat shim */
+#define	HID_GET_USAGE(u) ((u) & 0xffff)
+#define	HID_GET_USAGE_PAGE(u) (((u) >> 16) & 0xffff)
+
 static __inline uint32_t
 hid_get_udata(const uint8_t *buf, usb_size_t len, struct hid_location *loc)
 {
