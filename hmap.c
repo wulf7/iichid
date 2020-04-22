@@ -156,10 +156,6 @@ hmap_intr(void *context, void *buf, uint16_t len)
 
 	mtx_assert(hidbus_get_lock(dev), MA_OWNED);
 
-	/* Make sure we don't process old data */
-	if (len < sc->isize)
-		bzero((uint8_t *)buf + len, sc->isize - len);
-
 	/* Strip leading "report ID" byte */
 	if (sc->hid_items[0].id) {
 		id = *(uint8_t *)buf;
@@ -637,8 +633,6 @@ hmap_parse_hid_descr(struct hmap_softc *sc, uint8_t tlc_index)
 		DPRINTF(sc, "Parsed HID item number mismatch: expected=%u "
 		    "result=%ld\n", sc->nhid_items, item - sc->hid_items);
 	sc->nhid_items = item - sc->hid_items;
-
-	sc->isize = hid_report_size(d_ptr, d_len, hid_input, NULL);
 
 	/*
 	 * If completion callback returned success at attach stage, run it

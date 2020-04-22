@@ -169,7 +169,6 @@ struct hmap_softc {
 	uint32_t		nhid_items;
 	struct hmap_hid_item	*hid_items;
 
-	uint32_t		isize;
 	int			*debug_var;
 	enum hmap_cb_state	cb_state;
 	hmap_cb_t		*compl_cb;
