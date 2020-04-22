@@ -90,21 +90,11 @@ belonging to given device. Note that it can change across reboots.
 
 ## usbhid
 
-USB transport backend is still experimental. That is why it has low device
-probe priority by default and always loses probe to OS built-in USB HID drivers
-like **uhid**, **ukbd**, **ums** and **wmt**. It is possible to raise it's
-priority at build time with passing extra CFLAGS via e.g. environment
-variable to the Makefile:
-
-```
-$ CFLAGS=-DUSBHID_BUS_PROBE_PRIO=-10 make
-```
-
-Another way is to uncomment the same parameter in the Makefile itself.
-
-After that you should load **iichid.ko** from bootloader.
-In the case if such an 'high priority' module is loaded with **kldload** it
-is necessary to issue 
+USB transport backend can (and usually does) interfere with OS built-in USB
+HID drivers like **uhid**, **ukbd**, **ums** and **wmt**. Which one will be
+active is depend on the order of loading, so genarally you should load
+**iichid.ko** from bootloader. In the case if the module is loaded
+with **kldload** it is necessary to issue
 
 ```
 $ sudo usbconfig -d ugenX.X reset
@@ -115,6 +105,13 @@ to reprobe can be found with issuing of simple **usbconfig** command:
 
 ```
 $ sudo usbconfig
+```
+
+It is possible to build **iichid** with USB support disabled with following
+command:
+
+```
+$ make -DDISABLE_USBHID
 ```
 
 ## Bug reporting

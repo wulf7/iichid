@@ -22,13 +22,18 @@ OSVERSION!=	awk '/^\#define[[:space:]]*__FreeBSD_version/ { print $$3 }' \
 .endif
 
 KMOD	= iichid
+.if !defined(DISABLE_IICHID)
 SRCS	= iichid.c iichid.h
+.endif
 SRCS	+= hconf.c hconf.h hgame.c hgame.h hms.c hmt.c hpen.c hsctrl.c hcons.c
 SRCS	+= xb360gp.c
 SRCS	+= hidbus.c hidbus.h hid_if.c hid_if.h hid.c hid.h hid_lookup.c
 SRCS	+= hid_debug.h hid_debug.c
 SRCS	+= hmap.h hmap.c
-SRCS	+= usbdevs.h usbhid.c
+SRCS	+= usbdevs.h
+.if !defined(DISABLE_USBHID)
+SRCS	+= usbhid.c
+.endif
 SRCS	+= hidraw.c hidraw.h
 SRCS	+= acpi_if.h bus_if.h device_if.h iicbus_if.h
 SRCS	+= opt_acpi.h opt_usb.h opt_evdev.h
@@ -48,7 +53,7 @@ CFLAGS	+= -DEVDEV_SUPPORT
     (${OSVERSION} >= 1201513 && ${OSVERSION} < 1300000)
 CFLAGS	+= -DHAVE_ACPI_IICBUS
 .endif
-#CFLAGS	+= -DUSBHID_BUS_PROBE_PRIO=-10
+CFLAGS	+= -DUSBHID_BUS_PROBE_PRIO=-10
 .if ${OSVERSION} >= 1300055 || \
     (${OSVERSION} >= 1201507 && ${OSVERSION} < 1300000)
 CFLAGS	+= -DHAVE_IG4_POLLING
