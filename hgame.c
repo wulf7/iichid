@@ -31,9 +31,6 @@ __FBSDID("$FreeBSD$");
 
 /*
  * Generic HID game controller (joystick/gamepad) driver,
- * also supports XBox 360 gamepads thanks to the custom descriptor in usbhid.
- * 
- * Tested on: SVEN GC-5070 in both XInput (XBox 360) and DirectInput modes
  */
 
 #include <sys/param.h>
@@ -45,9 +42,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/evdev/input.h>
 #include <dev/evdev/evdev.h>
 
-#include "usbdevs.h"
-#include <dev/usb/input/usb_rdesc.h>
-
+#include "hgame.h"
 #include "hid.h"
 #include "hidbus.h"
 #include "hmap.h"
@@ -64,13 +59,6 @@ SYSCTL_INT(_hw_hid_hgame, OID_AUTO, debug, CTLFLAG_RWTUN,
 		&hgame_debug, 0, "Debug level");
 #endif
 
-static const uint8_t	hgame_xb360gp_rdesc[] = {UHID_XB360GP_REPORT_DESCR()};
-
-static hmap_cb_t	hgame_dpad_cb;
-static hmap_cb_t	hgame_compl_cb;
-
-#define HGAME_MAP_BUT(number, code)	\
-	{ HMAP_KEY(#number, HUP_BUTTON, number, code) }
 #define HGAME_MAP_BRG(number_from, number_to, code)	\
 	{ HMAP_KEY_RANGE(#code, HUP_BUTTON, number_from, number_to, code) }
 #define HGAME_MAP_ABS(usage, code)	\
@@ -80,13 +68,6 @@ static hmap_cb_t	hgame_compl_cb;
 	    HUG_##usage_from, HUG_##usage_to, callback) }
 #define HGAME_COMPLCB(cb)		\
 	{ HMAP_COMPL_CB("COMPL_CB", &cb) }
-
-#ifndef HUG_D_PAD_UP
-#define	HUG_D_PAD_UP	0x90
-#define	HUG_D_PAD_DOWN	0x91
-#define	HUG_D_PAD_RIGHT	0x92
-#define	HUG_D_PAD_LEFT	0x93
-#endif
 
 static const struct hmap_item hgame_common_map[] = {
 	HGAME_MAP_ABS(X,		ABS_X),
@@ -109,37 +90,14 @@ static const struct hmap_item hgame_gamepad_map[] = {
 	HGAME_MAP_BRG(1, 16,		BTN_GAMEPAD),
 };
 
-/* Customized to match usbhid's XBox 360 descriptor */
-static const struct hmap_item hgame_xb360_map[] = {
-	HGAME_MAP_BUT(1,		BTN_SOUTH),
-	HGAME_MAP_BUT(2,		BTN_EAST),
-	HGAME_MAP_BUT(3,		BTN_WEST),
-	HGAME_MAP_BUT(4,		BTN_NORTH),
-	HGAME_MAP_BUT(5,		BTN_TL),
-	HGAME_MAP_BUT(6,		BTN_TR),
-	HGAME_MAP_BUT(7,		BTN_SELECT),
-	HGAME_MAP_BUT(8,		BTN_START),
-	HGAME_MAP_BUT(9,		BTN_THUMBL),
-	HGAME_MAP_BUT(10,		BTN_THUMBR),
-	HGAME_MAP_BUT(11,		BTN_MODE),
-};
-
 static const struct hid_device_id hgame_devs[] = {
 	{ HID_TLC(HUP_GENERIC_DESKTOP, HUG_JOYSTICK), HID_DRIVER_INFO(HUG_JOYSTICK) },
 	{ HID_TLC(HUP_GENERIC_DESKTOP, HUG_GAME_PAD), HID_DRIVER_INFO(HUG_GAME_PAD) },
 };
 
-struct hgame_softc {
-	struct hmap_softc	super_sc;
-	bool			dpad_up;
-	bool			dpad_down;
-	bool			dpad_right;
-	bool			dpad_left;
-};
-
 /* Emulate the hat switch report via the D-pad usages
  * found on XInput/XBox style devices */
-static int
+int
 hgame_dpad_cb(HMAP_CB_ARGS)
 {
 	struct hgame_softc *sc = HMAP_CB_GET_SOFTC();
@@ -187,7 +145,7 @@ hgame_dpad_cb(HMAP_CB_ARGS)
 	return (0);
 }
 
-static int
+int
 hgame_compl_cb(HMAP_CB_ARGS)
 {
 	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV();
@@ -199,22 +157,14 @@ hgame_compl_cb(HMAP_CB_ARGS)
         return (ENOSYS);
 }
 
-static void
-hgame_identify(driver_t *driver, device_t parent)
-{
-	const struct hid_device_info *hw = hid_get_device_info(parent);
-
-	/* the Xbox 360 gamepad has no report descriptor */
-	if (hw->isXBox360GP)
-		hid_set_report_descr(parent, hgame_xb360gp_rdesc,
-		    sizeof(hgame_xb360gp_rdesc));
-}
-
 static int
 hgame_probe(device_t dev)
 {
 	const struct hid_device_info *hw = hid_get_device_info(dev);
 	int error, error2;
+
+	if (hw->isXBox360GP)
+		return(ENXIO);
 
 	error = hidbus_lookup_driver_info(dev, hgame_devs, sizeof(hgame_devs));
 	if (error != 0)
@@ -224,48 +174,22 @@ hgame_probe(device_t dev)
 
 	if (hidbus_get_driver_info(dev) == HUG_GAME_PAD)
 		error = hmap_add_map(dev, hgame_gamepad_map, nitems(hgame_gamepad_map), NULL);
-	else if (hw->isXBox360GP)
-		error = hmap_add_map(dev, hgame_xb360_map, nitems(hgame_xb360_map), NULL);
 	else
 		error = hmap_add_map(dev, hgame_joystick_map, nitems(hgame_joystick_map), NULL);
 	error2 = hmap_add_map(dev, hgame_common_map, nitems(hgame_common_map), NULL);
 	if (error != 0 && error2 != 0)
 		return (error);
 
-	return (BUS_PROBE_DEFAULT);
-}
-
-static int
-hgame_attach(device_t dev)
-{
-	const struct hid_device_info *hw = hid_get_device_info(dev);
-	int error;
-
 	hidbus_set_desc(dev, hidbus_get_driver_info(dev) == HUG_GAME_PAD ?
 	    "Gamepad" : "Joystick");
 
-	if (hidbus_get_driver_info(dev) == HUG_GAME_PAD && hw->isXBox360GP) {
-		/*
-		 * Turn off the four LEDs on the gamepad which
-		 * are blinking by default:
-		 */
-		static const uint8_t reportbuf[3] = {1, 3, 0};
-		error = hid_set_report(dev, reportbuf, sizeof(reportbuf),
-		    HID_OUTPUT_REPORT, 0);
-		if (error)
-                        DPRINTF("set output report failed, error=%d "
-                            "(ignored)\n", error);
-	}
-
-	return (hmap_attach(dev));
+	return (BUS_PROBE_DEFAULT);
 }
 
 static devclass_t hgame_devclass;
 
 static device_method_t hgame_methods[] = {
-	DEVMETHOD(device_identify,	hgame_identify),
 	DEVMETHOD(device_probe,		hgame_probe),
-	DEVMETHOD(device_attach,	hgame_attach),
 	DEVMETHOD_END
 };
 

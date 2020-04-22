@@ -31,6 +31,8 @@
 #include <sys/param.h>
 #include <sys/bitstring.h>
 
+#include "hid.h"
+
 #define	HMAP_MAX_MAPS	4
 
 struct hmap_hid_item;

@@ -40,6 +40,13 @@
 SYSCTL_DECL(_hw_hid);
 #endif
 
+#ifndef HUG_D_PAD_UP
+#define	HUG_D_PAD_UP	0x90
+#define	HUG_D_PAD_DOWN	0x91
+#define	HUG_D_PAD_RIGHT	0x92
+#define	HUG_D_PAD_LEFT	0x93
+#endif
+
 #define	HID_IN_POLLING_MODE_FUNC() hid_in_polling_mode()
 #define	HID_IN_POLLING_MODE_VALUE() (SCHEDULER_STOPPED() || kdb_active)
 
