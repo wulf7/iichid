@@ -71,13 +71,14 @@ static hmap_cb_t	hgame_compl_cb;
 
 #define HGAME_MAP_BUT(number, code)	\
 	{ HMAP_KEY(#number, HUP_BUTTON, number, code) }
-#define HGAME_MAP_BUT_RG(number_from, number_to, code)	\
+#define HGAME_MAP_BRG(number_from, number_to, code)	\
 	{ HMAP_KEY_RANGE(#code, HUP_BUTTON, number_from, number_to, code) }
 #define HGAME_MAP_ABS(usage, code)	\
 	{ HMAP_ABS(#usage, HUP_GENERIC_DESKTOP, HUG_##usage, code) }
-#define HGAME_MAP_ABS_CB(usage, callback)	\
-	{ HMAP_ABS_CB(#usage, HUP_GENERIC_DESKTOP, HUG_##usage, callback) }
-#define HGAME_COMPL_CB(cb)		\
+#define HGAME_MAP_CRG(usage_from, usage_to, callback)	\
+	{ HMAP_ANY_CB_RANGE(#callback, HUP_GENERIC_DESKTOP,	\
+	    HUG_##usage_from, HUG_##usage_to, callback) }
+#define HGAME_COMPLCB(cb)		\
 	{ HMAP_COMPL_CB("COMPL_CB", &cb) }
 
 #ifndef HUG_D_PAD_UP
@@ -95,20 +96,17 @@ static const struct hmap_item hgame_common_map[] = {
 	HGAME_MAP_ABS(RY,		ABS_RY),
 	HGAME_MAP_ABS(RZ,		ABS_RZ),
 	HGAME_MAP_ABS(HAT_SWITCH,	ABS_HAT0X),
-	HGAME_MAP_ABS_CB(D_PAD_UP,	hgame_dpad_cb),
-	HGAME_MAP_ABS_CB(D_PAD_DOWN,	hgame_dpad_cb),
-	HGAME_MAP_ABS_CB(D_PAD_RIGHT,	hgame_dpad_cb),
-	HGAME_MAP_ABS_CB(D_PAD_LEFT,	hgame_dpad_cb),
-	HGAME_MAP_BUT_RG(17, 57,	BTN_TRIGGER_HAPPY),
-	HGAME_COMPL_CB(hgame_compl_cb),
+	HGAME_MAP_CRG(D_PAD_UP, D_PAD_LEFT, hgame_dpad_cb),
+	HGAME_MAP_BRG(17, 57,		BTN_TRIGGER_HAPPY),
+	HGAME_COMPLCB(			hgame_compl_cb),
 };
 
 static const struct hmap_item hgame_joystick_map[] = {
-	HGAME_MAP_BUT_RG(1, 16,		BTN_TRIGGER),
+	HGAME_MAP_BRG(1, 16,		BTN_TRIGGER),
 };
 
 static const struct hmap_item hgame_gamepad_map[] = {
-	HGAME_MAP_BUT_RG(1, 16,		BTN_GAMEPAD),
+	HGAME_MAP_BRG(1, 16,		BTN_GAMEPAD),
 };
 
 /* Customized to match usbhid's XBox 360 descriptor */

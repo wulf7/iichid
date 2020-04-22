@@ -98,6 +98,12 @@ struct hmap_item {
 	.nusages = 1,							\
 	.cb = (_callback),						\
 	.has_cb = true
+#define	HMAP_ANY_CB_RANGE(_name, _page, _usage_from, _usage_to, _callback)\
+	.name = (_name),						\
+	.usage = HID_USAGE2((_page), (_usage_from)),			\
+	.nusages = (_usage_to) - (_usage_from) + 1,			\
+	.cb = (_callback),						\
+	.has_cb = true
 #define	HMAP_KEY(_name, _page, _usage, _code)				\
 	HMAP_ANY((_name), (_page), (_usage), EV_KEY, (_code)),		\
 		.relabs = HMAP_RELABS_ANY
