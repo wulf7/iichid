@@ -182,26 +182,20 @@ usbhid_intr_in_callback(struct usb_xfer *xfer, usb_error_t error)
 {
 	struct usbhid_xfer_ctx *xfer_ctx = usbd_xfer_softc(xfer);
 	struct usb_page_cache *pc;
-	int maxlen, actlen;
-
-	maxlen = xfer_ctx->req.intr.maxlen;
-	usbd_xfer_status(xfer, &actlen, NULL, NULL, NULL);
+	int actlen;
 
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_TRANSFERRED:
 		DPRINTF("transferred!\n");
 
+		usbd_xfer_status(xfer, &actlen, NULL, NULL, NULL);
 		pc = usbd_xfer_get_frame(xfer, 0);
-
-		/* limit report length to the maximum */
-		if (actlen > maxlen)
-			actlen = maxlen;
 		usbd_copy_out(pc, 0, xfer_ctx->buf, actlen);
 		xfer_ctx->cb(xfer_ctx->cb_ctx, xfer_ctx->buf, actlen);
 
 	case USB_ST_SETUP:
 re_submit:
-		usbd_xfer_set_frame_len(xfer, 0, usbd_xfer_max_len(xfer));
+		usbd_xfer_set_frame_len(xfer, 0, xfer_ctx->req.intr.maxlen);
 		usbd_transfer_submit(xfer);
 		return;
 
