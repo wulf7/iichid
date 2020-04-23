@@ -145,10 +145,6 @@ usbhid_intr_wr_callback(struct usb_xfer *xfer, usb_error_t error)
 
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_SETUP:
-		if (xfer_ctx->len > usbd_xfer_max_len(xfer)) {
-			xfer_ctx->error = ENOBUFS;
-			goto tr_exit;
-		}
 tr_setup:
 		pc = usbd_xfer_get_frame(xfer, 0);
 		usbd_copy_in(pc, 0, xfer_ctx->buf, xfer_ctx->len);
@@ -220,11 +216,6 @@ usbhid_ctrl_callback(struct usb_xfer *xfer, usb_error_t error)
 
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_SETUP:
-		if (xfer_ctx->len > usbd_xfer_max_len(xfer)) {
-			xfer_ctx->error = ENOBUFS;
-			goto tr_exit;
-		}
-
 		if (!is_rd && xfer_ctx->len != 0) {
 			pc = usbd_xfer_get_frame(xfer, 1);
 			usbd_copy_in(pc, 0, xfer_ctx->buf, xfer_ctx->len);
@@ -408,7 +399,7 @@ usbhid_sync_xfer(struct usbhid_softc* sc, int xfer_idx,
 			usbd_transfer_poll(sc->sc_xfer + xfer_idx, 1);
 			DELAY(1000);
 			timeout--;
-                }
+		}
 	 else
 		msleep_sbt(xfer_ctx, sc->sc_intr_mtx, 0, "usbhid io",
 		    SBT_1MS * timeout, 0, C_HARDCLOCK);
@@ -454,6 +445,9 @@ usbhid_get_report(device_t dev, void *buf, uint16_t maxlen, uint16_t *actlen,
 	struct usb_device_request req;
 	int error;
 
+	if (maxlen > usbd_xfer_max_len(sc->sc_xfer[USBHID_CTRL_DT]))
+		return (ENOBUFS);
+
 	req.bmRequestType = UT_READ_CLASS_INTERFACE;
 	req.bRequest = UR_GET_REPORT;
 	USETW2(req.wValue, type, id);
@@ -474,6 +468,9 @@ usbhid_set_report(device_t dev, const void *buf, uint16_t len, uint8_t type,
 {
 	struct usbhid_softc* sc = device_get_softc(dev);
 	struct usb_device_request req;
+
+	if (len > usbd_xfer_max_len(sc->sc_xfer[USBHID_CTRL_DT]))
+		return (ENOBUFS);
 
 	req.bmRequestType = UT_WRITE_CLASS_INTERFACE;
 	req.bRequest = UR_SET_REPORT;
@@ -497,6 +494,9 @@ static int
 usbhid_write(device_t dev, const void *buf, uint16_t len)
 {
 	struct usbhid_softc* sc = device_get_softc(dev);
+
+	if (len > usbd_xfer_max_len(sc->sc_xfer[USBHID_INTR_DT_WR]))
+		return (ENOBUFS);
 
 	return (usbhid_sync_xfer(sc, USBHID_INTR_DT_WR, NULL,
 	    __DECONST(void *, buf), len));
