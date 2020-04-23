@@ -100,7 +100,7 @@ enum {
 
 /* Syncronous USB transfer context */
 struct usbhid_xfer_ctx {
-	struct usb_device_request *req;
+	struct usb_device_request req;
 	uint8_t *buf;
 	int error;
 	int waiters;
@@ -113,7 +113,6 @@ struct usbhid_softc {
 	hid_intr_t *sc_intr_handler;
 	void *sc_intr_context;
 	struct mtx *sc_intr_mtx;
-	struct usb_device_request sc_intr_req;
 	void *sc_ibuf;
 
 	struct hid_device_info sc_hw;
@@ -142,7 +141,7 @@ usbhid_intr_wr_callback(struct usb_xfer *xfer, usb_error_t error)
 {
 	struct usbhid_xfer_ctx *xfer_ctx = usbd_xfer_softc(xfer);
 	struct usb_page_cache *pc;
-	int len = UGETW(xfer_ctx->req->wLength);
+	int len = UGETW(xfer_ctx->req.wLength);
 
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_SETUP:
@@ -178,7 +177,7 @@ usbhid_intr_rd_callback(struct usb_xfer *xfer, usb_error_t error)
 	struct usb_page_cache *pc;
 	int maxlen, actlen;
 
-	maxlen = UGETW(sc->sc_intr_req.wLength);
+	maxlen = UGETW(sc->sc_xfer_ctx[USBHID_INTR_DT_RD].req.wLength);
 	usbd_xfer_status(xfer, &actlen, NULL, NULL, NULL);
 
 	switch (USB_GET_STATE(xfer)) {
@@ -214,8 +213,8 @@ usbhid_ctrl_callback(struct usb_xfer *xfer, usb_error_t error)
 {
 	struct usbhid_xfer_ctx *xfer_ctx = usbd_xfer_softc(xfer);
 	struct usb_page_cache *pc;
-	int len = UGETW(xfer_ctx->req->wLength);
-	bool is_rd = (xfer_ctx->req->bmRequestType & UT_READ) != 0;
+	int len = UGETW(xfer_ctx->req.wLength);
+	bool is_rd = (xfer_ctx->req.bmRequestType & UT_READ) != 0;
 
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_SETUP:
@@ -225,8 +224,8 @@ usbhid_ctrl_callback(struct usb_xfer *xfer, usb_error_t error)
 		}
 
 		pc = usbd_xfer_get_frame(xfer, 0);
-		usbd_copy_in(pc, 0, xfer_ctx->req, sizeof(*xfer_ctx->req));
-		usbd_xfer_set_frame_len(xfer, 0, sizeof(*xfer_ctx->req));
+		usbd_copy_in(pc, 0, &xfer_ctx->req, sizeof(xfer_ctx->req));
+		usbd_xfer_set_frame_len(xfer, 0, sizeof(xfer_ctx->req));
 		if (len != 0)
 			usbd_xfer_set_frame_len(xfer, 1, len);
 		usbd_xfer_set_frames(xfer, len != 0 ? 2 : 1);
@@ -236,7 +235,7 @@ usbhid_ctrl_callback(struct usb_xfer *xfer, usb_error_t error)
 	case USB_ST_TRANSFERRED:
 		if (is_rd && len != 0) {
 			pc = usbd_xfer_get_frame(xfer, 0);
-			usbd_copy_out(pc, sizeof(*xfer_ctx->req),
+			usbd_copy_out(pc, sizeof(xfer_ctx->req),
 			    xfer_ctx->buf, len);
 		}
 		xfer_ctx->error = 0;
@@ -322,8 +321,7 @@ usbhid_intr_setup(device_t dev, struct mtx *mtx, hid_intr_t intr,
 	sc->sc_hw.wrsize = sc->sc_hw.noWriteEp ? sc->sc_hw.srsize :
 	    usbd_xfer_max_len(sc->sc_xfer[USBHID_INTR_DT_WR]);
 
-	USETW(sc->sc_intr_req.wLength, sc->sc_hw.rdsize);
-	sc->sc_xfer_ctx[USBHID_INTR_DT_RD].req = &sc->sc_intr_req;
+	USETW(sc->sc_xfer_ctx[USBHID_INTR_DT_RD].req.wLength,sc->sc_hw.rdsize);
 	sc->sc_ibuf = malloc(sc->sc_hw.rdsize, M_USBDEV, M_ZERO | M_WAITOK);
 }
 
@@ -393,7 +391,7 @@ usbhid_sync_xfer(struct usbhid_softc* sc, int xfer_idx,
 	}
 
 	xfer_ctx->buf = buf;
-	xfer_ctx->req = req;
+	xfer_ctx->req = *req;
 	xfer_ctx->error = ETIMEDOUT;
 	timeout = USB_DEFAULT_TIMEOUT;
 	usbd_transfer_start(sc->sc_xfer[xfer_idx]);
