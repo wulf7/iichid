@@ -100,6 +100,8 @@ struct usbhid_xfer_ctx {
 	struct usb_device_request req;
 	uint8_t *buf;
 	int error;
+	hid_intr_t *cb;
+	void *cb_ctx;
 	int waiters;
 	bool influx;
 };
@@ -170,11 +172,11 @@ tr_exit:
 static void
 usbhid_intr_rd_callback(struct usb_xfer *xfer, usb_error_t error)
 {
-	struct usbhid_softc *sc = usbd_xfer_softc(xfer);
+	struct usbhid_xfer_ctx *xfer_ctx = usbd_xfer_softc(xfer);
 	struct usb_page_cache *pc;
 	int maxlen, actlen;
 
-	maxlen = UGETW(sc->sc_xfer_ctx[USBHID_INTR_DT_RD].req.wLength);
+	maxlen = UGETW(xfer_ctx->req.wLength);
 	usbd_xfer_status(xfer, &actlen, NULL, NULL, NULL);
 
 	switch (USB_GET_STATE(xfer)) {
@@ -186,8 +188,8 @@ usbhid_intr_rd_callback(struct usb_xfer *xfer, usb_error_t error)
 		/* limit report length to the maximum */
 		if (actlen > maxlen)
 			actlen = maxlen;
-		usbd_copy_out(pc, 0, sc->sc_ibuf, actlen);
-		sc->sc_intr_handler(sc->sc_intr_context, sc->sc_ibuf, actlen);
+		usbd_copy_out(pc, 0, xfer_ctx->buf, actlen);
+		xfer_ctx->cb(xfer_ctx->cb_ctx, xfer_ctx->buf, actlen);
 
 	case USB_ST_SETUP:
 re_submit:
@@ -302,8 +304,7 @@ usbhid_intr_setup(device_t dev, struct mtx *mtx, hid_intr_t intr,
 	for (n = 0; n != USBHID_N_TRANSFER; n++) {
 		error = usbd_transfer_setup(sc->sc_udev, &sc->sc_iface_index,
 		    sc->sc_xfer + n, sc->sc_config + n, 1,
-		    n == USBHID_INTR_DT_RD ? (void *)sc : (void *)(sc->sc_xfer_ctx + n),
-		    sc->sc_intr_mtx);
+		    (void *)(sc->sc_xfer_ctx + n), sc->sc_intr_mtx);
 		if (error)
 			break;
 	}
@@ -318,8 +319,11 @@ usbhid_intr_setup(device_t dev, struct mtx *mtx, hid_intr_t intr,
 	sc->sc_hw.wrsize = sc->sc_hw.noWriteEp ? sc->sc_hw.srsize :
 	    usbd_xfer_max_len(sc->sc_xfer[USBHID_INTR_DT_WR]);
 
-	USETW(sc->sc_xfer_ctx[USBHID_INTR_DT_RD].req.wLength,sc->sc_hw.rdsize);
 	sc->sc_ibuf = malloc(sc->sc_hw.rdsize, M_USBDEV, M_ZERO | M_WAITOK);
+	USETW(sc->sc_xfer_ctx[USBHID_INTR_DT_RD].req.wLength,sc->sc_hw.rdsize);
+	sc->sc_xfer_ctx[USBHID_INTR_DT_RD].cb = sc->sc_intr_handler;
+	sc->sc_xfer_ctx[USBHID_INTR_DT_RD].cb_ctx = sc->sc_intr_context;
+	sc->sc_xfer_ctx[USBHID_INTR_DT_RD].buf = sc->sc_ibuf;
 }
 
 static void
