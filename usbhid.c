@@ -328,10 +328,12 @@ usbhid_intr_setup(device_t dev, struct mtx *mtx, hid_intr_t intr,
 	    usbd_xfer_max_len(sc->sc_xfer[USBHID_INTR_OUT_DT]);
 
 	sc->sc_ibuf = malloc(sc->sc_hw.rdsize, M_USBDEV, M_ZERO | M_WAITOK);
-	sc->sc_xfer_ctx[USBHID_INTR_IN_DT].req.intr.maxlen = sc->sc_hw.rdsize;
-	sc->sc_xfer_ctx[USBHID_INTR_IN_DT].cb = sc->sc_intr_handler;
-	sc->sc_xfer_ctx[USBHID_INTR_IN_DT].cb_ctx = sc->sc_intr_context;
-	sc->sc_xfer_ctx[USBHID_INTR_IN_DT].buf = sc->sc_ibuf;
+	sc->sc_xfer_ctx[USBHID_INTR_IN_DT] = (struct usbhid_xfer_ctx) {
+		.req.intr.maxlen = sc->sc_hw.rdsize,
+		.cb = sc->sc_intr_handler,
+		.cb_ctx = sc->sc_intr_context,
+		.buf = sc->sc_ibuf,
+	};
 }
 
 static void
