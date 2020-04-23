@@ -88,9 +88,6 @@ SYSCTL_INT(_hw_usb_usbhid, OID_AUTO, debug, CTLFLAG_RWTUN,
     &usbhid_debug, 0, "Debug level");
 #endif
 
-#define	USBHID_RSIZE		2048		/* bytes, max report size */
-#define	USBHID_FRAME_NUM 	50		/* bytes, frame number */
-
 enum {
 	USBHID_INTR_DT_WR,
 	USBHID_INTR_DT_RD,
