@@ -114,6 +114,7 @@ struct usbhid_softc {
 	hid_intr_t *sc_intr_handler;
 	void *sc_intr_context;
 	struct mtx *sc_intr_mtx;
+	struct usb_device_request sc_intr_req;
 	void *sc_ibuf;
 
 	struct hid_device_info sc_hw;
@@ -175,8 +176,9 @@ usbhid_intr_rd_callback(struct usb_xfer *xfer, usb_error_t error)
 {
 	struct usbhid_softc *sc = usbd_xfer_softc(xfer);
 	struct usb_page_cache *pc;
-	int actlen;
+	int maxlen, actlen;
 
+	maxlen = UGETW(sc->sc_intr_req.wLength);
 	usbd_xfer_status(xfer, &actlen, NULL, NULL, NULL);
 
 	switch (USB_GET_STATE(xfer)) {
@@ -186,8 +188,8 @@ usbhid_intr_rd_callback(struct usb_xfer *xfer, usb_error_t error)
 		pc = usbd_xfer_get_frame(xfer, 0);
 
 		/* limit report length to the maximum */
-		if (actlen > (int)sc->sc_hw.rdsize)
-			actlen = sc->sc_hw.rdsize;
+		if (actlen > maxlen)
+			actlen = maxlen;
 		usbd_copy_out(pc, 0, sc->sc_ibuf, actlen);
 		sc->sc_intr_handler(sc->sc_intr_context, sc->sc_ibuf, actlen);
 
@@ -319,6 +321,8 @@ usbhid_intr_setup(device_t dev, struct mtx *mtx, hid_intr_t intr,
 	sc->sc_hw.wrsize = sc->sc_hw.noWriteEp ? sc->sc_hw.srsize :
 	    usbd_xfer_max_len(sc->sc_xfer[USBHID_INTR_DT_WR]);
 
+	USETW(sc->sc_intr_req.wLength, sc->sc_hw.rdsize);
+	sc->sc_xfer_ctx[USBHID_INTR_DT_RD].req = &sc->sc_intr_req;
 	sc->sc_ibuf = malloc(sc->sc_hw.rdsize, M_USBDEV, M_ZERO | M_WAITOK);
 }
 
