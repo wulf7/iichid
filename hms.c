@@ -104,19 +104,19 @@ static hmap_cb_t	hms_wheel_cb;
 static hmap_cb_t	hms_compl_cb;
 
 #define HMS_MAP_BUT_RG(usage_from, usage_to, code)	\
-	{ HMAP_KEY_RANGE(#code, HUP_BUTTON, usage_from, usage_to, code) }
+	{ HMAP_KEY_RANGE(HUP_BUTTON, usage_from, usage_to, code) }
 #define HMS_MAP_BUT_MS(usage, code)	\
-	{ HMAP_KEY(#code, HUP_MICROSOFT, usage, code) }
+	{ HMAP_KEY(HUP_MICROSOFT, usage, code) }
 #define HMS_MAP_ABS(usage, code)	\
-	{ HMAP_ABS(#usage, HUP_GENERIC_DESKTOP, usage, code) }
+	{ HMAP_ABS(HUP_GENERIC_DESKTOP, usage, code) }
 #define HMS_MAP_REL(usage, code)	\
-	{ HMAP_REL(#usage, HUP_GENERIC_DESKTOP, usage, code) }
+	{ HMAP_REL(HUP_GENERIC_DESKTOP, usage, code) }
 #define HMS_MAP_REL_CN(usage, code)	\
-	{ HMAP_REL(#usage, HUP_CONSUMER, usage, code) }
+	{ HMAP_REL(HUP_CONSUMER, usage, code) }
 #define HMS_MAP_REL_CB(usage, cb)	\
-	{ HMAP_REL_CB(#usage, HUP_GENERIC_DESKTOP, usage, &cb) }
+	{ HMAP_REL_CB(HUP_GENERIC_DESKTOP, usage, &cb) }
 #define	HMS_COMPL_CB(cb)		\
-	{ HMAP_COMPL_CB("COMPL_CB", &cb) }
+	{ HMAP_COMPL_CB(&cb) }
 
 static const struct hmap_item hms_map[] = {
 	[HMS_REL_X]	= HMS_MAP_REL(HUG_X,		REL_X),

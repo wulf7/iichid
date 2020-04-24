@@ -100,15 +100,14 @@ static const uint8_t hskbd_boot_desc[] = {
 static evdev_event_t	hskbd_ev_event;
 static hmap_cb_t	hskbd_compl_cb;
 
-#define HSKBD_KEY(name, usage, code) \
-	{ HMAP_KEY(name, HUP_KEYBOARD, usage, code) }
-#define	HSKBD_COMPL_CB(cb) { HMAP_COMPL_CB("COMPL_CB", &cb) }
+#define HSKBD_KEY(usage, code)	{ HMAP_KEY(HUP_KEYBOARD, usage, code) }
+#define	HSKBD_COMPL_CB(cb)	{ HMAP_COMPL_CB(&cb) }
 
 static struct hmap_item hskbd_map[256] = {
-	HSKBD_KEY("0x00", 0x00, KEY_RESERVED),	/* No event indicated */
-	HSKBD_KEY("0x01", 0x01, HMAP_KEY_NULL),	/* Error RollOver */
-	HSKBD_KEY("0x02", 0x02, HMAP_KEY_NULL),	/* POSTFail */
-	HSKBD_KEY("0x03", 0x03, KEY_RESERVED),	/* Error Undefined */
+	HSKBD_KEY(0x00,	KEY_RESERVED),	/* No event indicated */
+	HSKBD_KEY(0x01, HMAP_KEY_NULL),	/* Error RollOver */
+	HSKBD_KEY(0x02, HMAP_KEY_NULL),	/* POSTFail */
+	HSKBD_KEY(0x03, KEY_RESERVED),	/* Error Undefined */
 	HSKBD_COMPL_CB(hskbd_compl_cb),
 };
 /* Map items starting from 5-th are filled by SYSINIT handler */
@@ -121,7 +120,7 @@ hskbd_init(void)
 	for (i = 4; i < 0x100; i++)
 		if ((code = evdev_hid2key(i)) != KEY_RESERVED)
 			hskbd_map[hskbd_nmap_items++] =
-			    (struct hmap_item) HSKBD_KEY("K", i, code);
+			    (struct hmap_item) HSKBD_KEY(i, code);
 }
 
 static const struct hid_device_id hskbd_devs[] = {

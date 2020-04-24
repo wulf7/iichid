@@ -65,7 +65,6 @@ enum hmap_relabs {
 };
 
 struct hmap_item {
-	char			*name;
 	int32_t 		usage;		/* HID usage (base) */
 	uint16_t		nusages;	/* number of usages */
 	union {
@@ -82,55 +81,51 @@ struct hmap_item {
 	u_int			reserved:3;
 };
 
-#define	HMAP_ANY(_name, _page, _usage, _type, _code)			\
-	.name = (_name),						\
+#define	HMAP_ANY(_page, _usage, _type, _code)				\
 	.usage = HID_USAGE2((_page), (_usage)),				\
 	.nusages = 1,							\
 	.type = (_type),						\
 	.code = (_code)
-#define	HMAP_ANY_RANGE(_name, _page, _usage_from, _usage_to, _type, _code)\
-	.name = (_name),						\
+#define	HMAP_ANY_RANGE(_page, _usage_from, _usage_to, _type, _code)	\
 	.usage = HID_USAGE2((_page), (_usage_from)),			\
 	.nusages = (_usage_to) - (_usage_from) + 1,			\
 	.type = (_type),						\
 	.code = (_code)
-#define	HMAP_ANY_CB(_name, _page, _usage, _callback)			\
-	.name = (_name),						\
+#define	HMAP_ANY_CB(_page, _usage, _callback)				\
 	.usage = HID_USAGE2((_page), (_usage)),				\
 	.nusages = 1,							\
 	.cb = (_callback),						\
 	.has_cb = true
-#define	HMAP_ANY_CB_RANGE(_name, _page, _usage_from, _usage_to, _callback)\
-	.name = (_name),						\
+#define	HMAP_ANY_CB_RANGE(_page, _usage_from, _usage_to, _callback)	\
 	.usage = HID_USAGE2((_page), (_usage_from)),			\
 	.nusages = (_usage_to) - (_usage_from) + 1,			\
 	.cb = (_callback),						\
 	.has_cb = true
-#define	HMAP_KEY(_name, _page, _usage, _code)				\
-	HMAP_ANY((_name), (_page), (_usage), EV_KEY, (_code)),		\
+#define	HMAP_KEY(_page, _usage, _code)					\
+	HMAP_ANY((_page), (_usage), EV_KEY, (_code)),			\
 		.relabs = HMAP_RELABS_ANY
-#define	HMAP_KEY_RANGE(_name, _page, _ufrom, _uto, _code)		\
-	HMAP_ANY_RANGE((_name), (_page), (_ufrom), (_uto), EV_KEY, (_code)),\
+#define	HMAP_KEY_RANGE(_page, _ufrom, _uto, _code)			\
+	HMAP_ANY_RANGE((_page), (_ufrom), (_uto), EV_KEY, (_code)),	\
 		.relabs = HMAP_RELABS_ANY
-#define	HMAP_REL(_name, _page, _usage, _code)				\
-	HMAP_ANY((_name), (_page), (_usage), EV_REL, (_code)),		\
+#define	HMAP_REL(_page, _usage, _code)					\
+	HMAP_ANY((_page), (_usage), EV_REL, (_code)),			\
 		.relabs = HMAP_RELATIVE
-#define	HMAP_ABS(_name, _page, _usage, _code)				\
-	HMAP_ANY((_name), (_page), (_usage), EV_ABS, (_code)),		\
+#define	HMAP_ABS(_page, _usage, _code)					\
+	HMAP_ANY((_page), (_usage), EV_ABS, (_code)),			\
 		.relabs = HMAP_ABSOLUTE
-#define	HMAP_REL_CB(_name, _page, _usage, _callback)			\
-	HMAP_ANY_CB((_name), (_page), (_usage), (_callback)),		\
+#define	HMAP_REL_CB(_page, _usage, _callback)				\
+	HMAP_ANY_CB((_page), (_usage), (_callback)),			\
 		.relabs = HMAP_RELATIVE
-#define	HMAP_ABS_CB(_name, _page, _usage, _callback)			\
-	HMAP_ANY_CB((_name), (_page), (_usage), (_callback)),		\
+#define	HMAP_ABS_CB(_page, _usage, _callback)				\
+	HMAP_ANY_CB((_page), (_usage), (_callback)),			\
 		.relabs = HMAP_ABSOLUTE
 /*
  * Special callback function which is not tied to particular HID input usage
  * but called at the end evdev properties setting or interrupt handler
  * just before evdev_register() or evdev_sync() calls.
  */
-#define	HMAP_COMPL_CB(_name, _callback)					\
-	HMAP_ANY_CB((_name), 0, 0, (_callback)), .compl_cb = true
+#define	HMAP_COMPL_CB(_callback)					\
+	HMAP_ANY_CB(0, 0, (_callback)), .compl_cb = true
 
 enum hmap_type {
 	HMAP_TYPE_CALLBACK = 0,	/* HID item is reported with user callback */

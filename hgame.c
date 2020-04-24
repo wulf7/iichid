@@ -60,14 +60,14 @@ SYSCTL_INT(_hw_hid_hgame, OID_AUTO, debug, CTLFLAG_RWTUN,
 #endif
 
 #define HGAME_MAP_BRG(number_from, number_to, code)	\
-	{ HMAP_KEY_RANGE(#code, HUP_BUTTON, number_from, number_to, code) }
+	{ HMAP_KEY_RANGE(HUP_BUTTON, number_from, number_to, code) }
 #define HGAME_MAP_ABS(usage, code)	\
-	{ HMAP_ABS(#usage, HUP_GENERIC_DESKTOP, HUG_##usage, code) }
+	{ HMAP_ABS(HUP_GENERIC_DESKTOP, HUG_##usage, code) }
 #define HGAME_MAP_CRG(usage_from, usage_to, callback)	\
-	{ HMAP_ANY_CB_RANGE(#callback, HUP_GENERIC_DESKTOP,	\
+	{ HMAP_ANY_CB_RANGE(HUP_GENERIC_DESKTOP,	\
 	    HUG_##usage_from, HUG_##usage_to, callback) }
-#define HGAME_COMPLCB(cb)		\
-	{ HMAP_COMPL_CB("COMPL_CB", &cb) }
+#define HGAME_COMPLCB(cb)	\
+	{ HMAP_COMPL_CB(&cb) }
 
 static const struct hmap_item hgame_common_map[] = {
 	HGAME_MAP_ABS(X,		ABS_X),

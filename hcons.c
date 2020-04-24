@@ -74,13 +74,13 @@ SYSCTL_INT(_hw_hid_hcons, OID_AUTO, debug, CTLFLAG_RWTUN,
 static hmap_cb_t	hcons_rel_volume_cb;
 
 #define	HCONS_MAP_KEY(usage, code)	\
-	{ HMAP_KEY(#usage, HUP_CONSUMER, usage, code) }
+	{ HMAP_KEY(HUP_CONSUMER, usage, code) }
 #define	HCONS_MAP_ABS(usage, code)	\
-	{ HMAP_ABS(#usage, HUP_CONSUMER, usage, code) }
+	{ HMAP_ABS(HUP_CONSUMER, usage, code) }
 #define	HCONS_MAP_REL(usage, code)	\
-	{ HMAP_REL(#usage, HUP_CONSUMER, usage, code) }
+	{ HMAP_REL(HUP_CONSUMER, usage, code) }
 #define HCONS_MAP_REL_CB(usage, callback)	\
-	{ HMAP_REL_CB(#usage, HUP_CONSUMER, usage, &callback) }
+	{ HMAP_REL_CB(HUP_CONSUMER, usage, &callback) }
 
 static const struct hmap_item hcons_map[] = {
 	HCONS_MAP_KEY(0x030,	KEY_POWER),

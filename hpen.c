@@ -77,14 +77,14 @@ static hmap_cb_t	hpen_battery_strenght_cb;
 static hmap_cb_t	hpen_compl_digi_cb;
 static hmap_cb_t	hpen_compl_pen_cb;
 
-#define HPEN_MAP_BUT(usage, code)        \
-	HMAP_KEY(#usage, HUP_DIGITIZERS, HUD_##usage, code)
-#define HPEN_MAP_ABS(usage, code)        \
-	HMAP_ABS(#usage, HUP_DIGITIZERS, HUD_##usage, code)
-#define HPEN_MAP_ABS_GD(usage, code)        \
-	HMAP_ABS(#usage, HUP_GENERIC_DESKTOP, HUG_##usage, code)
-#define HPEN_MAP_ABS_CB(usage, cb)       \
-	HMAP_ABS_CB(#usage, HUP_DIGITIZERS, HUD_##usage, cb)
+#define HPEN_MAP_BUT(usage, code)	\
+	HMAP_KEY(HUP_DIGITIZERS, HUD_##usage, code)
+#define HPEN_MAP_ABS(usage, code)	\
+	HMAP_ABS(HUP_DIGITIZERS, HUD_##usage, code)
+#define HPEN_MAP_ABS_GD(usage, code)	\
+	HMAP_ABS(HUP_GENERIC_DESKTOP, HUG_##usage, code)
+#define HPEN_MAP_ABS_CB(usage, cb)	\
+	HMAP_ABS_CB(HUP_DIGITIZERS, HUD_##usage, &cb)
 
 /* Generic map digitizer page map according to hut1_12v2.pdf */
 static const struct hmap_item hpen_map_digi[] = {
@@ -103,7 +103,7 @@ static const struct hmap_item hpen_map_digi[] = {
     { HPEN_MAP_BUT(   ERASER,		BTN_TOUCH) },
     { HPEN_MAP_BUT(   TABLET_PICK,	BTN_STYLUS2) },
     { HPEN_MAP_BUT(   SEC_BARREL_SWITCH,BTN_STYLUS2) },
-    { HMAP_COMPL_CB(  "COMPL_CB",	&hpen_compl_digi_cb) },
+    { HMAP_COMPL_CB(			&hpen_compl_digi_cb) },
 };
 
 /* Microsoft-standardized pen support */
@@ -119,7 +119,7 @@ static const struct hmap_item hpen_map_pen[] = {
     { HPEN_MAP_BUT(   BARREL_SWITCH,	BTN_STYLUS) },
     { HPEN_MAP_BUT(   INVERT,		BTN_TOOL_RUBBER), .required = true },
     { HPEN_MAP_BUT(   ERASER,		BTN_TOUCH),	  .required = true },
-    { HMAP_COMPL_CB(  "COMPL_CB",	&hpen_compl_pen_cb) },
+    { HMAP_COMPL_CB(			&hpen_compl_pen_cb) },
 };
 
 static const struct hid_device_id hpen_devs[] = {

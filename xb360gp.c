@@ -67,14 +67,14 @@ SYSCTL_INT(_hw_hid_xb360gp, OID_AUTO, debug, CTLFLAG_RWTUN,
 static const uint8_t	xb360gp_rdesc[] = {UHID_XB360GP_REPORT_DESCR()};
 
 #define XB360GP_MAP_BUT(number, code)	\
-	{ HMAP_KEY(#number, HUP_BUTTON, number, code) }
+	{ HMAP_KEY(HUP_BUTTON, number, code) }
 #define XB360GP_MAP_ABS(usage, code)	\
-	{ HMAP_ABS(#usage, HUP_GENERIC_DESKTOP, HUG_##usage, code) }
+	{ HMAP_ABS(HUP_GENERIC_DESKTOP, HUG_##usage, code) }
 #define XB360GP_MAP_CRG(usage_from, usage_to, callback)	\
-	{ HMAP_ANY_CB_RANGE(#callback, HUP_GENERIC_DESKTOP,	\
+	{ HMAP_ANY_CB_RANGE(HUP_GENERIC_DESKTOP,	\
 	    HUG_##usage_from, HUG_##usage_to, callback) }
 #define XB360GP_COMPLCB(cb)		\
-	{ HMAP_COMPL_CB("COMPL_CB", &cb) }
+	{ HMAP_COMPL_CB(&cb) }
 
 /* Customized to match usbhid's XBox 360 descriptor */
 static const struct hmap_item xb360gp_map[] = {
