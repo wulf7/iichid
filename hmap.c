@@ -165,7 +165,7 @@ hmap_intr(void *context, void *buf, uint16_t len)
 
 	for (hi = sc->hid_items; hi < sc->hid_items + sc->nhid_items; hi++) {
 		/* Ignore irrelevant reports */
-		if (id != hi->id)
+		if (id != hi->id && hi->id != 0)
 			continue;
 
 		/*
@@ -267,9 +267,6 @@ report_key:
 		}
 		do_sync = true;
 	}
-
-	if (sc->compl_cb && sc->compl_cb(sc, NULL, 0) == 0)
-		do_sync = true;
 
 	if (do_sync)
 		evdev_sync(sc->evdev);
@@ -415,6 +412,15 @@ hmap_probe_hid_descr(void *d_ptr, uint16_t d_len, uint8_t tlc_index,
 			items++;
 	}
 	hid_end_parse(hd);
+
+	/* Take completion callbacks in to account */
+	for (i = 0; i < nmap_items; i++) {
+		if (map[i].has_cb && map[i].compl_cb &&
+		    map[i].cb(NULL, NULL, 0) == 0) {
+			bit_set(caps, i);
+			items++;
+		}
+	}
 
 	/* Check that all mandatory usages are present in report descriptor */
 	if (items != 0) {
@@ -594,11 +600,11 @@ hmap_parse_hid_descr(struct hmap_softc *sc, uint8_t tlc_index)
 {
 	struct hid_item hi;
 	struct hid_data *hd;
-	const struct hmap_item *mi;
+	const struct hmap_item *map;
 	struct hmap_hid_item *item = sc->hid_items;
 	void *d_ptr;
-	uint16_t d_len, uoff;
-	int error;
+	uint16_t d_len;
+	int i, error;
 
 	error = hid_get_report_descr(sc->dev, &d_ptr, &d_len);
 	if (error != 0) {
@@ -621,6 +627,20 @@ hmap_parse_hid_descr(struct hmap_softc *sc, uint8_t tlc_index)
 	}
 	hid_end_parse(hd);
 
+	/* Add completion callbacks to the end of list */
+	for (i = 0; i < sc->nmaps; i++) {
+		for (map = sc->map[i];
+		     map < sc->map[i] + sc->nmap_items[i];
+		     map++) {
+			if (map->has_cb && map->compl_cb &&
+			    map->cb(sc, NULL, 0) == 0) {
+				item->cb = map->cb;
+				item->type = HMAP_TYPE_CALLBACK;
+				item++;
+			}
+		}
+	}
+
 	/*
 	 * Resulting number of parsed HID items can be less than expected as
 	 * map items might be duplicated in different maps. Save real number.
@@ -629,18 +649,6 @@ hmap_parse_hid_descr(struct hmap_softc *sc, uint8_t tlc_index)
 		DPRINTF(sc, "Parsed HID item number mismatch: expected=%u "
 		    "result=%ld\n", sc->nhid_items, item - sc->hid_items);
 	sc->nhid_items = item - sc->hid_items;
-
-	/*
-	 * If completion callback returned success at attach stage, run it
-	 * in interrupt handler and at the device detach too.
-	 */
-	HMAP_FOREACH_ITEM(sc, mi, uoff) {
-		if (mi->compl_cb) {
-			if (mi->cb(sc, NULL, 0) == 0)
-				sc->compl_cb = mi->cb;
-			break;
-		}
-	}
 
 	return (0);
 }
@@ -715,9 +723,6 @@ hmap_detach(device_t dev)
 				free(hi->codes, M_DEVBUF);
 		free(sc->hid_items, M_DEVBUF);
 	}
-
-	if (sc->compl_cb)
-		sc->compl_cb(sc, NULL, 0);
 
 	return (0);
 }

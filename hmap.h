@@ -180,7 +180,6 @@ struct hmap_softc {
 
 	int			*debug_var;
 	enum hmap_cb_state	cb_state;
-	hmap_cb_t		*compl_cb;
 };
 
 #define	HMAP_CAPS(name, map)	bitstr_t bit_decl((name), nitems(map));
