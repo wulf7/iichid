@@ -324,7 +324,6 @@ static bool
 hmap_probe_hid_item(struct hid_item *hi, const struct hmap_item *map,
     int nmap_items, bitstr_t *caps)
 {
-	struct hmap_hid_item hi_temp;
 	int32_t arr_size, usage;
 	u_int i, j;
 	uint16_t uoff;
@@ -336,10 +335,7 @@ hmap_probe_hid_item(struct hid_item *hi, const struct hmap_item *map,
 
 	HMAP_FOREACH_INDEX(map, nmap_items, i, uoff) {
 		if (can_map_callback(hi, map + i, uoff)) {
-			bzero(&hi_temp, sizeof(hi_temp));
-			hi_temp.cb = map[i].cb;
-			hi_temp.type = HMAP_TYPE_CALLBACK;
-			if (hi_temp.cb(NULL, &hi_temp, (intptr_t)hi) != 0)
+			if (map[i].cb(NULL, NULL, (intptr_t)hi) != 0)
 				break;
 			bit_set(caps, i);
 			return (true);
