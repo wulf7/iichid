@@ -95,6 +95,9 @@ enum {
 	USBHID_N_TRANSFER,
 };
 
+struct usbhid_xfer_ctx;
+typedef int usbhid_callback_t(struct usbhid_xfer_ctx *xfer_ctx);
+
 union usbhid_device_request {
 	struct {			/* INTR xfers */
 		uint16_t maxlen;
@@ -108,7 +111,7 @@ struct usbhid_xfer_ctx {
 	union usbhid_device_request req;
 	uint8_t *buf;
 	int error;
-	hid_intr_t *cb;
+	usbhid_callback_t *cb;
 	void *cb_ctx;
 	int waiters;
 	bool influx;
@@ -142,6 +145,8 @@ static device_detach_t usbhid_detach;
 static usb_callback_t usbhid_intr_out_callback;
 static usb_callback_t usbhid_intr_in_callback;
 static usb_callback_t usbhid_ctrl_callback;
+
+static usbhid_callback_t usbhid_intr_handler_cb;
 
 static void
 usbhid_intr_out_callback(struct usb_xfer *xfer, usb_error_t error)
@@ -191,7 +196,8 @@ usbhid_intr_in_callback(struct usb_xfer *xfer, usb_error_t error)
 		usbd_xfer_status(xfer, &actlen, NULL, NULL, NULL);
 		pc = usbd_xfer_get_frame(xfer, 0);
 		usbd_copy_out(pc, 0, xfer_ctx->buf, actlen);
-		xfer_ctx->cb(xfer_ctx->cb_ctx, xfer_ctx->buf, actlen);
+		xfer_ctx->req.intr.actlen = actlen;
+		xfer_ctx->cb(xfer_ctx);
 
 	case USB_ST_SETUP:
 re_submit:
@@ -251,6 +257,17 @@ tr_exit:
 			wakeup(xfer_ctx);
 		return;
 	}
+}
+
+static int
+usbhid_intr_handler_cb(struct usbhid_xfer_ctx *xfer_ctx)
+{
+	struct usbhid_softc *sc = xfer_ctx->cb_ctx;
+
+	sc->sc_intr_handler(sc->sc_intr_context, xfer_ctx->buf,
+	    xfer_ctx->req.intr.actlen);
+
+	return (0);
 }
 
 static const struct usb_config usbhid_config[USBHID_N_TRANSFER] = {
@@ -324,8 +341,8 @@ usbhid_intr_setup(device_t dev, struct mtx *mtx, hid_intr_t intr,
 	sc->sc_ibuf = malloc(sc->sc_hw.rdsize, M_USBDEV, M_ZERO | M_WAITOK);
 	sc->sc_xfer_ctx[USBHID_INTR_IN_DT] = (struct usbhid_xfer_ctx) {
 		.req.intr.maxlen = sc->sc_hw.rdsize,
-		.cb = sc->sc_intr_handler,
-		.cb_ctx = sc->sc_intr_context,
+		.cb = usbhid_intr_handler_cb,
+		.cb_ctx = sc,
 		.buf = sc->sc_ibuf,
 	};
 }
