@@ -89,6 +89,13 @@ SYSCTL_INT(_hw_usb_usbhid, OID_AUTO, debug, CTLFLAG_RWTUN,
 #endif
 
 enum {
+	USBHID_NO_QUIRKS,
+	USBHID_BOOT_MOUSE,
+	USBHID_BOOT_KEYBOARD,
+	USBHID_XBOX360GP,
+};
+
+enum {
 	USBHID_INTR_OUT_DT,
 	USBHID_INTR_IN_DT,
 	USBHID_CTRL_DT,
@@ -576,12 +583,23 @@ usbhid_set_protocol(device_t dev, uint16_t protocol)
 }
 
 static const STRUCT_USB_HOST_ID usbhid_devs[] = {
-	/* generic HID class */
-	{USB_IFACE_CLASS(UICLASS_HID),},
 	/* the Xbox 360 gamepad doesn't use the HID class */
 	{USB_IFACE_CLASS(UICLASS_VENDOR),
 	 USB_IFACE_SUBCLASS(UISUBCLASS_XBOX360_CONTROLLER),
-	 USB_IFACE_PROTOCOL(UIPROTO_XBOX360_GAMEPAD),},
+	 USB_IFACE_PROTOCOL(UIPROTO_XBOX360_GAMEPAD),
+	 USB_DRIVER_INFO(USBHID_XBOX360GP)},
+	/* generic HID keyboard with boot protocol support */
+	{USB_IFACE_CLASS(UICLASS_HID),
+	 USB_IFACE_SUBCLASS(UISUBCLASS_BOOT),
+	 USB_IFACE_PROTOCOL(UIPROTO_BOOT_KEYBOARD),
+	 USB_DRIVER_INFO(USBHID_BOOT_KEYBOARD)},
+	/* generic HID mouse with boot protocol support */
+	{USB_IFACE_CLASS(UICLASS_HID),
+	 USB_IFACE_SUBCLASS(UISUBCLASS_BOOT),
+	 USB_IFACE_PROTOCOL(UIPROTO_MOUSE),
+	 USB_DRIVER_INFO(USBHID_BOOT_MOUSE)},
+	/* generic HID class */
+	{USB_IFACE_CLASS(UICLASS_HID),},
 };
 
 static int
@@ -636,23 +654,20 @@ usbhid_attach(device_t dev)
 	sc->sc_hw.idProduct = uaa->info.idProduct;
 	sc->sc_hw.idVersion = 0;
 
-	if (uaa->info.bInterfaceClass == UICLASS_HID &&
-	    uaa->info.bInterfaceSubClass == UISUBCLASS_BOOT &&
-	    uaa->info.bInterfaceProtocol == UIPROTO_BOOT_KEYBOARD)
-		sc->sc_hw.pBootKbd = true;
-
-	if (uaa->info.bInterfaceClass == UICLASS_HID &&
-	    uaa->info.bInterfaceSubClass == UISUBCLASS_BOOT &&
-	    uaa->info.bInterfaceProtocol == UIPROTO_MOUSE)
+	/* Set various quirks based on usb_attach_arg */
+	switch(USB_GET_DRIVER_INFO(uaa)) {
+	case USBHID_BOOT_MOUSE:
 		sc->sc_hw.pBootMouse = true;
-
-	/* Set quirks for devices which do not belong to HID class */
-	if ((uaa->info.bInterfaceClass == UICLASS_VENDOR) &&
-	    (uaa->info.bInterfaceSubClass == UISUBCLASS_XBOX360_CONTROLLER) &&
-	    (uaa->info.bInterfaceProtocol == UIPROTO_XBOX360_GAMEPAD))
+		break;
+	case USBHID_BOOT_KEYBOARD:
+		sc->sc_hw.pBootKbd = true;
+		break;
+	case USBHID_XBOX360GP:
 		sc->sc_hw.isXBox360GP = true;
-	else if (uaa->info.bInterfaceClass == UICLASS_HID &&
-		 uaa->iface != NULL && uaa->iface->idesc != NULL) {
+	}
+
+	if (uaa->info.bInterfaceClass == UICLASS_HID &&
+	    uaa->iface != NULL && uaa->iface->idesc != NULL) {
 		hid = hid_get_descriptor_from_usb(usbd_get_config_descriptor(
 		    sc->sc_udev), uaa->iface->idesc);
 		if (hid != NULL)
