@@ -125,8 +125,6 @@ struct usbhid_xfer_ctx {
 };
 
 struct usbhid_softc {
-	device_t sc_child;
-
 	hid_intr_t *sc_intr_handler;
 	void *sc_intr_context;
 	struct mtx *sc_intr_mtx;
@@ -147,7 +145,6 @@ struct usbhid_softc {
 
 static device_probe_t usbhid_probe;
 static device_attach_t usbhid_attach;
-static device_detach_t usbhid_detach;
 
 static usb_callback_t usbhid_intr_out_callback;
 static usb_callback_t usbhid_intr_in_callback;
@@ -643,6 +640,7 @@ usbhid_attach(device_t dev)
 	struct usb_attach_arg *uaa = device_get_ivars(dev);
 	struct usbhid_softc *sc = device_get_softc(dev);
 	struct usb_hid_descriptor *hid;
+	device_t child;
 	char *sep;
 	int error = 0;
 
@@ -696,44 +694,26 @@ usbhid_attach(device_t dev)
 		    usbd_errstr(error));
 	}
 
-	sc->sc_child = device_add_child(dev, "hidbus", -1);
-	if (sc->sc_child == NULL) {
+	child = device_add_child(dev, "hidbus", -1);
+	if (child == NULL) {
 		device_printf(dev, "Could not add hidbus device\n");
-		error = ENXIO;
-		goto detach;
+		return (ENOMEM);
 	}
 
-	device_set_ivars(sc->sc_child, &sc->sc_hw);
+	device_set_ivars(child, &sc->sc_hw);
 	error = bus_generic_attach(dev);
 	if (error)
 		device_printf(dev, "failed to attach child: %d\n", error);
 
 	return (0);			/* success */
-
-detach:
-	usbhid_detach(dev);
-	return (ENOMEM);
-}
-
-static int
-usbhid_detach(device_t dev)
-{
-	struct usbhid_softc *sc = device_get_softc(dev);
-
-	if (device_is_attached(dev))
-		bus_generic_detach(dev);
-	if (sc->sc_child)
-		device_delete_child(dev, sc->sc_child);
-
-	return (0);
 }
 
 static devclass_t usbhid_devclass;
 
 static device_method_t usbhid_methods[] = {
-	DEVMETHOD(device_probe, usbhid_probe),
-	DEVMETHOD(device_attach, usbhid_attach),
-	DEVMETHOD(device_detach, usbhid_detach),
+	DEVMETHOD(device_probe,		usbhid_probe),
+	DEVMETHOD(device_attach,	usbhid_attach),
+	DEVMETHOD(device_detach,	device_delete_children),
 
 	DEVMETHOD(hid_intr_setup,	usbhid_intr_setup),
 	DEVMETHOD(hid_intr_unsetup,	usbhid_intr_unsetup),
