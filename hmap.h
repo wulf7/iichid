@@ -53,7 +53,7 @@ enum hmap_cb_state {
 #define	HMAP_CB_GET_STATE(...)	\
     ((super_sc == NULL) ? HMAP_CB_IS_PROBING : super_sc->cb_state)
 #define	HMAP_CB_GET_SOFTC(...)	((void *)super_sc)
-#define	HMAP_CB_GET_EVDEV(...)	(super_sc->evdev)
+#define	HMAP_CB_GET_EVDEV(...)	(super_sc == NULL ? NULL : super_sc->evdev)
 #define	HMAP_CB_UDATA		(hi->udata)
 #define	HMAP_CB_UDATA64		(hi->udata64)
 typedef int hmap_cb_t(HMAP_CB_ARGS);
