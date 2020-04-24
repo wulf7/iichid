@@ -93,7 +93,6 @@ enum iichid_powerstate_how {
 
 struct iichid_softc {
 	device_t		dev;
-	device_t		child;
 
 	bool			probe_done;
 	int			probe_result;
@@ -981,6 +980,7 @@ iichid_attach(device_t dev)
 	ACPI_HANDLE handle;
 	ACPI_STATUS status;
 	ACPI_DEVICE_INFO *device_info;
+	device_t child;
 	int error;
 
 	/* Fetch hardware settings from ACPI */
@@ -1093,14 +1093,14 @@ iichid_attach(device_t dev)
 		"number of missing samples before enabling of slow mode");
 #endif /* IICHID_SAMPLING */
 
-	sc->child = device_add_child(dev, "hidbus", -1);
-	if (sc->child == NULL) {
+	child = device_add_child(dev, "hidbus", -1);
+	if (child == NULL) {
 		device_printf(sc->dev, "Could not add I2C device\n");
 		error = ENXIO;
 		goto done;
 	}
 
-	device_set_ivars(sc->child, &sc->hw);
+	device_set_ivars(child, &sc->hw);
 	error = bus_generic_attach(dev);
 	if (error)
 		device_printf(dev, "failed to attach child: error %d\n", error);
@@ -1168,11 +1168,11 @@ static int
 iichid_detach(device_t dev)
 {
 	struct iichid_softc *sc = device_get_softc(dev);
+	int error;
 
-	if (device_is_attached(dev))
-		bus_generic_detach(dev);
-	if (sc->child)
-		device_delete_child(dev, sc->child);
+	error = device_delete_children(dev);
+	if (error)
+		return (error);
 
 	iichid_teardown_interrupt(sc);
 
