@@ -302,6 +302,9 @@ hmt_probe(device_t dev)
 	if (sc->type == HMT_TYPE_UNSUPPORTED)
 		return (ENXIO);
 
+	hidbus_set_desc(dev,
+	    sc->type == HMT_TYPE_TOUCHPAD ? "TouchPad" : "TouchScreen");
+
 	return (BUS_PROBE_DEFAULT);
 }
 
@@ -317,9 +320,6 @@ hmt_attach(device_t dev)
 	int nbuttons, btn;
 	size_t i;
 	int error;
-
-	hidbus_set_desc(dev,
-	    sc->type == HMT_TYPE_TOUCHPAD ? "TouchPad" : "TouchScreen");
 
 	error = hid_get_report_descr(dev, &d_ptr, &d_len);
 	if (error) {

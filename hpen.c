@@ -196,6 +196,7 @@ hpen_identify(driver_t *driver, device_t parent)
 static int
 hpen_probe(device_t dev)
 {
+	int32_t usage;
 	int error;
 
 	error = hidbus_lookup_driver_info(dev, hpen_devs, sizeof(hpen_devs));
@@ -205,14 +206,17 @@ hpen_probe(device_t dev)
 	hmap_set_debug_var(dev, &HID_DEBUG_VAR);
 
 	/* Check if report descriptor belongs to a HID tablet device */
-	if (hidbus_get_usage(dev) == HID_USAGE2(HUP_DIGITIZERS, HUD_DIGITIZER))
-		error = hmap_add_map(dev, hpen_map_digi, nitems(hpen_map_digi),
-		    NULL);
-	else
-		error = hmap_add_map(dev, hpen_map_pen, nitems(hpen_map_pen),
-		    NULL);
+	usage = hidbus_get_usage(dev);
+	error = usage == HID_USAGE2(HUP_DIGITIZERS, HUD_DIGITIZER)
+	    ? hmap_add_map(dev, hpen_map_digi, nitems(hpen_map_digi), NULL)
+	    : hmap_add_map(dev, hpen_map_pen, nitems(hpen_map_pen), NULL);
 	if (error != 0)
 		return (error);
+
+	if (usage == HID_USAGE2(HUP_DIGITIZERS, HUD_DIGITIZER))
+		hidbus_set_desc(dev, "Digitizer");
+	else
+		hidbus_set_desc(dev, "Pen");
 
 	return (BUS_PROBE_DEFAULT);
 }
@@ -222,11 +226,6 @@ hpen_attach(device_t dev)
 {
 	const struct hid_device_info *hw = hid_get_device_info(dev);
 	int error;
-
-	if (hidbus_get_usage(dev) == HID_USAGE2(HUP_DIGITIZERS, HUD_DIGITIZER))
-		hidbus_set_desc(dev, "Digitizer");
-	else
-		hidbus_set_desc(dev, "Pen");
 
 	if (hw->idBus == BUS_USB && hw->idVendor == USB_VENDOR_WACOM &&
 	    hw->idProduct == USB_PRODUCT_WACOM_GRAPHIRE3_4X5) {

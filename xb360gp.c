@@ -132,6 +132,8 @@ xb360gp_probe(device_t dev)
 	if (error != 0)
 		return (error);
 
+	hidbus_set_desc(dev, "XBox 360 Gamepad");
+
 	return (BUS_PROBE_DEFAULT);
 }
 
@@ -139,8 +141,6 @@ static int
 xb360gp_attach(device_t dev)
 {
 	int error;
-
-	hidbus_set_desc(dev, "XBox 360 Gamepad");
 
 	/*
 	 * Turn off the four LEDs on the gamepad which

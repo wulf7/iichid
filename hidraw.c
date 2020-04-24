@@ -180,6 +180,8 @@ hidraw_probe(device_t self)
 		return (ENXIO);
 #endif
 
+	hidbus_set_desc(self, "Raw HID Device");
+
 	return (BUS_PROBE_GENERIC);
 }
 
@@ -189,8 +191,6 @@ hidraw_attach(device_t self)
 	struct hidraw_softc *sc = device_get_softc(self);
 	struct make_dev_args mda;
 	int error;
-
-	hidbus_set_desc(self, "Raw HID Device");
 
 	sc->sc_dev = self;
 	sc->sc_mtx = hidbus_get_lock(self);

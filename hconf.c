@@ -158,6 +158,8 @@ hconf_probe(device_t dev)
 	if (error != 0)
 		return (error);
 
+	hidbus_set_desc(dev, "Configuration");
+
 	return (BUS_PROBE_DEFAULT);
 }
 
@@ -172,8 +174,6 @@ hconf_attach(device_t dev)
 	uint16_t d_len;
 	uint8_t tlc_index;
 	int error;
-
-	hidbus_set_desc(dev, "Configuration");
 
 	error = hid_get_report_descr(dev, &d_ptr, &d_len);
 	if (error) {
