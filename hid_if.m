@@ -48,9 +48,7 @@ METHOD void intr_setup {
 	struct mtx *lock;
 	hid_intr_t intr;
 	void *context;
-	uint16_t isize;
-	uint16_t osize;
-	uint16_t fsize;
+	struct hidbus_report_descr *rdesc;
 };
 
 #

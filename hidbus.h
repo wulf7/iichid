@@ -41,11 +41,6 @@ struct hid_device_info {
 	uint16_t	idProduct;
 	uint16_t	idVersion;
 	uint16_t	rdescsize;	/* Report descriptor size */
-	/* Maximal sizes for HID requests supported by transport backend */
-	uint16_t	rdsize;
-	uint16_t	wrsize;
-	uint16_t	grsize;
-	uint16_t	srsize;
 	/* Quirks */
 	bool		isXBox360GP;	/* XBox360 Game Pad */
 	bool		noWriteEp;	/* Do writes through CTRL endpoint */
@@ -63,6 +58,11 @@ struct hidbus_report_descr {
 	uint8_t		oid;
 	uint8_t		fid;
 	bool		overloaded;
+	/* Maximal sizes for HID requests supported by transport backend */
+	uint16_t	rdsize;
+	uint16_t	wrsize;
+	uint16_t	grsize;
+	uint16_t	srsize;
 };
 
 struct hidbus_ivars {

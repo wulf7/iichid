@@ -107,6 +107,7 @@ struct iichid_softc {
 	void			*intr_context;
 	struct mtx		*intr_mtx;
 	uint8_t			*ibuf;
+	uint16_t		intr_bufsize;
 
 	int			irq_rid;
 	struct resource		*irq_res;
@@ -531,7 +532,7 @@ iichid_event_task(void *context, int pending)
 	if (iicbus_request_bus(parent, sc->dev, IIC_WAIT) != 0)
 		goto rearm;
 
-	maxlen = sc->power_on ? sc->hw.rdsize : 0;
+	maxlen = sc->power_on ? sc->intr_bufsize : 0;
 	error = iichid_cmd_read(sc, sc->ibuf, maxlen, &actual);
 	iicbus_release_bus(parent, sc->dev);
 	if (error != 0) {
@@ -596,7 +597,7 @@ iichid_intr(void *context)
 	 * (to ON) before any other command. As some hardware requires reads to
 	 * acknoledge interrupts we fetch only length header and discard it.
 	 */
-	maxlen = sc->power_on ? sc->hw.rdsize : 0;
+	maxlen = sc->power_on ? sc->intr_bufsize : 0;
 	error = iichid_cmd_read(sc, sc->ibuf, maxlen, &actual);
 	iicbus_release_bus(parent, sc->dev);
 	if (error != 0) {
@@ -816,7 +817,7 @@ iichid_sysctl_sampling_rate_handler(SYSCTL_HANDLER_ARGS)
 
 static void
 iichid_intr_setup(device_t dev, struct mtx *mtx, hid_intr_t intr,
-    void *context, uint16_t isize, uint16_t osize, uint16_t fsize)
+    void *context, struct hidbus_report_descr *rdesc)
 {
 	struct iichid_softc* sc = device_get_softc(dev);
 
@@ -824,9 +825,9 @@ iichid_intr_setup(device_t dev, struct mtx *mtx, hid_intr_t intr,
 	 * Do not rely on wMaxInputLength, as some devices may set it to
 	 * a wrong length. Find the longest input report in report descriptor.
 	 */
-	sc->hw.rdsize = isize;
+	rdesc->rdsize = rdesc->isize;
 	/* Write and get/set_report sizes are limited by I2C-HID protocol */
-	sc->hw.wrsize = sc->hw.grsize = sc->hw.srsize = UINT16_MAX - 2;
+	rdesc->wrsize = rdesc->grsize = rdesc->srsize = UINT16_MAX - 2;
 
 	sc->hw.noWriteEp =
 	    (sc->desc.wOutputRegister == 0 || sc->desc.wMaxOutputLength == 0);
@@ -834,7 +835,8 @@ iichid_intr_setup(device_t dev, struct mtx *mtx, hid_intr_t intr,
 	sc->intr_handler = intr;
 	sc->intr_context = context;
 	sc->intr_mtx = mtx;
-	sc->ibuf = malloc(sc->hw.rdsize, M_DEVBUF, M_WAITOK | M_ZERO);
+	sc->ibuf = malloc(rdesc->rdsize, M_DEVBUF, M_WAITOK | M_ZERO);
+	sc->intr_bufsize = rdesc->rdsize;
 	taskqueue_start_threads(&sc->taskqueue, 1, PI_TTY,
 	    "%s taskq", device_get_nameunit(sc->dev));
 }
@@ -891,7 +893,7 @@ iichid_intr_poll(device_t dev)
 	uint16_t actual = 0;
 	int error;
 
-	error = iichid_cmd_read(sc, sc->ibuf, sc->hw.rdsize, &actual);
+	error = iichid_cmd_read(sc, sc->ibuf, sc->intr_bufsize, &actual);
 	if (error == 0 && actual != 0 && sc->open)
 		sc->intr_handler(sc->intr_context, sc->ibuf, actual);
 }

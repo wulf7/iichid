@@ -181,7 +181,7 @@ hidbus_attach_children(device_t dev)
 	is_sc_kbd = hid_is_keyboard(sc->rdesc.data, sc->rdesc.len) != 0;
 	sc->lock = is_sc_kbd ? HID_SYSCONS_MTX : &sc->mtx;
 	HID_INTR_SETUP(device_get_parent(dev), sc->lock, hidbus_intr, sc,
-	    sc->rdesc.isize, sc->rdesc.osize, sc->rdesc.fsize);
+	    &sc->rdesc);
 
 	error = hidbus_enumerate_children(dev, sc->rdesc.data, sc->rdesc.len);
 	if (error != 0)

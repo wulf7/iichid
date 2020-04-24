@@ -264,7 +264,7 @@ hidraw_intr(void *context, void *buf, uint16_t len)
 	if (next == sc->sc_head)
 		return;
 
-	bcopy(buf, sc->sc_q + sc->sc_tail * sc->sc_hw->rdsize, len);
+	bcopy(buf, sc->sc_q + sc->sc_tail * sc->sc_rdesc->rdsize, len);
 	sc->sc_qlen[sc->sc_tail] = len;
 	sc->sc_tail = next;
 
@@ -346,7 +346,7 @@ hidraw_open(struct cdev *dev, int flag, int mode, struct thread *td)
 		return (error);
 	}
 
-	sc->sc_q = malloc(sc->sc_hw->rdsize * HIDRAW_BUFFER_SIZE, M_DEVBUF,
+	sc->sc_q = malloc(sc->sc_rdesc->rdsize * HIDRAW_BUFFER_SIZE, M_DEVBUF,
 	    M_ZERO | M_WAITOK);
 	sc->sc_qlen = malloc(sizeof(uint16_t) * HIDRAW_BUFFER_SIZE, M_DEVBUF,
 	    M_ZERO | M_WAITOK);
@@ -447,7 +447,7 @@ hidraw_read(struct cdev *dev, struct uio *uio, int flag)
 
 		/* Copy the data to the user process. */
 		DPRINTFN(5, "got %lu chars\n", (u_long)length);
-		error = uiomove(sc->sc_q + sc->sc_head * sc->sc_hw->rdsize,
+		error = uiomove(sc->sc_q + sc->sc_head * sc->sc_rdesc->rdsize,
 		    length, uio);
 
 		mtx_lock(sc->sc_mtx);
@@ -511,7 +511,7 @@ hidraw_write(struct cdev *dev, struct uio *uio, int flag)
 		else
 			size--;
 		/* Check if underlying driver could process this request */
-		if (size > sc->sc_hw->wrsize)
+		if (size > sc->sc_rdesc->wrsize)
 			return (ENOBUFS);
 	}
 	buf = HIDRAW_LOCAL_ALLOC(local_buf, size);
@@ -763,14 +763,14 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 
 		/* Lock newbus around set_report_descr call */
 		mtx_lock(&Giant);
-		ordsize = sc->sc_hw->rdsize;
+		ordsize = sc->sc_rdesc->rdsize;
 		error = hid_set_report_descr(sc->sc_dev, addr, len);
 		mtx_unlock(&Giant);
 		/* Realloc hidraw input queue */
-		if (error == 0 && ordsize != sc->sc_hw->rdsize) {
+		if (error == 0 && ordsize != sc->sc_rdesc->rdsize) {
 			free(sc->sc_q, M_DEVBUF);
 			sc->sc_q = malloc(
-			    sc->sc_hw->rdsize * HIDRAW_BUFFER_SIZE,
+			    sc->sc_rdesc->rdsize * HIDRAW_BUFFER_SIZE,
 			    M_DEVBUF, M_ZERO | M_WAITOK);
 		}
 

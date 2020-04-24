@@ -307,7 +307,7 @@ static const struct usb_config usbhid_config[USBHID_N_TRANSFER] = {
 
 static void
 usbhid_intr_setup(device_t dev, struct mtx *mtx, hid_intr_t intr,
-    void *context, uint16_t isize, uint16_t osize, uint16_t fsize)
+    void *context, struct hidbus_report_descr *rdesc)
 {
 	struct usbhid_softc* sc = device_get_softc(dev);
 	uint16_t n;
@@ -319,9 +319,10 @@ usbhid_intr_setup(device_t dev, struct mtx *mtx, hid_intr_t intr,
 	bcopy(usbhid_config, sc->sc_config, sizeof(usbhid_config));
 
 	/* Set buffer sizes to match HID report sizes */
-	sc->sc_config[USBHID_INTR_OUT_DT].bufsize = osize;
-	sc->sc_config[USBHID_INTR_IN_DT].bufsize = isize;
-	sc->sc_config[USBHID_CTRL_DT].bufsize = MAX(isize, MAX(osize, fsize));
+	sc->sc_config[USBHID_INTR_OUT_DT].bufsize = rdesc->osize;
+	sc->sc_config[USBHID_INTR_IN_DT].bufsize = rdesc->isize;
+	sc->sc_config[USBHID_CTRL_DT].bufsize =
+	    MAX(rdesc->isize, MAX(rdesc->osize, rdesc->fsize));
 
 	/*
 	 * Setup the USB transfers one by one, so they are memory independent
@@ -340,16 +341,18 @@ usbhid_intr_setup(device_t dev, struct mtx *mtx, hid_intr_t intr,
 	if (error)
 		DPRINTF("error=%s\n", usbd_errstr(error));
 
-	sc->sc_hw.rdsize = usbd_xfer_max_len(sc->sc_xfer[USBHID_INTR_IN_DT]);
-	sc->sc_hw.grsize = usbd_xfer_max_len(sc->sc_xfer[USBHID_CTRL_DT]);
-	sc->sc_hw.srsize = sc->sc_hw.grsize;
 	sc->sc_hw.noWriteEp = sc->sc_xfer[USBHID_INTR_OUT_DT] == NULL;
-	sc->sc_hw.wrsize = sc->sc_hw.noWriteEp ? sc->sc_hw.srsize :
+
+	rdesc->rdsize = usbd_xfer_max_len(sc->sc_xfer[USBHID_INTR_IN_DT]);
+	rdesc->grsize = usbd_xfer_max_len(sc->sc_xfer[USBHID_CTRL_DT]);
+	rdesc->srsize = rdesc->grsize;
+	rdesc->wrsize = sc->sc_hw.noWriteEp ? rdesc->srsize :
 	    usbd_xfer_max_len(sc->sc_xfer[USBHID_INTR_OUT_DT]);
 
-	sc->sc_ibuf = malloc(sc->sc_hw.rdsize, M_USBDEV, M_ZERO | M_WAITOK);
+	sc->sc_ibuf = malloc(rdesc->rdsize, M_USBDEV, M_ZERO | M_WAITOK);
 	sc->sc_xfer_ctx[USBHID_INTR_IN_DT] = (struct usbhid_xfer_ctx) {
-		.req.intr.maxlen = sc->sc_hw.rdsize,
+		.req.intr.maxlen =
+		    usbd_xfer_max_len(sc->sc_xfer[USBHID_INTR_IN_DT]),
 		.cb = usbhid_intr_handler_cb,
 		.cb_ctx = sc,
 		.buf = sc->sc_ibuf,
