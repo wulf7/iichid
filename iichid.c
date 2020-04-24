@@ -103,9 +103,9 @@ struct iichid_softc {
 	struct i2c_hid_desc	desc;
 
 	hid_intr_t		*intr_handler;
-	void			*intr_context;
+	void			*intr_ctx;
 	struct mtx		*intr_mtx;
-	uint8_t			*ibuf;
+	uint8_t			*intr_buf;
 	uint16_t		intr_bufsize;
 
 	int			irq_rid;
@@ -532,7 +532,7 @@ iichid_event_task(void *context, int pending)
 		goto rearm;
 
 	maxlen = sc->power_on ? sc->intr_bufsize : 0;
-	error = iichid_cmd_read(sc, sc->ibuf, maxlen, &actual);
+	error = iichid_cmd_read(sc, sc->intr_buf, maxlen, &actual);
 	iicbus_release_bus(parent, sc->dev);
 	if (error != 0) {
 		DPRINTF(sc, "read error occured: %d\n", error);
@@ -546,7 +546,7 @@ iichid_event_task(void *context, int pending)
 	locked = true;
 	if (actual > 0) {
 		if (sc->open)
-			sc->intr_handler(sc->intr_context, sc->ibuf, actual);
+			sc->intr_handler(sc->intr_ctx, sc->intr_buf, actual);
 #ifdef IICHID_SAMPLING
 		sc->missing_samples = 0;
 #endif
@@ -561,7 +561,7 @@ rearm:
 #ifdef IICHID_SAMPLING
 	if (sc->callout_setup && sc->sampling_rate_slow > 0 && sc->open) {
 		if (sc->missing_samples == sc->sampling_hysteresis)
-			sc->intr_handler(sc->intr_context, sc->ibuf, 0);
+			sc->intr_handler(sc->intr_ctx, sc->intr_buf, 0);
 		taskqueue_enqueue_timeout(sc->taskqueue, &sc->periodic_task,
 		    hz / MAX(sc->missing_samples >= sc->sampling_hysteresis ?
 		      sc->sampling_rate_slow : sc->sampling_rate_fast, 1));
@@ -597,7 +597,7 @@ iichid_intr(void *context)
 	 * acknoledge interrupts we fetch only length header and discard it.
 	 */
 	maxlen = sc->power_on ? sc->intr_bufsize : 0;
-	error = iichid_cmd_read(sc, sc->ibuf, maxlen, &actual);
+	error = iichid_cmd_read(sc, sc->intr_buf, maxlen, &actual);
 	iicbus_release_bus(parent, sc->dev);
 	if (error != 0) {
 		DPRINTF(sc, "read error occured: %d\n", error);
@@ -614,7 +614,7 @@ iichid_intr(void *context)
 
 	mtx_lock(sc->intr_mtx);
 	if (sc->open)
-		sc->intr_handler(sc->intr_context, sc->ibuf, actual);
+		sc->intr_handler(sc->intr_ctx, sc->intr_buf, actual);
 	mtx_unlock(sc->intr_mtx);
 #else
 	taskqueue_enqueue(sc->taskqueue, &sc->event_task);
@@ -832,9 +832,9 @@ iichid_intr_setup(device_t dev, struct mtx *mtx, hid_intr_t intr,
 	    (sc->desc.wOutputRegister == 0 || sc->desc.wMaxOutputLength == 0);
 
 	sc->intr_handler = intr;
-	sc->intr_context = context;
+	sc->intr_ctx = context;
 	sc->intr_mtx = mtx;
-	sc->ibuf = malloc(rdesc->rdsize, M_DEVBUF, M_WAITOK | M_ZERO);
+	sc->intr_buf = malloc(rdesc->rdsize, M_DEVBUF, M_WAITOK | M_ZERO);
 	sc->intr_bufsize = rdesc->rdsize;
 	taskqueue_start_threads(&sc->taskqueue, 1, PI_TTY,
 	    "%s taskq", device_get_nameunit(sc->dev));
@@ -846,7 +846,7 @@ iichid_intr_unsetup(device_t dev)
 	struct iichid_softc* sc = device_get_softc(dev);
 
 	taskqueue_drain_all(sc->taskqueue);
-	free(sc->ibuf, M_DEVBUF);
+	free(sc->intr_buf, M_DEVBUF);
 }
 
 static int
@@ -892,9 +892,9 @@ iichid_intr_poll(device_t dev)
 	uint16_t actual = 0;
 	int error;
 
-	error = iichid_cmd_read(sc, sc->ibuf, sc->intr_bufsize, &actual);
+	error = iichid_cmd_read(sc, sc->intr_buf, sc->intr_bufsize, &actual);
 	if (error == 0 && actual != 0 && sc->open)
-		sc->intr_handler(sc->intr_context, sc->ibuf, actual);
+		sc->intr_handler(sc->intr_ctx, sc->intr_buf, actual);
 }
 
 /*
@@ -1130,7 +1130,6 @@ iichid_probe(device_t dev)
 		return (ENXIO);
 
 	sc->dev = dev;
-	sc->ibuf = NULL;
 	sc->addr = addr;
 
 #ifdef HAVE_ACPI_IICBUS

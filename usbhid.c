@@ -126,9 +126,9 @@ struct usbhid_xfer_ctx {
 
 struct usbhid_softc {
 	hid_intr_t *sc_intr_handler;
-	void *sc_intr_context;
+	void *sc_intr_ctx;
 	struct mtx *sc_intr_mtx;
-	void *sc_ibuf;
+	void *sc_intr_buf;
 
 	struct hid_device_info sc_hw;
 
@@ -268,7 +268,7 @@ usbhid_intr_handler_cb(struct usbhid_xfer_ctx *xfer_ctx)
 {
 	struct usbhid_softc *sc = xfer_ctx->cb_ctx;
 
-	sc->sc_intr_handler(sc->sc_intr_context, xfer_ctx->buf,
+	sc->sc_intr_handler(sc->sc_intr_ctx, xfer_ctx->buf,
 	    xfer_ctx->req.intr.actlen);
 
 	return (0);
@@ -319,7 +319,7 @@ usbhid_intr_setup(device_t dev, struct mtx *mtx, hid_intr_t intr,
 	int error;
 
 	sc->sc_intr_handler = intr;
-	sc->sc_intr_context = context;
+	sc->sc_intr_ctx = context;
 	sc->sc_intr_mtx = mtx;
 	bcopy(usbhid_config, sc->sc_config, sizeof(usbhid_config));
 
@@ -354,7 +354,7 @@ usbhid_intr_setup(device_t dev, struct mtx *mtx, hid_intr_t intr,
 	rdesc->wrsize = sc->sc_hw.noWriteEp ? rdesc->srsize :
 	    usbd_xfer_max_len(sc->sc_xfer[USBHID_INTR_OUT_DT]);
 
-	sc->sc_ibuf = malloc(rdesc->rdsize, M_USBDEV, M_ZERO | M_WAITOK);
+	sc->sc_intr_buf = malloc(rdesc->rdsize, M_USBDEV, M_ZERO | M_WAITOK);
 }
 
 static void
@@ -363,7 +363,7 @@ usbhid_intr_unsetup(device_t dev)
 	struct usbhid_softc* sc = device_get_softc(dev);
 
 	usbd_transfer_unsetup(sc->sc_xfer, USBHID_N_TRANSFER);
-	free(sc->sc_ibuf, M_USBDEV);
+	free(sc->sc_intr_buf, M_USBDEV);
 }
 
 static int
@@ -378,7 +378,7 @@ usbhid_intr_start(device_t dev)
 		    usbd_xfer_max_len(sc->sc_xfer[USBHID_INTR_IN_DT]),
 		.cb = usbhid_intr_handler_cb,
 		.cb_ctx = sc,
-		.buf = sc->sc_ibuf,
+		.buf = sc->sc_intr_buf,
 	};
 	usbd_transfer_start(sc->sc_xfer[USBHID_INTR_IN_DT]);
 
