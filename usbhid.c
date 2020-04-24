@@ -147,6 +147,7 @@ static usb_callback_t usbhid_intr_in_callback;
 static usb_callback_t usbhid_ctrl_callback;
 
 static usbhid_callback_t usbhid_intr_handler_cb;
+static usbhid_callback_t usbhid_sync_wakeup_cb;
 
 static void
 usbhid_intr_out_callback(struct usb_xfer *xfer, usb_error_t error)
@@ -176,8 +177,7 @@ tr_setup:
 		}
 		xfer_ctx->error = EIO;
 tr_exit:
-		if (!HID_IN_POLLING_MODE_FUNC())
-			wakeup(xfer_ctx);
+		xfer_ctx->cb(xfer_ctx);
 		return;
 	}
 }
@@ -253,8 +253,7 @@ usbhid_ctrl_callback(struct usb_xfer *xfer, usb_error_t error)
 		DPRINTFN(1, "error=%s\n", usbd_errstr(error));
 		xfer_ctx->error = EIO;
 tr_exit:
-		if (!HID_IN_POLLING_MODE_FUNC())
-			wakeup(xfer_ctx);
+		xfer_ctx->cb(xfer_ctx);
 		return;
 	}
 }
@@ -268,6 +267,16 @@ usbhid_intr_handler_cb(struct usbhid_xfer_ctx *xfer_ctx)
 	    xfer_ctx->req.intr.actlen);
 
 	return (0);
+}
+
+static int
+usbhid_sync_wakeup_cb(struct usbhid_xfer_ctx *xfer_ctx)
+{
+
+	if (!HID_IN_POLLING_MODE_FUNC())
+		wakeup(xfer_ctx->cb_ctx);
+
+	return (ECANCELED);
 }
 
 static const struct usb_config usbhid_config[USBHID_N_TRANSFER] = {
@@ -415,6 +424,8 @@ usbhid_sync_xfer(struct usbhid_softc* sc, int xfer_idx,
 	xfer_ctx->buf = buf;
 	xfer_ctx->req = *req;
 	xfer_ctx->error = ETIMEDOUT;
+	xfer_ctx->cb = &usbhid_sync_wakeup_cb;
+	xfer_ctx->cb_ctx = xfer_ctx;
 	timeout = USB_DEFAULT_TIMEOUT;
 	usbd_transfer_start(sc->sc_xfer[xfer_idx]);
 
