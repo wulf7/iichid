@@ -184,7 +184,7 @@ tr_setup:
 		}
 		xfer_ctx->error = EIO;
 tr_exit:
-		xfer_ctx->cb(xfer_ctx);
+		(void)xfer_ctx->cb(xfer_ctx);
 		return;
 	}
 }
@@ -204,7 +204,8 @@ usbhid_intr_in_callback(struct usb_xfer *xfer, usb_error_t error)
 		pc = usbd_xfer_get_frame(xfer, 0);
 		usbd_copy_out(pc, 0, xfer_ctx->buf, actlen);
 		xfer_ctx->req.intr.actlen = actlen;
-		xfer_ctx->cb(xfer_ctx);
+		if (xfer_ctx->cb(xfer_ctx) != 0)
+			return;
 
 	case USB_ST_SETUP:
 re_submit:
@@ -260,7 +261,7 @@ usbhid_ctrl_callback(struct usb_xfer *xfer, usb_error_t error)
 		DPRINTFN(1, "error=%s\n", usbd_errstr(error));
 		xfer_ctx->error = EIO;
 tr_exit:
-		xfer_ctx->cb(xfer_ctx);
+		(void)xfer_ctx->cb(xfer_ctx);
 		return;
 	}
 }
@@ -357,13 +358,6 @@ usbhid_intr_setup(device_t dev, struct mtx *mtx, hid_intr_t intr,
 	    usbd_xfer_max_len(sc->sc_xfer[USBHID_INTR_OUT_DT]);
 
 	sc->sc_ibuf = malloc(rdesc->rdsize, M_USBDEV, M_ZERO | M_WAITOK);
-	sc->sc_xfer_ctx[USBHID_INTR_IN_DT] = (struct usbhid_xfer_ctx) {
-		.req.intr.maxlen =
-		    usbd_xfer_max_len(sc->sc_xfer[USBHID_INTR_IN_DT]),
-		.cb = usbhid_intr_handler_cb,
-		.cb_ctx = sc,
-		.buf = sc->sc_ibuf,
-	};
 }
 
 static void
@@ -382,6 +376,13 @@ usbhid_intr_start(device_t dev)
 
 	mtx_assert(sc->sc_intr_mtx, MA_OWNED);
 
+	sc->sc_xfer_ctx[USBHID_INTR_IN_DT] = (struct usbhid_xfer_ctx) {
+		.req.intr.maxlen =
+		    usbd_xfer_max_len(sc->sc_xfer[USBHID_INTR_IN_DT]),
+		.cb = usbhid_intr_handler_cb,
+		.cb_ctx = sc,
+		.buf = sc->sc_ibuf,
+	};
 	usbd_transfer_start(sc->sc_xfer[USBHID_INTR_IN_DT]);
 
 	return (0);
@@ -451,6 +452,8 @@ usbhid_sync_xfer(struct usbhid_softc* sc, int xfer_idx,
 
 	usbd_transfer_stop(sc->sc_xfer[xfer_idx]);
 	error = xfer_ctx->error;
+	if (error == 0)
+		*req = xfer_ctx->req;
 
 	if (HID_IN_POLLING_MODE_FUNC()) {
 		*xfer_ctx = save;
@@ -531,8 +534,19 @@ usbhid_set_report(device_t dev, const void *buf, uint16_t len, uint8_t type,
 static int
 usbhid_read(device_t dev, void *buf, uint16_t maxlen, uint16_t *actlen)
 {
+	struct usbhid_softc* sc = device_get_softc(dev);
+	union usbhid_device_request req;
+	int error;
 
-	return (ENOTSUP);
+	if (maxlen > usbd_xfer_max_len(sc->sc_xfer[USBHID_INTR_IN_DT]))
+		return (ENOBUFS);
+
+	req.intr.maxlen = maxlen;
+	error = usbhid_sync_xfer(sc, USBHID_INTR_IN_DT, &req, buf);
+	if (error == 0 && actlen != NULL)
+		*actlen = req.intr.actlen;
+
+	return (error);
 }
 
 static int
