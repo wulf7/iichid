@@ -67,7 +67,7 @@ struct hidbus_report_descr {
 
 struct hidbus_ivars {
 	device_t			child;
-	uint32_t			usage;
+	int32_t				usage;
 	uint8_t				index;
 	uintptr_t			driver_info;	/* for internal use */
 	hid_intr_t			*intr;
@@ -85,7 +85,7 @@ enum {
 #define HIDBUS_ACCESSOR(A, B, T)					\
 	__BUS_ACCESSOR(hidbus, A, HIDBUS, B, T)
 
-HIDBUS_ACCESSOR(usage,		USAGE,		uint32_t)
+HIDBUS_ACCESSOR(usage,		USAGE,		int32_t)
 HIDBUS_ACCESSOR(index,		INDEX,		uint8_t)
 HIDBUS_ACCESSOR(intr,		INTR,		hid_intr_t *)
 HIDBUS_ACCESSOR(driver_info,	DRIVER_INFO,	uintptr_t)
@@ -108,7 +108,7 @@ struct hid_device_id {
 		match_flag_unused:2;
 
 	/* Used for top level collection usage matches */
-	uint32_t usage;
+	int32_t usage;
 
 	/* Used for product specific matches; the Version range is inclusive */
 	uint16_t idBus;
