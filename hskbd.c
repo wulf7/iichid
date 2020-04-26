@@ -282,7 +282,7 @@ hskbd_attach(device_t dev)
 {
 	struct hskbd_softc *sc = device_get_softc(dev);
 	void *d_ptr;
-	uint16_t d_len;
+	hid_size_t d_len;
 	bool set_report_proto;
 	int error;
 	uint32_t flags;
