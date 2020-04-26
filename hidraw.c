@@ -96,7 +96,7 @@ struct hidraw_softc {
 	const struct hid_device_info *sc_hw;
 
 	uint8_t *sc_q;
-	uint16_t *sc_qlen;
+	hid_size_t *sc_qlen;
 	int sc_head;
 	int sc_tail;
 	int sc_sleepcnt;
@@ -251,7 +251,7 @@ hidraw_detach(device_t self)
 }
 
 void
-hidraw_intr(void *context, void *buf, uint16_t len)
+hidraw_intr(void *context, void *buf, hid_size_t len)
 {
 	device_t dev = context;
 	struct hidraw_softc *sc = device_get_softc(dev);
@@ -348,7 +348,7 @@ hidraw_open(struct cdev *dev, int flag, int mode, struct thread *td)
 
 	sc->sc_q = malloc(sc->sc_rdesc->rdsize * HIDRAW_BUFFER_SIZE, M_DEVBUF,
 	    M_ZERO | M_WAITOK);
-	sc->sc_qlen = malloc(sizeof(uint16_t) * HIDRAW_BUFFER_SIZE, M_DEVBUF,
+	sc->sc_qlen = malloc(sizeof(hid_size_t) * HIDRAW_BUFFER_SIZE, M_DEVBUF,
 	    M_ZERO | M_WAITOK);
 
 	/* Set up interrupt pipe. */
@@ -534,7 +534,7 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 	struct hidraw_report_descriptor *hrd;
 	struct hidraw_devinfo *hdi;
 	uint32_t size;
-	uint16_t ordsize;
+	hid_size_t ordsize;
 	int id, len;
 	int error = 0;
 

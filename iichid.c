@@ -79,6 +79,9 @@ SYSCTL_INT(_hw_iichid, OID_AUTO, debug, CTLFLAG_RWTUN,
 
 #define	IICHID_SAMPLING
 
+typedef	hid_size_t	iichid_size_t;
+#define	IICHID_SIZE_MAX	(UINT16_MAX - 2)
+
 static char *iichid_ids[] = {
 	"PNP0C50",
 	"ACPI0C50",
@@ -106,7 +109,7 @@ struct iichid_softc {
 	void			*intr_ctx;
 	struct mtx		*intr_mtx;
 	uint8_t			*intr_buf;
-	uint16_t		intr_bufsize;
+	iichid_size_t		intr_bufsize;
 
 	int			irq_rid;
 	struct resource		*irq_res;
@@ -266,8 +269,8 @@ iichid_get_handle(device_t dev)
 #endif /* HAVE_ACPI_IICBUS */
 
 static int
-iichid_cmd_read(struct iichid_softc* sc, void *buf, uint16_t maxlen,
-    uint16_t *actual_len)
+iichid_cmd_read(struct iichid_softc* sc, void *buf, iichid_size_t maxlen,
+    iichid_size_t *actual_len)
 {
 	/*
 	 * 6.1.3 - Retrieval of Input Reports
@@ -314,7 +317,7 @@ iichid_cmd_read(struct iichid_softc* sc, void *buf, uint16_t maxlen,
 }
 
 static int
-iichid_cmd_write(struct iichid_softc *sc, const void *buf, int len)
+iichid_cmd_write(struct iichid_softc *sc, const void *buf, iichid_size_t len)
 {
 	/* 6.2.3 - Sending Output Reports */
 	uint8_t *cmdreg = (uint8_t *)&sc->desc.wOutputRegister;
@@ -392,7 +395,8 @@ iichid_reset(struct iichid_softc *sc)
 }
 
 static int
-iichid_cmd_get_report_desc(struct iichid_softc* sc, void *buf, int len)
+iichid_cmd_get_report_desc(struct iichid_softc* sc, void *buf,
+    iichid_size_t len)
 {
 	uint16_t cmd = sc->desc.wReportDescRegister;
 	struct iic_msg msgs[] = {
@@ -414,8 +418,8 @@ iichid_cmd_get_report_desc(struct iichid_softc* sc, void *buf, int len)
 }
 
 static int
-iichid_cmd_get_report(struct iichid_softc* sc, void *buf, uint16_t maxlen,
-    uint16_t *actual_len, uint8_t type, uint8_t id)
+iichid_cmd_get_report(struct iichid_softc* sc, void *buf, iichid_size_t maxlen,
+    iichid_size_t *actual_len, uint8_t type, uint8_t id)
 {
 	/*
 	 * 7.2.2.4 - "The protocol is optimized for Report < 15.  If a
@@ -484,8 +488,8 @@ iichid_cmd_get_report(struct iichid_softc* sc, void *buf, uint16_t maxlen,
 }
 
 static int
-iichid_cmd_set_report(struct iichid_softc* sc, const void *buf, int len,
-    uint8_t type, uint8_t id)
+iichid_cmd_set_report(struct iichid_softc* sc, const void *buf,
+    iichid_size_t len, uint8_t type, uint8_t id)
 {
 	/*
 	 * 7.2.2.4 - "The protocol is optimized for Report < 15.  If a
@@ -524,7 +528,7 @@ iichid_event_task(void *context, int pending)
 {
 	struct iichid_softc *sc = context;
 	device_t parent = device_get_parent(sc->dev);
-	uint16_t maxlen, actual = 0;
+	iichid_size_t maxlen, actual = 0;
 	bool locked = false;
 	int error;
 
@@ -577,7 +581,7 @@ iichid_intr(void *context)
 	struct iichid_softc *sc = context;
 #ifdef HAVE_IG4_POLLING
 	device_t parent = device_get_parent(sc->dev);
-	uint16_t maxlen, actual = 0;
+	iichid_size_t maxlen, actual = 0;
 	int error;
 
 	/*
@@ -826,7 +830,7 @@ iichid_intr_setup(device_t dev, struct mtx *mtx, hid_intr_t intr,
 	 */
 	rdesc->rdsize = rdesc->isize;
 	/* Write and get/set_report sizes are limited by I2C-HID protocol */
-	rdesc->wrsize = rdesc->grsize = rdesc->srsize = UINT16_MAX - 2;
+	rdesc->wrsize = rdesc->grsize = rdesc->srsize = IICHID_SIZE_MAX;
 
 	sc->hw.noWriteEp =
 	    (sc->desc.wOutputRegister == 0 || sc->desc.wMaxOutputLength == 0);
@@ -889,7 +893,7 @@ static void
 iichid_intr_poll(device_t dev)
 {
 	struct iichid_softc* sc = device_get_softc(dev);
-	uint16_t actual = 0;
+	iichid_size_t actual = 0;
 	int error;
 
 	error = iichid_cmd_read(sc, sc->intr_buf, sc->intr_bufsize, &actual);
@@ -901,7 +905,7 @@ iichid_intr_poll(device_t dev)
  * HID interface
  */
 static int
-iichid_get_report_desc(device_t dev, void *buf, uint16_t len)
+iichid_get_report_desc(device_t dev, void *buf, hid_size_t len)
 {
 	struct iichid_softc* sc = device_get_softc(dev);
 	int error;
@@ -917,11 +921,14 @@ iichid_get_report_desc(device_t dev, void *buf, uint16_t len)
 }
 
 static int
-iichid_read(device_t dev, void *buf, uint16_t maxlen, uint16_t *actlen)
+iichid_read(device_t dev, void *buf, hid_size_t maxlen, hid_size_t *actlen)
 {
 	struct iichid_softc* sc = device_get_softc(dev);
 	device_t parent = device_get_parent(sc->dev);
 	int error;
+
+	if (maxlen > IICHID_SIZE_MAX)
+		return (EMSGSIZE);
 
 	error = iicbus_request_bus(parent, sc->dev, IIC_WAIT);
 	if (error == 0) {
@@ -933,28 +940,37 @@ iichid_read(device_t dev, void *buf, uint16_t maxlen, uint16_t *actlen)
 }
 
 static int
-iichid_write(device_t dev, const void *buf, uint16_t len)
+iichid_write(device_t dev, const void *buf, hid_size_t len)
 {
 	struct iichid_softc* sc = device_get_softc(dev);
+
+	if (len > IICHID_SIZE_MAX)
+		return (EMSGSIZE);
 
 	return (iic2errno(iichid_cmd_write(sc, buf, len)));
 }
 
 static int
-iichid_get_report(device_t dev, void *buf, uint16_t maxlen, uint16_t *actlen,
-    uint8_t type, uint8_t id)
+iichid_get_report(device_t dev, void *buf, hid_size_t maxlen,
+    hid_size_t *actlen, uint8_t type, uint8_t id)
 {
 	struct iichid_softc* sc = device_get_softc(dev);
+
+	if (maxlen > IICHID_SIZE_MAX)
+		return (EMSGSIZE);
 
 	return (iic2errno(
 	    iichid_cmd_get_report(sc, buf, maxlen, actlen, type, id)));
 }
 
 static int
-iichid_set_report(device_t dev, const void *buf, uint16_t len, uint8_t type,
+iichid_set_report(device_t dev, const void *buf, hid_size_t len, uint8_t type,
     uint8_t id)
 {
 	struct iichid_softc* sc = device_get_softc(dev);
+
+	if (len > IICHID_SIZE_MAX)
+		return (EMSGSIZE);
 
 	return (iic2errno(iichid_cmd_set_report(sc, buf, len, type, id)));
 }

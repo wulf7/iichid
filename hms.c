@@ -241,7 +241,7 @@ hms_attach(device_t dev)
 	struct hms_softc *sc = device_get_softc(dev);
 	struct hmap_hid_item *hi;
 	void *d_ptr;
-	uint16_t d_len;
+	hid_size_t d_len;
 	bool set_report_proto;
 	int error, nbuttons = 0;
 

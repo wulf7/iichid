@@ -216,8 +216,8 @@ struct hmt_softc {
 	uint8_t                 thqa_cert_rid;
 };
 
-static enum hmt_type hmt_hid_parse(struct hmt_softc *, const void *, uint16_t,
-    uint32_t, uint8_t);
+static enum hmt_type hmt_hid_parse(struct hmt_softc *, const void *,
+    hid_size_t, uint32_t, uint8_t);
 static int hmt_set_input_mode(struct hmt_softc *, enum hconf_input_mode);
 
 static hid_intr_t		hmt_intr;
@@ -281,7 +281,7 @@ hmt_probe(device_t dev)
 {
 	struct hmt_softc *sc = device_get_softc(dev);
 	void *d_ptr;
-	uint16_t d_len;
+	hid_size_t d_len;
 	int error;
 
 	error = hidbus_lookup_driver_info(dev, hmt_devs, sizeof(hmt_devs));
@@ -315,7 +315,7 @@ hmt_attach(device_t dev)
 	const struct hid_device_info *hw = hid_get_device_info(dev);
 	void *d_ptr;
 	uint8_t *fbuf = NULL;
-	uint16_t d_len, fsize;
+	hid_size_t d_len, fsize;
 	uint32_t cont_count_max;
 	int nbuttons, btn;
 	size_t i;
@@ -463,7 +463,7 @@ hmt_detach(device_t dev)
 }
 
 static void
-hmt_intr(void *context, void *buf, uint16_t len)
+hmt_intr(void *context, void *buf, hid_size_t len)
 {
 	device_t dev = context;
 	struct hmt_softc *sc = device_get_softc(dev);
@@ -630,7 +630,7 @@ hmt_intr(void *context, void *buf, uint16_t len)
 }
 
 static enum hmt_type
-hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, uint16_t d_len,
+hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, hid_size_t d_len,
     uint32_t tlc_usage, uint8_t tlc_index)
 {
 	struct hid_absinfo ai;

@@ -66,7 +66,7 @@ struct hconf_softc {
 
 	u_int			input_mode;
 	struct hid_location	input_mode_loc;
-	uint32_t		input_mode_rlen;
+	hid_size_t		input_mode_rlen;
 	uint8_t			input_mode_rid;
 };
 
@@ -171,7 +171,7 @@ hconf_attach(device_t dev)
 	struct sysctl_oid *tree = device_get_sysctl_tree(dev);
 	uint32_t flags;
 	void *d_ptr;
-	uint16_t d_len;
+	hid_size_t d_len;
 	uint8_t tlc_index;
 	int error;
 

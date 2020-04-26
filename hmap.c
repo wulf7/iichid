@@ -142,7 +142,7 @@ hmap_ev_open(struct evdev_dev *evdev)
 }
 
 static void
-hmap_intr(void *context, void *buf, uint16_t len)
+hmap_intr(void *context, void *buf, hid_size_t len)
 {
 	device_t dev = context;
 	struct hmap_softc *sc = device_get_softc(dev);
@@ -387,7 +387,7 @@ hmap_probe_hid_item(struct hid_item *hi, const struct hmap_item *map,
 }
 
 static uint32_t
-hmap_probe_hid_descr(void *d_ptr, uint16_t d_len, uint8_t tlc_index,
+hmap_probe_hid_descr(void *d_ptr, hid_size_t d_len, uint8_t tlc_index,
     const struct hmap_item *map, int nmap_items, bitstr_t *caps)
 {
 	struct hid_item hi;
@@ -448,7 +448,7 @@ hmap_add_map(device_t dev, const struct hmap_item *map, int nmap_items,
 	uint8_t tlc_index = hidbus_get_index(dev);
 	uint32_t items;
 	void *d_ptr;
-	uint16_t d_len;
+	hid_size_t d_len;
 	int i, error;
 
 	/* Avoid double-adding of map in probe() handler */
@@ -603,7 +603,7 @@ hmap_parse_hid_descr(struct hmap_softc *sc, uint8_t tlc_index)
 	const struct hmap_item *map;
 	struct hmap_hid_item *item = sc->hid_items;
 	void *d_ptr;
-	uint16_t d_len;
+	hid_size_t d_len;
 	int i, error;
 
 	error = hid_get_report_descr(sc->dev, &d_ptr, &d_len);

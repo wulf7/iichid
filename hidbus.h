@@ -30,7 +30,7 @@
 #define	HID_OUTPUT_REPORT	0x2
 #define	HID_FEATURE_REPORT	0x3
 
-typedef void hid_intr_t(void *context, void *data, uint16_t len);
+typedef void hid_intr_t(void *context, void *data, hid_size_t len);
 
 struct hid_device_info {
 	device_t	parent;
@@ -50,19 +50,19 @@ struct hid_device_info {
 
 struct hidbus_report_descr {
 	void		*data;
-	uint16_t	len;
-	uint16_t	isize;
-	uint16_t	osize;
-	uint16_t	fsize;
+	hid_size_t	len;
+	hid_size_t	isize;
+	hid_size_t	osize;
+	hid_size_t	fsize;
 	uint8_t		iid;
 	uint8_t		oid;
 	uint8_t		fid;
 	bool		overloaded;
 	/* Maximal sizes for HID requests supported by transport backend */
-	uint16_t	rdsize;
-	uint16_t	wrsize;
-	uint16_t	grsize;
-	uint16_t	srsize;
+	hid_size_t	rdsize;
+	hid_size_t	wrsize;
+	hid_size_t	grsize;
+	hid_size_t	srsize;
 };
 
 struct hidbus_ivars {
@@ -190,13 +190,13 @@ void		hidbus_intr_poll(device_t);
 void		hidbus_set_desc(device_t, const char *);
 
 /* hidbus HID interface */
-int	hid_get_report_descr(device_t, void **, uint16_t *);
-int	hid_set_report_descr(device_t, const void *, uint16_t);
-int	hid_read(device_t, void *, uint16_t, uint16_t *);
-int	hid_write(device_t, const void *, uint16_t);
-int	hid_get_report(device_t, void *, uint16_t, uint16_t *, uint8_t,
+int	hid_get_report_descr(device_t, void **, hid_size_t *);
+int	hid_set_report_descr(device_t, const void *, hid_size_t);
+int	hid_read(device_t, void *, hid_size_t, hid_size_t *);
+int	hid_write(device_t, const void *, hid_size_t);
+int	hid_get_report(device_t, void *, hid_size_t, hid_size_t *, uint8_t,
 	    uint8_t);
-int	hid_set_report(device_t, const void *, uint16_t, uint8_t, uint8_t);
+int	hid_set_report(device_t, const void *, hid_size_t, uint8_t, uint8_t);
 int	hid_set_idle(device_t, uint16_t, uint8_t);
 int	hid_set_protocol(device_t, uint16_t);
 

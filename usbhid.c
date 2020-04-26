@@ -468,7 +468,7 @@ usbhid_sync_xfer(struct usbhid_softc* sc, int xfer_idx,
 }
 
 static int
-usbhid_get_report_desc(device_t dev, void *buf, uint16_t len)
+usbhid_get_report_desc(device_t dev, void *buf, hid_size_t len)
 {
 	struct usbhid_softc* sc = device_get_softc(dev);
 	int error;
@@ -483,8 +483,8 @@ usbhid_get_report_desc(device_t dev, void *buf, uint16_t len)
 }
 
 static int
-usbhid_get_report(device_t dev, void *buf, uint16_t maxlen, uint16_t *actlen,
-    uint8_t type, uint8_t id)
+usbhid_get_report(device_t dev, void *buf, hid_size_t maxlen,
+    hid_size_t *actlen, uint8_t type, uint8_t id)
 {
 	struct usbhid_softc* sc = device_get_softc(dev);
 	union usbhid_device_request req;
@@ -508,7 +508,7 @@ usbhid_get_report(device_t dev, void *buf, uint16_t maxlen, uint16_t *actlen,
 }
 
 static int
-usbhid_set_report(device_t dev, const void *buf, uint16_t len, uint8_t type,
+usbhid_set_report(device_t dev, const void *buf, hid_size_t len, uint8_t type,
     uint8_t id)
 {
 	struct usbhid_softc* sc = device_get_softc(dev);
@@ -529,7 +529,7 @@ usbhid_set_report(device_t dev, const void *buf, uint16_t len, uint8_t type,
 }
 
 static int
-usbhid_read(device_t dev, void *buf, uint16_t maxlen, uint16_t *actlen)
+usbhid_read(device_t dev, void *buf, hid_size_t maxlen, hid_size_t *actlen)
 {
 	struct usbhid_softc* sc = device_get_softc(dev);
 	union usbhid_device_request req;
@@ -547,7 +547,7 @@ usbhid_read(device_t dev, void *buf, uint16_t maxlen, uint16_t *actlen)
 }
 
 static int
-usbhid_write(device_t dev, const void *buf, uint16_t len)
+usbhid_write(device_t dev, const void *buf, hid_size_t len)
 {
 	struct usbhid_softc* sc = device_get_softc(dev);
 	union usbhid_device_request req;

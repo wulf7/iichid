@@ -26,6 +26,7 @@
 #
 
 #include <sys/bus.h>
+#include "hid.h"
 #include "hidbus.h"
 
 INTERFACE hid;
@@ -92,7 +93,7 @@ METHOD void intr_poll {
 METHOD int get_report_descr {
 	device_t dev;
 	void *data;
-	uint16_t len;
+	hid_size_t len;
 };
 
 #
@@ -102,8 +103,8 @@ METHOD int get_report_descr {
 METHOD int read {
 	device_t dev;
 	void *data;
-	uint16_t maxlen;
-	uint16_t *actlen;
+	hid_size_t maxlen;
+	hid_size_t *actlen;
 };
 
 #
@@ -113,7 +114,7 @@ METHOD int read {
 METHOD int write {
 	device_t dev;
 	const void *data;
-	uint16_t len;
+	hid_size_t len;
 };
 
 #
@@ -127,8 +128,8 @@ METHOD int write {
 METHOD int get_report {
 	device_t dev;
 	void *data;
-	uint16_t maxlen;
-	uint16_t *actlen;
+	hid_size_t maxlen;
+	hid_size_t *actlen;
 	uint8_t type;
 	uint8_t id;
 };
@@ -142,7 +143,7 @@ METHOD int get_report {
 METHOD int set_report {
 	device_t dev;
 	const void *data;
-	uint16_t len;
+	hid_size_t len;
 	uint8_t type;
 	uint8_t id;
 };

@@ -73,7 +73,7 @@ struct hid_absinfo {
 #define	HID_GET_USAGE_PAGE(u) (((u) >> 16) & 0xffff)
 
 static __inline uint32_t
-hid_get_udata(const uint8_t *buf, usb_size_t len, struct hid_location *loc)
+hid_get_udata(const uint8_t *buf, hid_size_t len, struct hid_location *loc)
 {
 	return (hid_get_data_unsigned(buf, len, loc));
 }

@@ -634,7 +634,7 @@ hkbd_apple_swap(uint32_t keycode)
 }
 
 static void
-hkbd_intr_callback(void *context, void *data, uint16_t len)
+hkbd_intr_callback(void *context, void *data, hid_size_t len)
 {
 	device_t dev = context;
 	struct hkbd_softc *sc = device_get_softc(dev);
@@ -876,7 +876,7 @@ hkbd_attach(device_t dev)
 	void *hid_ptr = NULL;
 	usb_error_t err;
 	uint16_t n;
-	uint16_t hid_len;
+	hid_size_t hid_len;
 	uint8_t tlc_index = hidbus_get_index(dev);
 #ifdef EVDEV_SUPPORT
 	struct evdev_dev *evdev;

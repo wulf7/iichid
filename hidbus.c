@@ -74,7 +74,7 @@ devclass_t hidbus_devclass;
 
 static int
 hidbus_fill_report_descr(struct hidbus_report_descr *hrd, const void *data,
-    uint16_t len)
+    hid_size_t len)
 {
 	int error = 0;
 
@@ -93,19 +93,19 @@ hidbus_fill_report_descr(struct hidbus_report_descr *hrd, const void *data,
 	    hid_report_size(data, len, hid_feature, &hrd->fid);
 
 	if (hrd->isize > HID_RSIZE_MAX) {
-		DPRINTF("input size is too large, %hu bytes (truncating)\n",
+		DPRINTF("input size is too large, %u bytes (truncating)\n",
 		    hrd->isize);
 		hrd->isize = HID_RSIZE_MAX;
 		error = EOVERFLOW;
 	}
 	if (hrd->osize > HID_RSIZE_MAX) {
-		DPRINTF("output size is too large, %hu bytes (truncating)\n",
+		DPRINTF("output size is too large, %u bytes (truncating)\n",
 		    hrd->osize);
 		hrd->osize = HID_RSIZE_MAX;
 		error = EOVERFLOW;
 	}
 	if (hrd->fsize > HID_RSIZE_MAX) {
-		DPRINTF("feature size is too large, %hu bytes (truncating)\n",
+		DPRINTF("feature size is too large, %u bytes (truncating)\n",
 		    hrd->fsize);
 		hrd->fsize = HID_RSIZE_MAX;
 		error = EOVERFLOW;
@@ -136,7 +136,7 @@ hidbus_add_child(device_t dev, u_int order, const char *name, int unit)
 }
 
 static int
-hidbus_enumerate_children(device_t dev, const void* data, uint16_t len)
+hidbus_enumerate_children(device_t dev, const void* data, hid_size_t len)
 {
 	struct hid_data *hd;
 	struct hid_item hi;
@@ -277,7 +277,7 @@ hidbus_attach(device_t dev)
 	struct hid_device_info *devinfo = device_get_ivars(dev);
 	device_t parent = device_get_parent(dev);
 	void *d_ptr = NULL;
-	uint16_t d_len;
+	hid_size_t d_len;
 	int error;
 
 	sc->dev = dev;
@@ -431,7 +431,7 @@ hidbus_set_desc(device_t child, const char *suffix)
 }
 
 void
-hidbus_intr(void *context, void *buf, uint16_t len)
+hidbus_intr(void *context, void *buf, hid_size_t len)
 {
 	struct hidbus_softc *sc = context;
 	struct hidbus_ivars *tlc;
@@ -518,7 +518,7 @@ hidbus_get_report_descr(device_t child)
  * Hidbus as well as any hidbus child can be passed as first arg.
  */
 int
-hid_get_report_descr(device_t dev, void **data, uint16_t *len)
+hid_get_report_descr(device_t dev, void **data, hid_size_t *len)
 {
 	device_t bus;
 	struct hidbus_softc *sc;
@@ -553,7 +553,7 @@ hid_get_report_descr(device_t dev, void **data, uint16_t *len)
  * 'device_t dev' parameter.
  */
 int
-hid_set_report_descr(device_t dev, const void *data, uint16_t len)
+hid_set_report_descr(device_t dev, const void *data, hid_size_t len)
 {
 	struct hidbus_report_descr rdesc;
 	device_t bus;
@@ -598,14 +598,14 @@ hid_set_report_descr(device_t dev, const void *data, uint16_t len)
 }
 
 int
-hid_read(device_t dev, void *data, uint16_t maxlen, uint16_t *actlen)
+hid_read(device_t dev, void *data, hid_size_t maxlen, hid_size_t *actlen)
 {
 
 	return (HID_READ(device_get_parent(dev), data, maxlen, actlen));
 }
 
 int
-hid_write(device_t dev, const void *data, uint16_t len)
+hid_write(device_t dev, const void *data, hid_size_t len)
 {
 	struct hidbus_softc *sc;
 	struct hid_device_info *devinfo;
@@ -631,7 +631,7 @@ hid_write(device_t dev, const void *data, uint16_t len)
 }
 
 int
-hid_get_report(device_t dev, void *data, uint16_t maxlen, uint16_t *actlen,
+hid_get_report(device_t dev, void *data, hid_size_t maxlen, hid_size_t *actlen,
     uint8_t type, uint8_t id)
 {
 
@@ -640,7 +640,7 @@ hid_get_report(device_t dev, void *data, uint16_t maxlen, uint16_t *actlen,
 }
 
 int
-hid_set_report(device_t dev, const void *data, uint16_t len, uint8_t type,
+hid_set_report(device_t dev, const void *data, hid_size_t len, uint8_t type,
     uint8_t id)
 {
 
