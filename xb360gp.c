@@ -132,7 +132,7 @@ xb360gp_probe(device_t dev)
 	if (error != 0)
 		return (error);
 
-	hidbus_set_desc(dev, "XBox 360 Gamepad");
+	device_set_desc(dev, "XBox 360 Gamepad");
 
 	return (BUS_PROBE_DEFAULT);
 }
