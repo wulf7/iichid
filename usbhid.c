@@ -628,6 +628,12 @@ usbhid_probe(device_t dev)
 	if (error)
 		return (error);
 
+#ifndef	ENABLE_HKBD
+	/* hkbd can not be compiled on 12.1-RELEASE. Use ukbd instead of it */
+	if (USB_GET_DRIVER_INFO(uaa) == USBHID_BOOT_KEYBOARD)
+		return (ENXIO);
+#endif
+
 	if (usb_test_quirk(uaa, UQ_HID_IGNORE))
 		return (ENXIO);
 

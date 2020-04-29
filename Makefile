@@ -42,6 +42,7 @@ SRCS	+= strcasestr.c strcasestr.h
 .if ${OSVERSION} >= 1300068 || \
     (${OSVERSION} >= 1201507 && ${OSVERSION} < 1300000)
 SRCS	+= opt_kbd.h opt_hkbd.h hkbd.c
+CFLAGS	+= -DENABLE_HKBD
 .endif
 # hskbd conflicts with hkbd
 #SRCS	+= hskbd.c
