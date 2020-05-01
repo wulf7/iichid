@@ -39,26 +39,23 @@
 __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
-#include <sys/systm.h>
+#include <sys/bus.h>
+#include <sys/conf.h>
+#include <sys/fcntl.h>
+#include <sys/filio.h>
+#include <sys/ioccom.h>
 #include <sys/kernel.h>
 #include <sys/lock.h>
 #include <sys/malloc.h>
-#include <sys/mutex.h>
-#include <sys/sx.h>
-#include <sys/signalvar.h>
-#include <sys/fcntl.h>
-#include <sys/ioccom.h>
-#include <sys/filio.h>
 #include <sys/module.h>
-#include <sys/bus.h>
-#include <sys/ioccom.h>
-#include <sys/conf.h>
-#include <sys/tty.h>
-#include <sys/selinfo.h>
+#include <sys/mutex.h>
+#include <sys/poll.h>
 #include <sys/priv.h>
 #include <sys/proc.h>
-#include <sys/poll.h>
+#include <sys/selinfo.h>
 #include <sys/sysctl.h>
+#include <sys/systm.h>
+#include <sys/tty.h>
 #include <sys/uio.h>
 
 #include "hid.h"
@@ -135,7 +132,7 @@ static struct cdevsw hidraw_cdevsw = {
 	.d_write =	hidraw_write,
 	.d_ioctl =	hidraw_ioctl,
 	.d_poll =	hidraw_poll,
-	.d_kqfilter = 	hidraw_kqfilter,
+	.d_kqfilter =	hidraw_kqfilter,
 	.d_name =	"hidraw",
 };
 
