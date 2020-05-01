@@ -55,6 +55,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/conf.h>
 #include <sys/tty.h>
 #include <sys/selinfo.h>
+#include <sys/priv.h>
 #include <sys/proc.h>
 #include <sys/poll.h>
 #include <sys/sysctl.h>
@@ -748,6 +749,11 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 	case HIDIOCSRDESC(0):
 		if (!(sc->sc_fflags & FWRITE))
 			return (EPERM);
+
+		/* check privileges */
+		error = priv_check(curthread, PRIV_DRIVER);
+		if (error)
+			return (error);
 
 		/* Stop interrupts and clear input report buffer */
 		mtx_lock(sc->sc_mtx);
