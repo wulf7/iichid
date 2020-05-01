@@ -898,7 +898,7 @@ static device_method_t hidraw_methods[] = {
 	DEVMETHOD(device_attach,	hidraw_attach),
 	DEVMETHOD(device_detach,	hidraw_detach),
 
-	{ 0, 0 }
+	DEVMETHOD_END
 };
 
 static driver_t hidraw_driver = {
