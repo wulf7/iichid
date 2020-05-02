@@ -290,7 +290,7 @@ static const struct usb_config usbhid_config[USBHID_N_TRANSFER] = {
 		.type = UE_INTERRUPT,
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_OUT,
-		.flags = {.pipe_bof = 1,.no_pipe_ok = 1,.proxy_buffer = 1},
+		.flags = {.pipe_bof = 1,.proxy_buffer = 1},
 		.callback = &usbhid_intr_out_callback,
 	},
 	[USBHID_INTR_IN_DT] = {
@@ -336,6 +336,8 @@ usbhid_intr_setup(device_t dev, struct mtx *mtx, hid_intr_t intr,
 	 * keyboard driver was processing a key at the moment of panic.
 	 */
 	for (n = 0; n != USBHID_N_TRANSFER; n++) {
+		if (sc->sc_hw.noWriteEp && n == USBHID_INTR_OUT_DT)
+			continue;
 		error = usbd_transfer_setup(sc->sc_udev, &sc->sc_iface_index,
 		    sc->sc_xfer + n, sc->sc_config + n, 1,
 		    (void *)(sc->sc_xfer_ctx + n), sc->sc_intr_mtx);
@@ -345,8 +347,6 @@ usbhid_intr_setup(device_t dev, struct mtx *mtx, hid_intr_t intr,
 
 	if (error)
 		DPRINTF("error=%s\n", usbd_errstr(error));
-
-	sc->sc_hw.noWriteEp = sc->sc_xfer[USBHID_INTR_OUT_DT] == NULL;
 
 	rdesc->rdsize = usbd_xfer_max_len(sc->sc_xfer[USBHID_INTR_IN_DT]);
 	rdesc->grsize = usbd_xfer_max_len(sc->sc_xfer[USBHID_CTRL_DT]);
@@ -646,6 +646,7 @@ usbhid_attach(device_t dev)
 	struct usb_attach_arg *uaa = device_get_ivars(dev);
 	struct usbhid_softc *sc = device_get_softc(dev);
 	struct usb_hid_descriptor *hid;
+	struct usb_endpoint *ep;
 	device_t child;
 	char *sep;
 	int error = 0;
@@ -692,6 +693,12 @@ usbhid_attach(device_t dev)
 			sc->sc_hw.rdescsize =
 			    UGETW(hid->descrs[0].wDescriptorLength);
 	}
+
+	/* See if there is a interrupt out endpoint. */
+	ep = usbd_get_endpoint(uaa->device, uaa->info.bIfaceIndex,
+	    usbhid_config + USBHID_INTR_OUT_DT);
+	if (ep == NULL || ep->methods == NULL)
+		sc->sc_hw.noWriteEp = true;
 
 	error = usbd_req_set_idle(uaa->device, NULL,
 	    uaa->info.bIfaceIndex, 0, 0);
