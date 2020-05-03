@@ -26,28 +26,6 @@
 #ifndef _HIDBUS_H_
 #define _HIDBUS_H_
 
-#define	HID_INPUT_REPORT	0x1
-#define	HID_OUTPUT_REPORT	0x2
-#define	HID_FEATURE_REPORT	0x3
-
-typedef void hid_intr_t(void *context, void *data, hid_size_t len);
-
-struct hid_device_info {
-	device_t	parent;
-	char		name[80];
-	char		serial[80];
-	uint16_t	idBus;
-	uint16_t	idVendor;
-	uint16_t	idProduct;
-	uint16_t	idVersion;
-	uint16_t	rdescsize;	/* Report descriptor size */
-	/* Quirks */
-	bool		isXBox360GP;	/* XBox360 Game Pad */
-	bool		noWriteEp;	/* Do writes through CTRL endpoint */
-	bool		pBootKbd;	/* Support Keyboard Boot Protocol */
-	bool		pBootMouse;	/* Support Mouse Boot Protocol */
-};
-
 struct hidbus_report_descr {
 	void		*data;
 	hid_size_t	len;

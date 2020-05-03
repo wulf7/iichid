@@ -47,6 +47,10 @@ SYSCTL_DECL(_hw_hid);
 #define	HUG_D_PAD_LEFT	0x93
 #endif
 
+#define	HID_INPUT_REPORT	0x1
+#define	HID_OUTPUT_REPORT	0x2
+#define	HID_FEATURE_REPORT	0x3
+
 #define	HID_IN_POLLING_MODE_FUNC() hid_in_polling_mode()
 #define	HID_IN_POLLING_MODE_VALUE() (SCHEDULER_STOPPED() || kdb_active)
 
@@ -67,6 +71,23 @@ struct hid_absinfo {
 	int32_t res;
 };
 
+typedef void hid_intr_t(void *context, void *data, hid_size_t len);
+
+struct hid_device_info {
+	device_t	parent;
+	char		name[80];
+	char		serial[80];
+	uint16_t	idBus;
+	uint16_t	idVendor;
+	uint16_t	idProduct;
+	uint16_t	idVersion;
+	uint16_t	rdescsize;	/* Report descriptor size */
+	/* Quirks */
+	bool		isXBox360GP;	/* XBox360 Game Pad */
+	bool		noWriteEp;	/* Do writes through CTRL endpoint */
+	bool		pBootKbd;	/* Support Keyboard Boot Protocol */
+	bool		pBootMouse;	/* Support Mouse Boot Protocol */
+};
 
 /* OpenBSD/NetBSD compat shim */
 #define	HID_GET_USAGE(u) ((u) & 0xffff)
