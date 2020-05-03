@@ -57,6 +57,7 @@ __FBSDID("$FreeBSD$");
 #include "hid.h"
 #include "hidbus.h"
 #include "hid_if.h"
+#include "hid_quirk.h"
 
 #include "iichid.h"
 
@@ -832,9 +833,6 @@ iichid_intr_setup(device_t dev, struct mtx *mtx, hid_intr_t intr,
 	/* Write and get/set_report sizes are limited by I2C-HID protocol */
 	rdesc->wrsize = rdesc->grsize = rdesc->srsize = IICHID_SIZE_MAX;
 
-	sc->hw.noWriteEp =
-	    (sc->desc.wOutputRegister == 0 || sc->desc.wMaxOutputLength == 0);
-
 	sc->intr_handler = intr;
 	sc->intr_ctx = context;
 	sc->intr_mtx = mtx;
@@ -1035,6 +1033,9 @@ iichid_attach(device_t dev)
 	    sc->hw.idVendor, sc->hw.idProduct);
 
 	AcpiOsFree(device_info);
+
+	if (sc->desc.wOutputRegister == 0 || sc->desc.wMaxOutputLength == 0)
+		hid_add_dynamic_quirk(&sc->hw, HQ_NOWRITE);
 
 	error = iichid_set_power(sc, I2C_HID_POWER_ON);
 	if (error) {

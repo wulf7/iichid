@@ -43,6 +43,7 @@ __FBSDID("$FreeBSD$");
 
 #include "hid.h"
 #include "hidbus.h"
+#include "hid_quirk.h"
 #include "hmap.h"
 
 #define	HID_DEBUG_VAR	hms_debug
@@ -197,7 +198,8 @@ hms_identify(driver_t *driver, device_t parent)
 	 * If device claimed boot protocol support but do not have report
 	 * descriptor, load one defined in "Appendix B.2" of HID1_11.pdf
 	 */
-	if (hid_get_report_descr(parent, NULL, NULL) != 0 && hw->pBootMouse)
+	if (hid_get_report_descr(parent, NULL, NULL) != 0 &&
+	    hid_test_quirk(hw, HQ_HAS_MS_BOOTPROTO))
 		(void)hid_set_report_descr(parent, hms_boot_desc,
 		    sizeof(hms_boot_desc));
 }
@@ -239,6 +241,7 @@ static int
 hms_attach(device_t dev)
 {
 	struct hms_softc *sc = device_get_softc(dev);
+	const struct hid_device_info *hw = hid_get_device_info(dev);
 	struct hmap_hid_item *hi;
 	void *d_ptr;
 	hid_size_t d_len;
@@ -257,12 +260,10 @@ hms_attach(device_t dev)
 	    memcmp(d_ptr, hms_boot_desc, sizeof(hms_boot_desc)) == 0);
 	(void)hid_set_protocol(dev, set_report_proto ? 1 : 0);
 
-#ifdef NOT_YET
-	if (usb_test_quirk(uaa, UQ_MS_REVZ)) {
+	if (hid_test_quirk(hw, HQ_MS_REVZ)) {
 		/* Some wheels need the Z axis reversed. */
 		sc->rev_wheel = true;
 	}
-#endif
 
 	error = hmap_attach(dev);
 	if (error)

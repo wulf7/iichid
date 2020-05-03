@@ -51,6 +51,8 @@ SYSCTL_DECL(_hw_hid);
 #define	HID_OUTPUT_REPORT	0x2
 #define	HID_FEATURE_REPORT	0x3
 
+#define	HID_MAX_AUTO_QUIRK	8	/* maximum number of dynamic quirks */
+
 #define	HID_IN_POLLING_MODE_FUNC() hid_in_polling_mode()
 #define	HID_IN_POLLING_MODE_VALUE() (SCHEDULER_STOPPED() || kdb_active)
 
@@ -71,8 +73,6 @@ struct hid_absinfo {
 	int32_t res;
 };
 
-typedef void hid_intr_t(void *context, void *data, hid_size_t len);
-
 struct hid_device_info {
 	char		name[80];
 	char		serial[80];
@@ -81,16 +81,16 @@ struct hid_device_info {
 	uint16_t	idProduct;
 	uint16_t	idVersion;
 	hid_size_t	rdescsize;	/* Report descriptor size */
-	/* Quirks */
-	bool		isXBox360GP;	/* XBox360 Game Pad */
-	bool		noWriteEp;	/* Do writes through CTRL endpoint */
-	bool		pBootKbd;	/* Support Keyboard Boot Protocol */
-	bool		pBootMouse;	/* Support Mouse Boot Protocol */
+	uint8_t		autoQuirk[HID_MAX_AUTO_QUIRK];
 };
 
 /* OpenBSD/NetBSD compat shim */
 #define	HID_GET_USAGE(u) ((u) & 0xffff)
 #define	HID_GET_USAGE_PAGE(u) (((u) >> 16) & 0xffff)
+
+typedef void hid_intr_t(void *context, void *data, hid_size_t len);
+typedef bool hid_test_quirk_t(const struct hid_device_info *dev_info,
+    uint16_t quirk);
 
 static __inline uint32_t
 hid_get_udata(const uint8_t *buf, hid_size_t len, struct hid_location *loc)
@@ -108,6 +108,9 @@ int	hid_tlc_locate(const void *desc, hid_size_t size, int32_t u,
 	    enum hid_kind k, uint8_t tlc_index, uint8_t index,
 	    struct hid_location *loc, uint32_t *flags, uint8_t *id,
 	    struct hid_absinfo *ai);
+bool	hid_test_quirk(const struct hid_device_info *dev_info, uint16_t quirk);
+int	hid_add_dynamic_quirk(struct hid_device_info *dev_info,
+	    uint16_t quirk);
 int	hid_in_polling_mode(void);
 
 #endif					/* _HID_H_ */

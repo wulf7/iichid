@@ -50,6 +50,7 @@ __FBSDID("$FreeBSD$");
 #include "hgame.h"
 #include "hid.h"
 #include "hidbus.h"
+#include "hid_quirk.h"
 #include "hmap.h"
 
 #define	HID_DEBUG_VAR	xb360gp_debug
@@ -112,7 +113,7 @@ xb360gp_identify(driver_t *driver, device_t parent)
 	const struct hid_device_info *hw = hid_get_device_info(parent);
 
 	/* the Xbox 360 gamepad has no report descriptor */
-	if (hw->isXBox360GP)
+	if (hid_test_quirk(hw, HQ_IS_XBOX360GP))
 		hid_set_report_descr(parent, xb360gp_rdesc,
 		    sizeof(xb360gp_rdesc));
 }
@@ -123,7 +124,7 @@ xb360gp_probe(device_t dev)
 	const struct hid_device_info *hw = hid_get_device_info(dev);
 	int error;
 
-	if (!hw->isXBox360GP)
+	if (!hid_test_quirk(hw, HQ_IS_XBOX360GP))
 		return (ENXIO);
 
 	hmap_set_debug_var(dev, &HID_DEBUG_VAR);

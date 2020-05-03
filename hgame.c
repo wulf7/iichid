@@ -45,6 +45,7 @@ __FBSDID("$FreeBSD$");
 #include "hgame.h"
 #include "hid.h"
 #include "hidbus.h"
+#include "hid_quirk.h"
 #include "hmap.h"
 
 #define	HID_DEBUG_VAR	hgame_debug
@@ -163,7 +164,7 @@ hgame_probe(device_t dev)
 	const struct hid_device_info *hw = hid_get_device_info(dev);
 	int error, error2;
 
-	if (hw->isXBox360GP)
+	if (hid_test_quirk(hw, HQ_IS_XBOX360GP))
 		return(ENXIO);
 
 	error = hidbus_lookup_driver_info(dev, hgame_devs, sizeof(hgame_devs));

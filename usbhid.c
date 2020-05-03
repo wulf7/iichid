@@ -74,6 +74,7 @@ __FBSDID("$FreeBSD$");
 #include "hid.h"
 #include "hidbus.h"
 #include "hid_if.h"
+#include "hid_quirk.h"
 
 /* Set default probe priority lesser than other USB device drivers have */
 #ifndef USBHID_BUS_PROBE_PRIO
@@ -87,13 +88,6 @@ static SYSCTL_NODE(_hw_usb, OID_AUTO, usbhid, CTLFLAG_RW, 0, "USB usbhid");
 SYSCTL_INT(_hw_usb_usbhid, OID_AUTO, debug, CTLFLAG_RWTUN,
     &usbhid_debug, 0, "Debug level");
 #endif
-
-enum {
-	USBHID_NO_QUIRKS,
-	USBHID_BOOT_MOUSE,
-	USBHID_BOOT_KEYBOARD,
-	USBHID_XBOX360GP,
-};
 
 enum {
 	USBHID_INTR_OUT_DT,
@@ -316,6 +310,7 @@ usbhid_intr_setup(device_t dev, struct mtx *mtx, hid_intr_t intr,
 {
 	struct usbhid_softc* sc = device_get_softc(dev);
 	uint16_t n;
+	bool nowrite;
 	int error;
 
 	sc->sc_intr_handler = intr;
@@ -329,6 +324,8 @@ usbhid_intr_setup(device_t dev, struct mtx *mtx, hid_intr_t intr,
 	sc->sc_config[USBHID_CTRL_DT].bufsize =
 	    MAX(rdesc->isize, MAX(rdesc->osize, rdesc->fsize));
 
+	nowrite = hid_test_quirk(&sc->sc_hw, HQ_NOWRITE);
+
 	/*
 	 * Setup the USB transfers one by one, so they are memory independent
 	 * which allows for handling panics triggered by the HID drivers
@@ -336,7 +333,7 @@ usbhid_intr_setup(device_t dev, struct mtx *mtx, hid_intr_t intr,
 	 * keyboard driver was processing a key at the moment of panic.
 	 */
 	for (n = 0; n != USBHID_N_TRANSFER; n++) {
-		if (sc->sc_hw.noWriteEp && n == USBHID_INTR_OUT_DT)
+		if (nowrite && n == USBHID_INTR_OUT_DT)
 			continue;
 		error = usbd_transfer_setup(sc->sc_udev, &sc->sc_iface_index,
 		    sc->sc_xfer + n, sc->sc_config + n, 1,
@@ -351,7 +348,7 @@ usbhid_intr_setup(device_t dev, struct mtx *mtx, hid_intr_t intr,
 	rdesc->rdsize = usbd_xfer_max_len(sc->sc_xfer[USBHID_INTR_IN_DT]);
 	rdesc->grsize = usbd_xfer_max_len(sc->sc_xfer[USBHID_CTRL_DT]);
 	rdesc->srsize = rdesc->grsize;
-	rdesc->wrsize = sc->sc_hw.noWriteEp ? rdesc->srsize :
+	rdesc->wrsize = nowrite ? rdesc->srsize :
 	    usbd_xfer_max_len(sc->sc_xfer[USBHID_INTR_OUT_DT]);
 
 	sc->sc_intr_buf = malloc(rdesc->rdsize, M_USBDEV, M_ZERO | M_WAITOK);
@@ -598,19 +595,19 @@ static const STRUCT_USB_HOST_ID usbhid_devs[] = {
 	{USB_IFACE_CLASS(UICLASS_VENDOR),
 	 USB_IFACE_SUBCLASS(UISUBCLASS_XBOX360_CONTROLLER),
 	 USB_IFACE_PROTOCOL(UIPROTO_XBOX360_GAMEPAD),
-	 USB_DRIVER_INFO(USBHID_XBOX360GP)},
-	/* generic HID keyboard with boot protocol support */
+	 USB_DRIVER_INFO(HQ_IS_XBOX360GP)},
+	/* HID keyboard with boot protocol support */
 	{USB_IFACE_CLASS(UICLASS_HID),
 	 USB_IFACE_SUBCLASS(UISUBCLASS_BOOT),
 	 USB_IFACE_PROTOCOL(UIPROTO_BOOT_KEYBOARD),
-	 USB_DRIVER_INFO(USBHID_BOOT_KEYBOARD)},
-	/* generic HID mouse with boot protocol support */
+	 USB_DRIVER_INFO(HQ_HAS_KBD_BOOTPROTO)},
+	/* HID mouse with boot protocol support */
 	{USB_IFACE_CLASS(UICLASS_HID),
 	 USB_IFACE_SUBCLASS(UISUBCLASS_BOOT),
 	 USB_IFACE_PROTOCOL(UIPROTO_MOUSE),
-	 USB_DRIVER_INFO(USBHID_BOOT_MOUSE)},
+	 USB_DRIVER_INFO(HQ_HAS_MS_BOOTPROTO)},
 	/* generic HID class */
-	{USB_IFACE_CLASS(UICLASS_HID),},
+	{USB_IFACE_CLASS(UICLASS_HID), USB_DRIVER_INFO(HQ_NONE)},
 };
 
 static int
@@ -672,16 +669,7 @@ usbhid_attach(device_t dev)
 	sc->sc_hw.idVersion = 0;
 
 	/* Set various quirks based on usb_attach_arg */
-	switch(USB_GET_DRIVER_INFO(uaa)) {
-	case USBHID_BOOT_MOUSE:
-		sc->sc_hw.pBootMouse = true;
-		break;
-	case USBHID_BOOT_KEYBOARD:
-		sc->sc_hw.pBootKbd = true;
-		break;
-	case USBHID_XBOX360GP:
-		sc->sc_hw.isXBox360GP = true;
-	}
+	hid_add_dynamic_quirk(&sc->sc_hw, USB_GET_DRIVER_INFO(uaa));
 
 	if (uaa->info.bInterfaceClass == UICLASS_HID &&
 	    uaa->iface != NULL && uaa->iface->idesc != NULL) {
@@ -696,7 +684,7 @@ usbhid_attach(device_t dev)
 	ep = usbd_get_endpoint(uaa->device, uaa->info.bIfaceIndex,
 	    usbhid_config + USBHID_INTR_OUT_DT);
 	if (ep == NULL || ep->methods == NULL)
-		sc->sc_hw.noWriteEp = true;
+		hid_add_dynamic_quirk(&sc->sc_hw, HQ_NOWRITE);
 
 	error = usbd_req_set_idle(uaa->device, NULL,
 	    uaa->info.bIfaceIndex, 0, 0);

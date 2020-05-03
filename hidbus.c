@@ -39,7 +39,7 @@ __FBSDID("$FreeBSD$");
 
 #include "hid.h"
 #include "hidbus.h"
-
+#include "hid_quirk.h"
 #include "hid_if.h"
 
 #include "strcasestr.h"
@@ -63,6 +63,8 @@ struct hidbus_softc {
 	device_t			dev;
 	struct mtx			*lock;
 	struct mtx			mtx;
+
+	bool				nowrite;
 
 	struct hidbus_report_descr	rdesc;
 	int				nest;	/* Child attach nesting lvl */
@@ -296,6 +298,8 @@ hidbus_attach(device_t dev)
 	}
 
 	hidbus_fill_report_descr(&sc->rdesc, d_ptr, d_len);
+
+	sc->nowrite = hid_test_quirk(devinfo, HQ_NOWRITE);
 
 	error = hidbus_attach_children(dev);
 	if (error != 0) {
@@ -608,22 +612,20 @@ int
 hid_write(device_t dev, const void *data, hid_size_t len)
 {
 	struct hidbus_softc *sc;
-	struct hid_device_info *devinfo;
 	uint8_t id;
 
 	if (device_get_devclass(dev) == hidbus_devclass) {
-		devinfo = device_get_ivars(dev);
+		sc = device_get_softc(dev);
 		/*
 		 * Output interrupt endpoint is often optional. If HID device
 		 * do not provide it, send reports via control pipe.
 		 */
-		if (devinfo->noWriteEp) {
-			sc = device_get_softc(dev);
+		if (sc->nowrite) {
 			/* try to extract the ID byte */
 			id = (sc->rdesc.oid & (len > 0)) ?
 			    ((const uint8_t*)data)[0] : 0;
 			return (HID_SET_REPORT(device_get_parent(dev),
-			   data, len, UHID_OUTPUT_REPORT, id));
+			   data, len, HID_OUTPUT_REPORT, id));
 		}
 	}
 

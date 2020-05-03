@@ -39,6 +39,10 @@
 #include <sys/proc.h>
 
 #include "hid.h"
+#include "hid_quirk.h"
+
+static hid_test_quirk_t hid_test_quirk_w;
+hid_test_quirk_t *hid_test_quirk_p = &hid_test_quirk_w;
 
 int
 hid_report_size_1(const void *buf, hid_size_t len, enum hid_kind k, uint8_t id)
@@ -116,6 +120,55 @@ hid_tlc_locate(const void *desc, hid_size_t size, int32_t u, enum hid_kind k,
 		*id = 0;
 	hid_end_parse(d);
 	return (0);
+}
+
+/*------------------------------------------------------------------------*
+ *	hid_test_quirk - test a device for a given quirk
+ *
+ * Return values:
+ * false: The HID device does not have the given quirk.
+ * true: The HID device has the given quirk.
+ *------------------------------------------------------------------------*/
+bool
+hid_test_quirk(const struct hid_device_info *dev_info, uint16_t quirk)
+{
+	bool found;
+	uint8_t x;
+
+	if (quirk == HQ_NONE)
+		return (false);
+
+	/* search the automatic per device quirks first */
+	for (x = 0; x != HID_MAX_AUTO_QUIRK; x++) {
+		if (dev_info->autoQuirk[x] == quirk)
+			return (true);
+	}
+
+	/* search global quirk table, if any */
+	found = (hid_test_quirk_p) (dev_info, quirk);
+
+	return (found);
+}
+
+static bool
+hid_test_quirk_w(const struct hid_device_info *dev_info, uint16_t quirk)
+{
+	return (false);			/* no match */
+}
+
+int
+hid_add_dynamic_quirk(struct hid_device_info *dev_info, uint16_t quirk)
+{
+	uint8_t x;
+
+	for (x = 0; x != HID_MAX_AUTO_QUIRK; x++) {
+		if (dev_info->autoQuirk[x] == 0 ||
+		    dev_info->autoQuirk[x] == quirk) {
+			dev_info->autoQuirk[x] = quirk;
+			return (0);     /* success */
+		}
+	}
+	return (ENOSPC);
 }
 
 int
