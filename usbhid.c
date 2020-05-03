@@ -741,6 +741,5 @@ static driver_t usbhid_driver = {
 DRIVER_MODULE(usbhid, uhub, usbhid_driver, usbhid_devclass, NULL, 0);
 MODULE_DEPEND(usbhid, usb, 1, 1, 1);
 MODULE_DEPEND(usbhid, hid, 1, 1, 1);
-MODULE_DEPEND(usbhid, hidbus, 1, 1, 1);
 MODULE_VERSION(usbhid, 1);
 USB_PNP_HOST_INFO(usbhid_devs);
