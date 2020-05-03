@@ -173,11 +173,6 @@ hidraw_probe(device_t self)
 	if (hidbus_get_index(self) != HIDRAW_INDEX)
 		return (ENXIO);
 
-#ifdef NOT_YET
-	if (usbd_get_quirks(uaa->device)->uq_flags & UQ_HID_IGNORE)
-		return (ENXIO);
-#endif
-
 	hidbus_set_desc(self, "Raw HID Device");
 
 	return (BUS_PROBE_GENERIC);
