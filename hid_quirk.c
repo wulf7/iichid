@@ -155,26 +155,14 @@ static struct hid_quirk_entry hid_quirks[HID_DEV_QUIRKS_MAX] = {
 	/* Holtek USB gaming keyboard */
 	USB_QUIRK(HOLTEK, F85, 0x0000, 0xffff, HQ_KBD_BOOTPROTO),
 };
-#undef USB_QUIRK_VP
+#undef HID_QUIRK_VP
 #undef USB_QUIRK
 
-static const char *hid_quirk_str[HID_QUIRK_MAX] = {
-	[HQ_NONE]		= "HQ_NONE",
-	[HQ_MATCH_VENDOR_ONLY]	= "HQ_MATCH_VENDOR_ONLY",
-
-	[HQ_HAS_KBD_BOOTPROTO]	= "HQ_HAS_KBD_BOOTPROTO",
-	[HQ_HAS_MS_BOOTPROTO]	= "HQ_HAS_MS_BOOTPROTO",
-	[HQ_IS_XBOX360GP]	= "HQ_IS_XBOX360GP",
-	[HQ_NOWRITE]		= "HQ_NOWRITE",
-
-	[HQ_HID_IGNORE]		= "HQ_HID_IGNORE",
-	[HQ_KBD_BOOTPROTO]	= "HQ_KBD_BOOTPROTO",
-	[HQ_MS_BOOTPROTO]	= "HQ_MS_BOOTPROTO",
-	[HQ_MS_BAD_CLASS]	= "HQ_MS_BAD_CLASS",
-	[HQ_MS_LEADING_BYTE]	= "HQ_MS_LEADING_BYTE",
-	[HQ_MS_REVZ]		= "HQ_MS_REVZ",
-	[HQ_SPUR_BUT_UP]	= "HQ_SPUR_BUT_UP",
-};
+/* hid_quirk.h exposes only HID_QUIRK_LIST macro when HQ() is defined */
+#define	HQ(x)	[HQ_##x] = "HQ_"#x
+#include "hid_quirk.h"
+static const char *hid_quirk_str[HID_QUIRK_MAX] = { HID_QUIRK_LIST() };
+#undef HQ
 
 static hid_test_quirk_t hid_test_quirk_by_info;
 

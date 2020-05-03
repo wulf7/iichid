@@ -27,35 +27,46 @@
  * SUCH DAMAGE.
  */
 
+/*
+ * Screening of all content of this file except HID_QUIRK_LIST is a kind of
+ * hack that allows multiple HID_QUIRK_LIST inclusion with different HQ()
+ * wrappers. That save us splitting hid_quirk.h on two header files.
+ */
+#ifndef HQ
 #ifndef _HID_QUIRK_H_
 #define	_HID_QUIRK_H_
+#endif
 
+/*
+ * Keep in sync with share/man/man4/hid_quirk.4
+ */
+#define	HID_QUIRK_LIST(...)						\
+	HQ(NONE),		/* not a valid quirk */			\
+									\
+	HQ(MATCH_VENDOR_ONLY),	/* match quirk on vendor only */	\
+									\
+	/* Autoquirks */						\
+	HQ(HAS_KBD_BOOTPROTO),	/* device supports keyboard boot protocol */ \
+	HQ(HAS_MS_BOOTPROTO),	/* device supports mouse boot protocol */ \
+	HQ(IS_XBOX360GP), 	/* device is XBox 360 GamePad */	\
+	HQ(NOWRITE),		/* device does not support writes */	\
+									\
+	/* Various quirks */						\
+	HQ(HID_IGNORE),		/* device should be ignored by hid class */ \
+	HQ(KBD_BOOTPROTO),	/* device should set the boot protocol */ \
+	HQ(MS_BOOTPROTO),	/* device should set the boot protocol */ \
+	HQ(MS_BAD_CLASS),	/* doesn't identify properly */		\
+	HQ(MS_LEADING_BYTE),	/* mouse sends an unknown leading byte */ \
+	HQ(MS_REVZ),		/* mouse has Z-axis reversed */		\
+	HQ(SPUR_BUT_UP)		/* spurious mouse button up events */
+
+#ifndef	HQ
+#define	HQ(x)	HQ_##x
 enum {
-	/*
-	 * Keep in sync with hid_quirk_str in hid_quirk.c, and with
-	 * share/man/man4/hid_quirk.4
-	 */
-	HQ_NONE,		/* not a valid quirk */
-
-	HQ_MATCH_VENDOR_ONLY,	/* match quirk on vendor only */
-
-	/* Autoquirks */
-	HQ_HAS_KBD_BOOTPROTO,	/* device supports keyboard boot protocol */
-	HQ_HAS_MS_BOOTPROTO,	/* device supports mouse boot protocol */
-	HQ_IS_XBOX360GP, 	/* device is XBox 360 GamePad */
-	HQ_NOWRITE,		/* device does not support writes */
-
-	/* Various quirks */
-
-	HQ_HID_IGNORE,		/* device should be ignored by hid class */
-	HQ_KBD_BOOTPROTO,	/* device should set the boot protocol */
-	HQ_MS_BOOTPROTO,	/* device should set the boot protocol */
-	HQ_MS_BAD_CLASS,	/* doesn't identify properly */
-	HQ_MS_LEADING_BYTE,	/* mouse sends an unknown leading byte */
-	HQ_MS_REVZ,		/* mouse has Z-axis reversed */
-	HQ_SPUR_BUT_UP,		/* spurious mouse button up events */
-
+	HID_QUIRK_LIST(),
 	HID_QUIRK_MAX
 };
+#undef HQ
 
 #endif					/* _HID_QUIRK_H_ */
+#endif					/* HQ */
