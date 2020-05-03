@@ -49,6 +49,7 @@ enum {
 
 	HQ_HID_IGNORE,		/* device should be ignored by hid class */
 	HQ_KBD_BOOTPROTO,	/* device should set the boot protocol */
+	HQ_MS_BOOTPROTO,	/* device should set the boot protocol */
 	HQ_MS_BAD_CLASS,	/* doesn't identify properly */
 	HQ_MS_LEADING_BYTE,	/* mouse sends an unknown leading byte */
 	HQ_MS_REVZ,		/* mouse has Z-axis reversed */

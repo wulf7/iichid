@@ -193,13 +193,18 @@ static void
 hms_identify(driver_t *driver, device_t parent)
 {
 	const struct hid_device_info *hw = hid_get_device_info(parent);
+	void *d_ptr;
+	hid_size_t d_len;
+	int error;
 
 	/*
 	 * If device claimed boot protocol support but do not have report
 	 * descriptor, load one defined in "Appendix B.2" of HID1_11.pdf
 	 */
-	if (hid_get_report_descr(parent, NULL, NULL) != 0 &&
-	    hid_test_quirk(hw, HQ_HAS_MS_BOOTPROTO))
+	error = hid_get_report_descr(parent, &d_ptr, &d_len);
+	if ((error != 0 && hid_test_quirk(hw, HQ_HAS_MS_BOOTPROTO)) ||
+	    (error == 0 && hid_test_quirk(hw, HQ_MS_BOOTPROTO) &&
+	     hid_is_mouse(d_ptr, d_len)))
 		(void)hid_set_report_descr(parent, hms_boot_desc,
 		    sizeof(hms_boot_desc));
 }
