@@ -154,6 +154,8 @@ static struct hid_quirk_entry hid_quirks[HID_DEV_QUIRKS_MAX] = {
 	USB_QUIRK(CORSAIR, STRAFE2, 0x0000, 0xffff, HQ_KBD_BOOTPROTO),
 	/* Holtek USB gaming keyboard */
 	USB_QUIRK(HOLTEK, F85, 0x0000, 0xffff, HQ_KBD_BOOTPROTO),
+	USB_QUIRK(WACOM, GRAPHIRE, 0x0000, 0xffff, HQ_GRAPHIRE),
+	USB_QUIRK(WACOM, GRAPHIRE3_4X5, 0x0000, 0xffff, HQ_GRAPHIRE3_4X5),
 };
 #undef HID_QUIRK_VP
 #undef USB_QUIRK

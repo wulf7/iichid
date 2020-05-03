@@ -47,6 +47,10 @@ SYSCTL_DECL(_hw_hid);
 #define	HUG_D_PAD_LEFT	0x93
 #endif
 
+#ifndef HUD_SEC_BARREL_SWITCH
+#define	HUD_SEC_BARREL_SWITCH	0x5a
+#endif
+
 #define	HID_INPUT_REPORT	0x1
 #define	HID_OUTPUT_REPORT	0x2
 #define	HID_FEATURE_REPORT	0x3

@@ -58,7 +58,9 @@
 	HQ(MS_BAD_CLASS),	/* doesn't identify properly */		\
 	HQ(MS_LEADING_BYTE),	/* mouse sends an unknown leading byte */ \
 	HQ(MS_REVZ),		/* mouse has Z-axis reversed */		\
-	HQ(SPUR_BUT_UP)		/* spurious mouse button up events */
+	HQ(SPUR_BUT_UP),	/* spurious mouse button up events */	\
+	HQ(GRAPHIRE),		/* wacom graphire broken report descr */\
+	HQ(GRAPHIRE3_4X5)	/* wacom graphire3 4x5 report descr */
 
 #ifndef	HQ
 #define	HQ(x)	HQ_##x

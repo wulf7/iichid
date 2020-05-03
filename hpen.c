@@ -45,11 +45,11 @@ __FBSDID("$FreeBSD$");
 #include <dev/evdev/input.h>
 #include <dev/evdev/evdev.h>
 
-#include "usbdevs.h"
 #include <dev/usb/input/usb_rdesc.h>
 
 #include "hid.h"
 #include "hidbus.h"
+#include "hid_quirk.h"
 #include "hmap.h"
 
 #define	HID_DEBUG_VAR	hpen_debug
@@ -62,10 +62,6 @@ static SYSCTL_NODE(_hw_hid, OID_AUTO, hpen, CTLFLAG_RW, 0,
 		"Generic HID tablet");
 SYSCTL_INT(_hw_hid_hpen, OID_AUTO, debug, CTLFLAG_RWTUN,
 		&hpen_debug, 0, "Debug level");
-#endif
-
-#ifndef HUD_SEC_BARREL_SWITCH
-#define	HUD_SEC_BARREL_SWITCH	0x5a
 #endif
 
 static const uint8_t	hpen_graphire_report_descr[] =
@@ -176,28 +172,19 @@ hpen_identify(driver_t *driver, device_t parent)
 	const struct hid_device_info *hw = hid_get_device_info(parent);
 
 	/* the report descriptor for the Wacom Graphire is broken */
-	if (hw->idBus == BUS_USB && hw->idVendor == USB_VENDOR_WACOM) {
-		switch (hw->idProduct) {
-		case USB_PRODUCT_WACOM_GRAPHIRE:
-			hid_set_report_descr(parent,
-			    hpen_graphire_report_descr,
-			    sizeof(hpen_graphire_report_descr));
-	                break;
-
-		case USB_PRODUCT_WACOM_GRAPHIRE3_4X5:
-			hid_set_report_descr(parent,
-			    hpen_graphire3_4x5_report_descr,
-			    sizeof(hpen_graphire3_4x5_report_descr));
-	                break;
-		}
-	}
+	if (hid_test_quirk(hw, HQ_GRAPHIRE))
+		hid_set_report_descr(parent, hpen_graphire_report_descr,
+		    sizeof(hpen_graphire_report_descr));
+	else if (hid_test_quirk(hw, HQ_GRAPHIRE3_4X5))
+		hid_set_report_descr(parent, hpen_graphire3_4x5_report_descr,
+		    sizeof(hpen_graphire3_4x5_report_descr));
 }
 
 static int
 hpen_probe(device_t dev)
 {
-	int32_t usage;
 	int error;
+	bool is_pen;
 
 	error = hidbus_lookup_driver_info(dev, hpen_devs, sizeof(hpen_devs));
 	if (error != 0)
@@ -206,17 +193,14 @@ hpen_probe(device_t dev)
 	hmap_set_debug_var(dev, &HID_DEBUG_VAR);
 
 	/* Check if report descriptor belongs to a HID tablet device */
-	usage = hidbus_get_usage(dev);
-	error = usage == HID_USAGE2(HUP_DIGITIZERS, HUD_DIGITIZER)
-	    ? hmap_add_map(dev, hpen_map_digi, nitems(hpen_map_digi), NULL)
-	    : hmap_add_map(dev, hpen_map_pen, nitems(hpen_map_pen), NULL);
+	is_pen = hidbus_get_usage(dev) == HID_USAGE2(HUP_DIGITIZERS, HUD_PEN);
+	error = is_pen
+	    ? hmap_add_map(dev, hpen_map_pen, nitems(hpen_map_pen), NULL)
+	    : hmap_add_map(dev, hpen_map_digi, nitems(hpen_map_digi), NULL);
 	if (error != 0)
 		return (error);
 
-	if (usage == HID_USAGE2(HUP_DIGITIZERS, HUD_DIGITIZER))
-		hidbus_set_desc(dev, "Digitizer");
-	else
-		hidbus_set_desc(dev, "Pen");
+	hidbus_set_desc(dev, is_pen ? "Pen" : "Digitizer");
 
 	return (BUS_PROBE_DEFAULT);
 }
@@ -227,16 +211,15 @@ hpen_attach(device_t dev)
 	const struct hid_device_info *hw = hid_get_device_info(dev);
 	int error;
 
-	if (hw->idBus == BUS_USB && hw->idVendor == USB_VENDOR_WACOM &&
-	    hw->idProduct == USB_PRODUCT_WACOM_GRAPHIRE3_4X5) {
-		static const uint8_t reportbuf[3] = {2, 2, 2};
+	if (hid_test_quirk(hw, HQ_GRAPHIRE3_4X5)) {
 		/*
 		 * The Graphire3 needs 0x0202 to be written to
 		 * feature report ID 2 before it'll start
 		 * returning digitizer data.
 		 */
+		static const uint8_t reportbuf[3] = {2, 2, 2};
 		error = hid_set_report(dev, reportbuf, sizeof(reportbuf),
-		    HID_FEATURE_REPORT, 2);
+		    HID_FEATURE_REPORT, reportbuf[0]);
 		if (error)
 			DPRINTF("set feature report failed, error=%d "
 			    "(ignored)\n", error);
