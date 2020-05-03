@@ -74,14 +74,13 @@ struct hid_absinfo {
 typedef void hid_intr_t(void *context, void *data, hid_size_t len);
 
 struct hid_device_info {
-	device_t	parent;
 	char		name[80];
 	char		serial[80];
 	uint16_t	idBus;
 	uint16_t	idVendor;
 	uint16_t	idProduct;
 	uint16_t	idVersion;
-	uint16_t	rdescsize;	/* Report descriptor size */
+	hid_size_t	rdescsize;	/* Report descriptor size */
 	/* Quirks */
 	bool		isXBox360GP;	/* XBox360 Game Pad */
 	bool		noWriteEp;	/* Do writes through CTRL endpoint */

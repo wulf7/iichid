@@ -656,11 +656,9 @@ usbhid_attach(device_t dev)
 	device_set_usb_desc(dev);
 
 	sc->sc_udev = uaa->device;
-
 	sc->sc_iface_no = uaa->info.bIfaceNum;
 	sc->sc_iface_index = uaa->info.bIfaceIndex;
 
-	sc->sc_hw.parent = dev;
 	strlcpy(sc->sc_hw.name, device_get_desc(dev), sizeof(sc->sc_hw.name));
 	/* Strip extra parameters from device name created by usb_devinfo */
 	sep = strchr(sc->sc_hw.name, ',');

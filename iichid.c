@@ -1020,7 +1020,6 @@ iichid_attach(device_t dev)
 	DPRINTF(sc, "  IICbus addr       : 0x%02X\n", sc->addr >> 1);
 	DPRINTF(sc, "  HID descriptor reg: 0x%02X\n", sc->config_reg);
 
-	sc->hw.parent = dev;
 	strlcpy(sc->hw.serial, "", sizeof(sc->hw.serial));
 	sc->hw.idBus = BUS_I2C;
 	sc->hw.idVendor = le16toh(sc->desc.wVendorID);
