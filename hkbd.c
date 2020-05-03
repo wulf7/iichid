@@ -65,13 +65,10 @@ __FBSDID("$FreeBSD$");
 
 #include "hid.h"
 #include "hidbus.h"
+#include "hid_quirk.h"
 
 #define	HID_DEBUG_VAR hkbd_debug
 #include "hid_debug.h"
-
-#ifdef NOT_YET
-#include <dev/usb/quirk/usb_quirk.h>
-#endif
 
 #ifdef EVDEV_SUPPORT
 #include <dev/evdev/input.h>
@@ -269,7 +266,6 @@ static const uint8_t hkbd_trtab[256] = {
 	NN, NN, NN, NN, NN, NN, NN, NN,	/* F8 - FF */
 };
 
-#ifdef NOT_YET
 static const uint8_t hkbd_boot_desc[] = {
 	0x05, 0x01, 0x09, 0x06, 0xa1,
 	0x01, 0x05, 0x07, 0x19, 0xe0,
@@ -285,7 +281,6 @@ static const uint8_t hkbd_boot_desc[] = {
 	0x05, 0x07, 0x19, 0x00, 0x2a,
 	0xff, 0x00, 0x81, 0x00, 0xc0
 };
-#endif
 
 /* prototypes */
 static void	hkbd_timeout(void *);
@@ -327,7 +322,6 @@ hkbd_any_key_pressed(struct hkbd_softc *sc)
 	return (ret);
 }
 
-#ifdef NOT_YET
 static bool
 hkbd_any_key_valid(struct hkbd_softc *sc)
 {
@@ -338,7 +332,6 @@ hkbd_any_key_valid(struct hkbd_softc *sc)
 		ret |= (sc->sc_loc_key_valid[i] != 0);
 	return (ret);
 }
-#endif
 
 static bool
 hkbd_is_modifier_key(uint32_t key)
@@ -757,11 +750,6 @@ hkbd_probe(device_t dev)
 	if (error != 0)
                 return (error);
 
-#ifdef NOT_YET
-	if (usb_test_quirk(uaa, UQ_KBD_IGNORE))
-		return (ENXIO);
-#endif
-
 	return (BUS_PROBE_DEFAULT);
 }
 
@@ -930,9 +918,8 @@ hkbd_attach(device_t dev)
 		hkbd_parse_hid(sc, hid_ptr, hid_len, tlc_index);
 	}
 
-#ifdef NOT_YET
 	/* check if we should use the boot protocol */
-	if (usb_test_quirk(uaa, UQ_KBD_BOOTPROTO) ||
+	if (hid_test_quirk(hw, HQ_KBD_BOOTPROTO) ||
 	    (err != 0) || hkbd_any_key_valid(sc) == false) {
 
 		DPRINTF("Forcing boot protocol\n");
@@ -944,9 +931,8 @@ hkbd_attach(device_t dev)
 			    usbd_errstr(err));
 		}
 
-		hkbd_parse_hid(sc, hkbd_boot_desc, sizeof(hkbd_boot_desc));
+		hkbd_parse_hid(sc, hkbd_boot_desc, sizeof(hkbd_boot_desc), 0);
 	}
-#endif
 
 	/* ignore if SETIDLE fails, hence it is not crucial */
 	hid_set_idle(dev, 0, 0);

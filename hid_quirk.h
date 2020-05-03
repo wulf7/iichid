@@ -48,9 +48,7 @@ enum {
 	/* Various quirks */
 
 	HQ_HID_IGNORE,		/* device should be ignored by hid class */
-	HQ_KBD_IGNORE,		/* device should be ignored by kbd class */
 	HQ_KBD_BOOTPROTO,	/* device should set the boot protocol */
-	HQ_HMS_IGNORE,		/* device should be ignored by ums class */
 	HQ_MS_REVZ,		/* mouse has Z-axis reversed */
 
 	HID_QUIRK_MAX
