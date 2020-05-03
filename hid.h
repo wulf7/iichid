@@ -98,6 +98,8 @@ hid_get_udata(const uint8_t *buf, hid_size_t len, struct hid_location *loc)
 	return (hid_get_data_unsigned(buf, len, loc));
 }
 
+extern hid_test_quirk_t *hid_test_quirk_p;
+
 /*
  * hid_report_size_1 is a port of userland hid_report_size() from usbhid(3)
  * to kernel. XXX: to be renamed back to hid_report_size()
@@ -111,6 +113,7 @@ int	hid_tlc_locate(const void *desc, hid_size_t size, int32_t u,
 bool	hid_test_quirk(const struct hid_device_info *dev_info, uint16_t quirk);
 int	hid_add_dynamic_quirk(struct hid_device_info *dev_info,
 	    uint16_t quirk);
+void	hid_quirk_unload(void *arg);
 int	hid_in_polling_mode(void);
 
 #endif					/* _HID_H_ */

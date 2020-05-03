@@ -34,6 +34,7 @@
 
 #include <sys/param.h>
 #include <sys/kdb.h>
+#include <sys/kernel.h>
 #include <sys/lock.h>
 #include <sys/module.h>
 #include <sys/proc.h>
@@ -169,6 +170,22 @@ hid_add_dynamic_quirk(struct hid_device_info *dev_info, uint16_t quirk)
 		}
 	}
 	return (ENOSPC);
+}
+
+void
+hid_quirk_unload(void *arg)
+{
+	/* reset function pointer */
+	hid_test_quirk_p = &hid_test_quirk_w;
+#ifdef NOT_YET
+	hid_quirk_ioctl_p = &hid_quirk_ioctl_w;
+#endif
+
+	/* wait for CPU to exit the loaded functions, if any */
+
+	/* XXX this is a tradeoff */
+
+	pause("WAIT", hz);
 }
 
 int

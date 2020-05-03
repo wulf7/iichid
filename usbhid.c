@@ -666,7 +666,7 @@ usbhid_attach(device_t dev)
 	sc->sc_hw.idBus = BUS_USB;
 	sc->sc_hw.idVendor = uaa->info.idVendor;
 	sc->sc_hw.idProduct = uaa->info.idProduct;
-	sc->sc_hw.idVersion = 0;
+	sc->sc_hw.idVersion = uaa->info.bcdDevice;
 
 	/* Set various quirks based on usb_attach_arg */
 	hid_add_dynamic_quirk(&sc->sc_hw, USB_GET_DRIVER_INFO(uaa));

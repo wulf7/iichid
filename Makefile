@@ -35,6 +35,7 @@ SRCS	+= usbdevs.h
 SRCS	+= usbhid.c
 .endif
 SRCS	+= hidraw.c hidraw.h
+SRCS	+= hid_quirk.h hid_quirk.c
 SRCS	+= acpi_if.h bus_if.h device_if.h iicbus_if.h
 SRCS	+= opt_acpi.h opt_usb.h opt_evdev.h
 SRCS	+= strcasestr.c strcasestr.h
