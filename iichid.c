@@ -1026,6 +1026,68 @@ iichid_fill_device_info(struct i2c_hid_desc *desc, ACPI_HANDLE handle,
 }
 
 static int
+iichid_probe(device_t dev)
+{
+	struct iichid_softc *sc = device_get_softc(dev);
+	ACPI_HANDLE handle;
+	uint16_t addr = iicbus_get_addr(dev) << 1;
+	int error;
+
+	if (sc->probe_done)
+		return (sc->probe_result);
+
+	sc->probe_done = true;
+	sc->probe_result = ENXIO;
+
+	if (acpi_disabled("iichid"))
+		return (ENXIO);
+	if (addr == 0)
+		return (ENXIO);
+
+	sc->dev = dev;
+	sc->addr = addr;
+
+#ifdef HAVE_ACPI_IICBUS
+	handle = acpi_get_handle(dev);
+#else
+	handle = iichid_get_handle(dev);
+#endif
+	if (handle == NULL)
+		return (ENXIO);
+
+	if (!acpi_is_iichid(handle))
+		return (ENXIO);
+
+	if (ACPI_FAILURE(iichid_get_config_reg(handle, &sc->config_reg)))
+		return (ENXIO);
+
+	error = iichid_cmd_get_hid_desc(sc, sc->config_reg, &sc->desc);
+	if (error) {
+		device_printf(dev, "could not retrieve HID descriptor from "
+		    "the device: %d\n", error);
+		return (ENXIO);
+	}
+
+	if (le16toh(sc->desc.wHIDDescLength) != 30 ||
+	    le16toh(sc->desc.bcdVersion) != 0x100) {
+		device_printf(dev, "HID descriptor is broken\n");
+		return (ENXIO);
+	}
+
+	/*
+	 * Setup temporary hid_device_info so that we can figure out some
+	 * basic quirks for this device.
+	 */
+	iichid_init_device_info(&sc->desc, handle, &sc->hw);
+
+	if (hid_test_quirk(&sc->hw, HQ_HID_IGNORE))
+		return (ENXIO);
+
+	sc->probe_result = BUS_PROBE_DEFAULT;
+	return (sc->probe_result);
+}
+
+static int
 iichid_attach(device_t dev)
 {
 	struct iichid_softc* sc = device_get_softc(dev);
@@ -1139,68 +1201,6 @@ iichid_attach(device_t dev)
 done:
 	(void)iichid_set_power(sc, I2C_HID_POWER_OFF);
 	return (error);
-}
-
-static int
-iichid_probe(device_t dev)
-{
-	struct iichid_softc *sc = device_get_softc(dev);
-	ACPI_HANDLE handle;
-	uint16_t addr = iicbus_get_addr(dev) << 1;
-	int error;
-
-	if (sc->probe_done)
-		return (sc->probe_result);
-
-	sc->probe_done = true;
-	sc->probe_result = ENXIO;
-
-	if (acpi_disabled("iichid"))
-		return (ENXIO);
-	if (addr == 0)
-		return (ENXIO);
-
-	sc->dev = dev;
-	sc->addr = addr;
-
-#ifdef HAVE_ACPI_IICBUS
-	handle = acpi_get_handle(dev);
-#else
-	handle = iichid_get_handle(dev);
-#endif
-	if (handle == NULL)
-		return (ENXIO);
-
-	if (!acpi_is_iichid(handle))
-		return (ENXIO);
-
-	if (ACPI_FAILURE(iichid_get_config_reg(handle, &sc->config_reg)))
-		return (ENXIO);
-
-	error = iichid_cmd_get_hid_desc(sc, sc->config_reg, &sc->desc);
-	if (error) {
-		device_printf(dev, "could not retrieve HID descriptor from "
-		    "the device: %d\n", error);
-		return (ENXIO);
-	}
-
-	if (le16toh(sc->desc.wHIDDescLength) != 30 ||
-	    le16toh(sc->desc.bcdVersion) != 0x100) {
-		device_printf(dev, "HID descriptor is broken\n");
-		return (ENXIO);
-	}
-
-	/*
-	 * Setup temporary hid_device_info so that we can figure out some
-	 * basic quirks for this device.
-	 */
-	iichid_init_device_info(&sc->desc, handle, &sc->hw);
-
-	if (hid_test_quirk(&sc->hw, HQ_HID_IGNORE))
-		return (ENXIO);
-
-	sc->probe_result = BUS_PROBE_DEFAULT;
-	return (sc->probe_result);
 }
 
 static int
