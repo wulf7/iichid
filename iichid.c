@@ -987,13 +987,49 @@ iichid_set_protocol(device_t dev, uint16_t protocol)
 	return (ENOTSUP);
 }
 
+static void
+iichid_init_device_info(struct i2c_hid_desc *desc, ACPI_HANDLE handle,
+    struct hid_device_info *hw)
+{
+
+	hw->idBus = BUS_I2C;
+	hw->idVendor = le16toh(desc->wVendorID);
+	hw->idProduct = le16toh(desc->wProductID);
+	hw->idVersion = le16toh(desc->wVersionID);
+}
+
+static int
+iichid_fill_device_info(struct i2c_hid_desc *desc, ACPI_HANDLE handle,
+    struct hid_device_info *hw)
+{
+	ACPI_DEVICE_INFO *device_info;
+
+	/* get ACPI HID. It is a base part of the device name */
+	if (ACPI_FAILURE(AcpiGetObjectInfo(handle, &device_info)))
+		return (ENXIO);
+
+	snprintf(hw->name, sizeof(hw->name), "%s:%02lX %04X:%04X",
+	    (device_info->Valid & ACPI_VALID_HID) ?
+	    device_info->HardwareId.String : "Unknown",
+	    (device_info->Valid & ACPI_VALID_UID) ?
+	    strtoul(device_info->UniqueId.String, NULL, 10) : 0UL,
+	    le16toh(desc->wVendorID), le16toh(desc->wProductID));
+
+	AcpiOsFree(device_info);
+
+	strlcpy(hw->serial, "", sizeof(hw->serial));
+	hw->rdescsize = le16toh(desc->wReportDescLength);
+	if (desc->wOutputRegister == 0 || desc->wMaxOutputLength == 0)
+		hid_add_dynamic_quirk(hw, HQ_NOWRITE);
+
+	return (0);
+}
+
 static int
 iichid_attach(device_t dev)
 {
 	struct iichid_softc* sc = device_get_softc(dev);
 	ACPI_HANDLE handle;
-	ACPI_STATUS status;
-	ACPI_DEVICE_INFO *device_info;
 	device_t child;
 	int error;
 
@@ -1006,36 +1042,15 @@ iichid_attach(device_t dev)
 	if (handle == NULL)
 		return (ENXIO);
 
-	/* get ACPI HID. It is a base part of the evdev device name */
-	status = AcpiGetObjectInfo(handle, &device_info);
-	if (ACPI_FAILURE(status)) {
+	if (iichid_fill_device_info(&sc->desc, handle, &sc->hw) != 0) {
 		device_printf(dev, "error evaluating AcpiGetObjectInfo\n");
 		return (ENXIO);
 	}
 
-	DPRINTF(sc, "  ACPI Hardware ID  : %s\n",
-	    device_info->HardwareId.String);
+	device_printf(dev, "<%s I2C HID device> on %s\n",
+	    sc->hw.name, device_get_nameunit(device_get_parent(dev)));
 	DPRINTF(sc, "  IICbus addr       : 0x%02X\n", sc->addr >> 1);
 	DPRINTF(sc, "  HID descriptor reg: 0x%02X\n", sc->config_reg);
-
-	strlcpy(sc->hw.serial, "", sizeof(sc->hw.serial));
-	sc->hw.idBus = BUS_I2C;
-	sc->hw.idVendor = le16toh(sc->desc.wVendorID);
-	sc->hw.idProduct = le16toh(sc->desc.wProductID);
-	sc->hw.idVersion = le16toh(sc->desc.wVersionID);
-	sc->hw.rdescsize = le16toh(sc->desc.wReportDescLength);
-
-	snprintf(sc->hw.name, sizeof(sc->hw.name), "%s:%02lX %04X:%04X",
-	    (device_info->Valid & ACPI_VALID_HID) ?
-	    device_info->HardwareId.String : "Unknown",
-	    (device_info->Valid & ACPI_VALID_UID) ?
-	    strtoul(device_info->UniqueId.String, NULL, 10) : 0UL,
-	    sc->hw.idVendor, sc->hw.idProduct);
-
-	AcpiOsFree(device_info);
-
-	if (sc->desc.wOutputRegister == 0 || sc->desc.wMaxOutputLength == 0)
-		hid_add_dynamic_quirk(&sc->hw, HQ_NOWRITE);
 
 	error = iichid_set_power(sc, I2C_HID_POWER_ON);
 	if (error) {
@@ -1174,6 +1189,15 @@ iichid_probe(device_t dev)
 		device_printf(dev, "HID descriptor is broken\n");
 		return (ENXIO);
 	}
+
+	/*
+	 * Setup temporary hid_device_info so that we can figure out some
+	 * basic quirks for this device.
+	 */
+	iichid_init_device_info(&sc->desc, handle, &sc->hw);
+
+	if (hid_test_quirk(&sc->hw, HQ_HID_IGNORE))
+		return (ENXIO);
 
 	sc->probe_result = BUS_PROBE_DEFAULT;
 	return (sc->probe_result);
