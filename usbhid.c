@@ -588,6 +588,57 @@ usbhid_set_protocol(device_t dev, uint16_t protocol)
 	return (usbhid_sync_xfer(sc, USBHID_CTRL_DT, &req, NULL));
 }
 
+static void
+usbhid_init_device_info(struct usb_attach_arg *uaa, struct hid_device_info *hw)
+{
+
+	hw->idBus = BUS_USB;
+	hw->idVendor = uaa->info.idVendor;
+	hw->idProduct = uaa->info.idProduct;
+	hw->idVersion = uaa->info.bcdDevice;
+
+	/* Set various quirks based on usb_attach_arg */
+	hid_add_dynamic_quirk(hw, USB_GET_DRIVER_INFO(uaa));
+}
+
+static void
+usbhid_fill_device_info(struct usb_attach_arg *uaa, struct hid_device_info *hw)
+{
+	struct usb_device *udev = uaa->device;
+	struct usb_interface *iface = uaa->iface;
+	struct usb_hid_descriptor *hid;
+	struct usb_endpoint *ep;
+	int error = -1;
+
+	/* try to get the interface string ! */
+	if (iface != NULL && iface->idesc != NULL &&
+	    iface->idesc->iInterface != 0)
+		error = usbd_req_get_string_any(udev, NULL, hw->name,
+		    sizeof(hw->name), iface->idesc->iInterface);
+
+	/* use default description */
+	if (error != 0)
+		snprintf(hw->name, sizeof(hw->name), "%s %s",
+		    usb_get_manufacturer(udev), usb_get_product(udev));
+
+	strlcpy(hw->serial, usb_get_serial(udev), sizeof(hw->serial));
+
+	if (uaa->info.bInterfaceClass == UICLASS_HID &&
+	    iface != NULL && iface->idesc != NULL) {
+		hid = hid_get_descriptor_from_usb(
+		    usbd_get_config_descriptor(udev), iface->idesc);
+		if (hid != NULL)
+			hw->rdescsize =
+			    UGETW(hid->descrs[0].wDescriptorLength);
+	}
+
+	/* See if there is a interrupt out endpoint. */
+	ep = usbd_get_endpoint(udev, uaa->info.bIfaceIndex,
+	    usbhid_config + USBHID_INTR_OUT_DT);
+	if (ep == NULL || ep->methods == NULL)
+		hid_add_dynamic_quirk(hw, HQ_NOWRITE);
+}
+
 static const STRUCT_USB_HOST_ID usbhid_devs[] = {
 	/* the Xbox 360 gamepad doesn't use the HID class */
 	{USB_IFACE_CLASS(UICLASS_VENDOR),
@@ -612,6 +663,7 @@ static int
 usbhid_probe(device_t dev)
 {
 	struct usb_attach_arg *uaa = device_get_ivars(dev);
+	struct usbhid_softc *sc = device_get_softc(dev);
 	int error;
 
 	DPRINTFN(11, "\n");
@@ -623,14 +675,23 @@ usbhid_probe(device_t dev)
 	if (error)
 		return (error);
 
-#ifndef	ENABLE_HKBD
-	/* hkbd can not be compiled on 12.1-RELEASE. Use ukbd instead of it */
-	if (USB_GET_DRIVER_INFO(uaa) == USBHID_BOOT_KEYBOARD)
-		return (ENXIO);
-#endif
-
 	if (usb_test_quirk(uaa, UQ_HID_IGNORE))
 		return (ENXIO);
+
+	/*
+	 * Setup temporary hid_device_info so that we can figure out some
+	 * basic quirks for this device.
+	 */
+	usbhid_init_device_info(uaa, &sc->sc_hw);
+
+	if (hid_test_quirk(&sc->sc_hw, HQ_HID_IGNORE))
+		return (ENXIO);
+
+#ifndef	ENABLE_HKBD
+	/* hkbd can not be compiled on 12.1-RELEASE. Use ukbd instead of it */
+	if (hid_test_quirk(&sc->sc_hw, HQ_HAS_KBD_BOOTPROTO))
+		return (ENXIO);
+#endif
 
 	return (USBHID_BUS_PROBE_PRIO);
 }
@@ -640,10 +701,7 @@ usbhid_attach(device_t dev)
 {
 	struct usb_attach_arg *uaa = device_get_ivars(dev);
 	struct usbhid_softc *sc = device_get_softc(dev);
-	struct usb_hid_descriptor *hid;
-	struct usb_endpoint *ep;
 	device_t child;
-	char *sep;
 	int error = 0;
 
 	DPRINTFN(10, "sc=%p\n", sc);
@@ -654,35 +712,7 @@ usbhid_attach(device_t dev)
 	sc->sc_iface_no = uaa->info.bIfaceNum;
 	sc->sc_iface_index = uaa->info.bIfaceIndex;
 
-	strlcpy(sc->sc_hw.name, device_get_desc(dev), sizeof(sc->sc_hw.name));
-	/* Strip extra parameters from device name created by usb_devinfo */
-	sep = strchr(sc->sc_hw.name, ',');
-	if (sep != NULL)
-		*sep = '\0';
-	strlcpy(sc->sc_hw.serial, usb_get_serial(uaa->device),
-	    sizeof(sc->sc_hw.serial));
-	sc->sc_hw.idBus = BUS_USB;
-	sc->sc_hw.idVendor = uaa->info.idVendor;
-	sc->sc_hw.idProduct = uaa->info.idProduct;
-	sc->sc_hw.idVersion = uaa->info.bcdDevice;
-
-	/* Set various quirks based on usb_attach_arg */
-	hid_add_dynamic_quirk(&sc->sc_hw, USB_GET_DRIVER_INFO(uaa));
-
-	if (uaa->info.bInterfaceClass == UICLASS_HID &&
-	    uaa->iface != NULL && uaa->iface->idesc != NULL) {
-		hid = hid_get_descriptor_from_usb(usbd_get_config_descriptor(
-		    sc->sc_udev), uaa->iface->idesc);
-		if (hid != NULL)
-			sc->sc_hw.rdescsize =
-			    UGETW(hid->descrs[0].wDescriptorLength);
-	}
-
-	/* See if there is a interrupt out endpoint. */
-	ep = usbd_get_endpoint(uaa->device, uaa->info.bIfaceIndex,
-	    usbhid_config + USBHID_INTR_OUT_DT);
-	if (ep == NULL || ep->methods == NULL)
-		hid_add_dynamic_quirk(&sc->sc_hw, HQ_NOWRITE);
+	usbhid_fill_device_info(uaa, &sc->sc_hw);
 
 	error = usbd_req_set_idle(uaa->device, NULL,
 	    uaa->info.bIfaceIndex, 0, 0);
