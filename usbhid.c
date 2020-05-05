@@ -608,19 +608,9 @@ usbhid_fill_device_info(struct usb_attach_arg *uaa, struct hid_device_info *hw)
 	struct usb_interface *iface = uaa->iface;
 	struct usb_hid_descriptor *hid;
 	struct usb_endpoint *ep;
-	int error = -1;
 
-	/* try to get the interface string ! */
-	if (iface != NULL && iface->idesc != NULL &&
-	    iface->idesc->iInterface != 0)
-		error = usbd_req_get_string_any(udev, NULL, hw->name,
-		    sizeof(hw->name), iface->idesc->iInterface);
-
-	/* use default description */
-	if (error != 0)
-		snprintf(hw->name, sizeof(hw->name), "%s %s",
-		    usb_get_manufacturer(udev), usb_get_product(udev));
-
+	snprintf(hw->name, sizeof(hw->name), "%s %s",
+	    usb_get_manufacturer(udev), usb_get_product(udev));
 	strlcpy(hw->serial, usb_get_serial(udev), sizeof(hw->serial));
 
 	if (uaa->info.bInterfaceClass == UICLASS_HID &&
