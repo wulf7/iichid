@@ -60,11 +60,9 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/evdev/input.h>
 
-#include "usbdevs.h"
 #include <dev/usb/usb.h>
 #include <dev/usb/usbdi.h>
 #include <dev/usb/usbdi_util.h>
-#include <dev/usb/usb_ioctl.h>
 
 #define	USB_DEBUG_VAR usbhid_debug
 #include <dev/usb/usb_debug.h>

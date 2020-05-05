@@ -44,7 +44,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/evdev/input.h>
 #include <dev/evdev/evdev.h>
 
-#include "usbdevs.h"
 #include <dev/usb/input/usb_rdesc.h>
 
 #include "hgame.h"
