@@ -224,7 +224,7 @@ hidbus_detach_children(device_t dev)
 	is_bus = device_get_devclass(dev) == hidbus_devclass;
 	bus = is_bus ? dev : device_get_parent(dev);
 
-	KASSERT(device_get_class(bus) == hidbus_devclass,
+	KASSERT(device_get_devclass(bus) == hidbus_devclass,
 	    ("Device is not hidbus or it's child"));
 
 	if (is_bus) {
