@@ -113,6 +113,9 @@ struct hmap_item {
 #define	HMAP_ABS(_page, _usage, _code)					\
 	HMAP_ANY((_page), (_usage), EV_ABS, (_code)),			\
 		.relabs = HMAP_ABSOLUTE
+#define	HMAP_SW(_page, _usage, _code)					\
+	HMAP_ANY((_page), (_usage), EV_SW, (_code)),			\
+		.relabs = HMAP_RELABS_ANY
 #define	HMAP_REL_CB(_page, _usage, _callback)				\
 	HMAP_ANY_CB((_page), (_usage), (_callback)),			\
 		.relabs = HMAP_RELATIVE

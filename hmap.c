@@ -344,7 +344,8 @@ hmap_probe_hid_item(struct hid_item *hi, const struct hmap_item *map,
 			if (can_map_variable(hi, map + i, uoff)) {
 				KASSERT(map[i].type == EV_KEY ||
 					map[i].type == EV_REL ||
-					map[i].type == EV_ABS,
+					map[i].type == EV_ABS ||
+					map[i].type == EV_SW,
 				    ("Unsupported event type"));
 				bit_set(caps, i);
 				return (true);
@@ -529,6 +530,10 @@ hmap_parse_hid_item(struct hmap_softc *sc, struct hid_item *hi,
 					    0, hi->logical_minimum,
 					    hi->logical_maximum, 0, 0,
 					    hid_item_resolution(hi));
+					break;
+				case EV_SW:
+					evdev_support_event(sc->evdev, EV_SW);
+					evdev_support_sw(sc->evdev, item->code);
 					break;
 				default:
 					KASSERT(0, ("Unsupported event type"));
