@@ -72,8 +72,6 @@ struct hidbus_softc {
 	STAILQ_HEAD(, hidbus_ivars)	tlcs;
 };
 
-devclass_t hidbus_devclass;
-
 static int
 hidbus_fill_report_descr(struct hidbus_report_descr *hrd, const void *data,
     hid_size_t len)
@@ -701,7 +699,7 @@ static device_method_t hidbus_methods[] = {
         DEVMETHOD_END
 };
 
-
+devclass_t hidbus_devclass;
 driver_t hidbus_driver = {
 	"hidbus",
 	hidbus_methods,
