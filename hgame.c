@@ -184,7 +184,7 @@ hgame_probe(device_t dev)
 	hidbus_set_desc(dev, hidbus_get_driver_info(dev) == HUG_GAME_PAD ?
 	    "Gamepad" : "Joystick");
 
-	return (BUS_PROBE_DEFAULT);
+	return (BUS_PROBE_GENERIC);
 }
 
 static devclass_t hgame_devclass;

@@ -26,7 +26,7 @@ KMOD	= iichid
 SRCS	= iichid.c iichid.h
 .endif
 SRCS	+= hconf.c hconf.h hgame.c hgame.h hms.c hmt.c hpen.c hsctrl.c hcons.c
-SRCS	+= xb360gp.c
+SRCS	+= xb360gp.c ps4dshock.c
 SRCS	+= hidbus.c hidbus.h hid_if.c hid_if.h hid.c hid.h hid_lookup.c
 SRCS	+= hid_debug.h hid_debug.c
 SRCS	+= hmap.h hmap.c

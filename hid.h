@@ -40,6 +40,10 @@
 SYSCTL_DECL(_hw_hid);
 #endif
 
+#ifndef HUG_MULTIAXIS_CNTROLLER
+#define	HUG_MULTIAXIS_CNTROLLER	0x0008
+#endif
+
 #ifndef HUG_D_PAD_UP
 #define	HUG_D_PAD_UP	0x90
 #define	HUG_D_PAD_DOWN	0x91
@@ -49,6 +53,10 @@ SYSCTL_DECL(_hw_hid);
 
 #ifndef HUD_SEC_BARREL_SWITCH
 #define	HUD_SEC_BARREL_SWITCH	0x5a
+#endif
+
+#ifndef	HUC_HEADPHONE
+#define	HUC_HEADPHONE	0x05
 #endif
 
 #define	HID_INPUT_REPORT	0x1
