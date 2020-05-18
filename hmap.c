@@ -156,6 +156,9 @@ hmap_intr(void *context, void *buf, hid_size_t len)
 
 	mtx_assert(hidbus_get_lock(dev), MA_OWNED);
 
+	sc->intr_buf = buf;
+	sc->intr_len = len;
+
 	/* Strip leading "report ID" byte */
 	if (sc->hid_items[0].id) {
 		id = *(uint8_t *)buf;

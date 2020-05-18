@@ -54,6 +54,8 @@ enum hmap_cb_state {
     ((super_sc == NULL) ? HMAP_CB_IS_PROBING : super_sc->cb_state)
 #define	HMAP_CB_GET_SOFTC(...)	((void *)super_sc)
 #define	HMAP_CB_GET_EVDEV(...)	(super_sc == NULL ? NULL : super_sc->evdev)
+#define	HMAP_CB_GET_INTBUF(...)	(super_sc == NULL ? NULL : super_sc->intr_buf)
+#define	HMAP_CB_GET_INTLEN(...)	(super_sc == NULL ? 0 : super_sc->intr_len)
 #define	HMAP_CB_UDATA		(hi->udata)
 #define	HMAP_CB_UDATA64		(hi->udata64)
 typedef int hmap_cb_t(HMAP_CB_ARGS);
@@ -178,6 +180,8 @@ struct hmap_softc {
 
 	int			*debug_var;
 	enum hmap_cb_state	cb_state;
+	void *			intr_buf;
+	hid_size_t		intr_len;
 };
 
 #define	HMAP_CAPS(name, map)	bitstr_t bit_decl((name), nitems(map));
