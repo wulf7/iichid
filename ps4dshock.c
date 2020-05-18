@@ -1076,7 +1076,7 @@ DEFINE_CLASS_1(ps4dshead, ps4dshead_driver, ps4dshead_methods,
     sizeof(struct hmap_softc), hmap_driver);
 DRIVER_MODULE(ps4dshead, hidbus, ps4dshead_driver, ps4dshead_devclass, NULL, 0);
 DEFINE_CLASS_1(ps4dsmtp, ps4dsmtp_driver, ps4dsmtp_methods,
-    sizeof(struct hmap_softc), hmap_driver);
+    sizeof(struct ps4dsmtp_softc), hmap_driver);
 DRIVER_MODULE(ps4dsmtp, hidbus, ps4dsmtp_driver, ps4dsmtp_devclass, NULL, 0);
 DEFINE_CLASS_1(ps4dshock, ps4dshock_driver, ps4dshock_methods,
     sizeof(struct ps4dshock_softc), hmap_driver);
