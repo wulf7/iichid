@@ -830,7 +830,7 @@ ps4dsmtp_compl_cb(HMAP_CB_ARGS)
 		 * touchpad designers so it belongs to GamePad TLC. Fix it with
 		 * direct reading of "Click" button value from interrupt frame.
 		 */
-		sc->btn_loc = (struct hid_location) { 1, 0, 57 };
+		sc->btn_loc = (struct hid_location) { 1, 0, 49 };
 		evdev_support_event(evdev, EV_SYN);
 		evdev_support_event(evdev, EV_KEY);
 		evdev_support_event(evdev, EV_ABS);
