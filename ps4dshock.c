@@ -727,7 +727,6 @@ static const struct hmap_item ps4dshead_map[] = {
 	PS4DS_MAP_VSW(0x0021,		SW_HEADPHONE_INSERT),
 };
 static const struct hmap_item ps4dsmtp_map[] = {
-
 	{ HMAP_ABS_CB(HUP_MICROSOFT, 0x0021, 		ps4dsmtp_npackets_cb)},
 #ifdef PS4DSMTP_ENABLE_HW_TIMESTAMPS
 	{ HMAP_ABS_CB(HUP_DIGITIZERS, HUD_SCAN_TIME,	ps4dsmtp_data_cb) },
