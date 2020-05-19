@@ -185,7 +185,7 @@ static const uint8_t	ps4dshock_rdesc[] = {
 	0x09, 0x56,		//   Usage (0x56)
 	0x55, 0x0C,		//   Unit Exponent (-4)
 	0x66, 0x01, 0x10,	//   Unit (System: SI Linear, Time: Seconds)
-	0x46, 0xFF, 0x00,	//   Physical Maximum (255)
+	0x46, 0xCC, 0x06,	//   Physical Maximum (1740)
 	0x26, 0xFF, 0x00,	//   Logical Maximum (255)
 	0x75, 0x08,		//   Report Size (8)
 	0x95, 0x01,		//   Report Count (1)
@@ -254,7 +254,7 @@ static const uint8_t	ps4dshock_rdesc[] = {
 	0x09, 0x56,		//   Usage (0x56)
 	0x55, 0x0C,		//   Unit Exponent (-4)
 	0x66, 0x01, 0x10,	//   Unit (System: SI Linear, Time: Seconds)
-	0x46, 0xFF, 0x00,	//   Physical Maximum (255)
+	0x46, 0xCC, 0x06,	//   Physical Maximum (1740)
 	0x26, 0xFF, 0x00,	//   Logical Maximum (255)
 	0x75, 0x08,		//   Report Size (8)
 	0x95, 0x01,		//   Report Count (1)
@@ -323,7 +323,7 @@ static const uint8_t	ps4dshock_rdesc[] = {
 	0x09, 0x56,		//   Usage (0x56)
 	0x55, 0x0C,		//   Unit Exponent (-4)
 	0x66, 0x01, 0x10,	//   Unit (System: SI Linear, Time: Seconds)
-	0x46, 0xFF, 0x00,	//   Physical Maximum (255)
+	0x46, 0xCC, 0x06,	//   Physical Maximum (1740)
 	0x26, 0xFF, 0x00,	//   Logical Maximum (255)
 	0x75, 0x08,		//   Report Size (8)
 	0x95, 0x01,		//   Report Count (1)
@@ -656,6 +656,10 @@ struct ps4dsmtp_softc {
 	u_int		npackets;
 	int32_t		*data_ptr;
 	int32_t		data[PS4DS_MAX_TOUCHPAD_PACKETS][PS4DS_NTPUSAGES];
+
+	uint8_t		hw_tstamp;
+	int32_t		ev_tstamp;
+	bool		touch;
 };
 
 #define PS4DS_MAP_BTN(number, code)		\
@@ -819,6 +823,8 @@ ps4dsmtp_compl_cb(HMAP_CB_ARGS)
 	struct ps4dsmtp_softc *sc = HMAP_CB_GET_SOFTC();
 	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV();
 	u_int i;
+	uint8_t hw_tstamp, hw_tstamp_diff;
+	bool touch;
 
 	switch (HMAP_CB_GET_STATE()) {
 	case HMAP_CB_IS_ATTACHING:
@@ -872,10 +878,32 @@ ps4dsmtp_compl_cb(HMAP_CB_ARGS)
 				    sc->data[i][PS4DS_Y2]);
 			} else
 				evdev_push_abs(evdev, ABS_MT_TRACKING_ID, -1);
-			if (sc->data[i][PS4DS_TIP1] == 0 ||
-			    sc->data[i][PS4DS_TIP2] == 0)
-				evdev_push_msc(evdev, MSC_TIMESTAMP,
-				    sc->data[i][PS4DS_TSTAMP]);
+			/*
+			 * Export hardware timestamps in libinput-friendly way.
+			 * Make timestamp counter 32-bit, scale up hardware
+			 * timestamps to be on per 1usec basis and reset
+			 * counter at the start of each touch.
+			 */
+			hw_tstamp = (uint8_t)sc->data[i][PS4DS_TSTAMP];
+			hw_tstamp_diff = hw_tstamp - sc->hw_tstamp;
+			sc->hw_tstamp = hw_tstamp;
+			touch = sc->data[i][PS4DS_TIP1] == 0 ||
+			    sc->data[i][PS4DS_TIP2] == 0;
+			if (touch) {
+				if (hw_tstamp_diff != 0) {
+					if (sc->touch)
+						/*
+						 * Hardware timestamp counter
+						 * ticks in 682 usec interval.
+						 */
+						sc->ev_tstamp += hw_tstamp_diff
+						    * 682;
+					evdev_push_msc(evdev, MSC_TIMESTAMP,
+					    sc->ev_tstamp);
+				}
+			} else
+				sc->ev_tstamp = 0;
+			sc->touch = touch;
 			evdev_sync(evdev);
 		}
 		break;
