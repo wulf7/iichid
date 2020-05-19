@@ -135,7 +135,9 @@ struct hmap_item {
 	HMAP_ANY_CB(0, 0, (_callback)), .compl_cb = true
 
 enum hmap_type {
-	HMAP_TYPE_CALLBACK = 0,	/* HID item is reported with user callback */
+	HMAP_TYPE_COMPLCB = 0,	/* No HID item associated. Runs unconditionally
+				 * at the end of other items processing */
+	HMAP_TYPE_CALLBACK,	/* HID item is reported with user callback */
 	HMAP_TYPE_VARIABLE,	/* HID item is variable (single usage) */
 	HMAP_TYPE_VAR_NULLST,	/* HID item is null state variable */
 	HMAP_TYPE_ARR_LIST,	/* HID item is array with list of usages */
