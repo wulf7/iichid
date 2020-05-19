@@ -652,6 +652,7 @@ struct ps4dshock_softc {
 struct ps4dsmtp_softc {
 	struct hmap_softc	super_sc;
 
+	struct hid_location	btn_loc;
 	u_int		npackets;
 	int32_t		*data_ptr;
 	int32_t		data[PS4DS_MAX_TOUCHPAD_PACKETS][PS4DS_NTPUSAGES];
@@ -790,14 +791,10 @@ ps4dsmtp_npackets_cb(HMAP_CB_ARGS)
 {
 	struct ps4dsmtp_softc *sc = HMAP_CB_GET_SOFTC();
 
-	switch (HMAP_CB_GET_STATE()) {
-	case HMAP_CB_IS_ATTACHING:
-		break;
-	case HMAP_CB_IS_RUNNING:
+	if (HMAP_CB_GET_STATE() == HMAP_CB_IS_RUNNING) {
 		sc->npackets = MIN(PS4DS_MAX_TOUCHPAD_PACKETS, (u_int)ctx);
 		/* Reset pointer here as it is first usage in touchpad TLC */
 		sc->data_ptr = &sc->data[0][0];
-		break;
 	}
 
 	return (0);
@@ -825,6 +822,15 @@ ps4dsmtp_compl_cb(HMAP_CB_ARGS)
 
 	switch (HMAP_CB_GET_STATE()) {
 	case HMAP_CB_IS_ATTACHING:
+		/*
+		 * Dualshock 4 touchpad TLC contained in fixed report
+		 * descriptor is almost compatible with MS precission touchpad
+		 * specs and hmt(4) driver. But... for some reasons "Click"
+		 * button location was grouped with other GamePad buttons by
+		 * touchpad designers so it belongs to GamePad TLC. Fix it with
+		 * direct reading of "Click" button value from interrupt frame.
+		 */
+		sc->btn_loc = (struct hid_location) { 1, 0, 57 };
 		evdev_support_event(evdev, EV_SYN);
 		evdev_support_event(evdev, EV_KEY);
 		evdev_support_event(evdev, EV_ABS);
@@ -840,6 +846,8 @@ ps4dsmtp_compl_cb(HMAP_CB_ARGS)
 		evdev_set_flag(evdev, EVDEV_FLAG_MT_STCOMPAT);
 		break;
 	case HMAP_CB_IS_RUNNING:
+		evdev_push_key(evdev, BTN_LEFT, hid_get_udata(
+		    HMAP_CB_GET_INTBUF(), HMAP_CB_GET_INTLEN(), &sc->btn_loc));
 		for (i = 0; i < sc->npackets; i++) {
 			evdev_push_abs(evdev, ABS_MT_SLOT, 0);
 			if (sc->data[i][PS4DS_TIP1] == 0) {
@@ -870,8 +878,8 @@ ps4dsmtp_compl_cb(HMAP_CB_ARGS)
 		break;
 	}
 
-        /* Do execute callback at interrupt handler and detach */
-        return (0);
+	/* Do execute callback at interrupt handler and detach */
+	return (0);
 }
 
 static int
