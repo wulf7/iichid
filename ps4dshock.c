@@ -846,8 +846,8 @@ ps4dsmtp_compl_cb(HMAP_CB_ARGS)
 		evdev_set_flag(evdev, EVDEV_FLAG_MT_STCOMPAT);
 		break;
 	case HMAP_CB_IS_RUNNING:
-		evdev_push_key(evdev, BTN_LEFT, hid_get_udata(
-		    HMAP_CB_GET_INTBUF(), HMAP_CB_GET_INTLEN(), &sc->btn_loc));
+		evdev_push_key(evdev, BTN_LEFT,
+		    HMAP_CB_GET_UDATA(&sc->btn_loc));
 		for (i = 0; i < sc->npackets; i++) {
 			evdev_push_abs(evdev, ABS_MT_SLOT, 0);
 			if (sc->data[i][PS4DS_TIP1] == 0) {
