@@ -61,6 +61,15 @@ SYSCTL_INT(_hw_hid_ps4dshock, OID_AUTO, debug, CTLFLAG_RWTUN,
 
 #define	PS4DS_NAME	"Sony PS4 Dualshock 4"
 
+/*
+ * Hardware timestamp export is functional but as of May 2020 it does not
+ * fully supported by libinput. Disable it for now as it results in extra
+ * userland wakeups when touch state does not change between consecutive
+ * reports. Evdev tries to filter out such an events but ever changing
+ * timestamp interferes with that.
+ */
+/* #define	PS4DSMTP_ENABLE_HW_TIMESTAMPS	1 */
+
 static const uint8_t	ps4dshock_rdesc[] = {
 	0x05, 0x01,		// Usage Page (Generic Desktop Ctrls)
 	0x09, 0x05,		// Usage (Game Pad)
@@ -657,9 +666,11 @@ struct ps4dsmtp_softc {
 	int32_t		*data_ptr;
 	int32_t		data[PS4DS_MAX_TOUCHPAD_PACKETS][PS4DS_NTPUSAGES];
 
+#ifdef PS4DSMTP_ENABLE_HW_TIMESTAMPS
 	uint8_t		hw_tstamp;
 	int32_t		ev_tstamp;
 	bool		touch;
+#endif
 };
 
 #define PS4DS_MAP_BTN(number, code)		\
@@ -823,8 +834,10 @@ ps4dsmtp_compl_cb(HMAP_CB_ARGS)
 	struct ps4dsmtp_softc *sc = HMAP_CB_GET_SOFTC();
 	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV();
 	u_int i;
+#ifdef PS4DSMTP_ENABLE_HW_TIMESTAMPS
 	uint8_t hw_tstamp, hw_tstamp_diff;
 	bool touch;
+#endif
 
 	switch (HMAP_CB_GET_STATE()) {
 	case HMAP_CB_IS_ATTACHING:
@@ -842,7 +855,9 @@ ps4dsmtp_compl_cb(HMAP_CB_ARGS)
 		evdev_support_event(evdev, EV_ABS);
 		evdev_support_event(evdev, EV_MSC);
 		evdev_support_key(evdev, BTN_LEFT);
+#ifdef PS4DSMTP_ENABLE_HW_TIMESTAMPS
 		evdev_support_msc(evdev, MSC_TIMESTAMP);
+#endif
 		evdev_support_abs(evdev, ABS_MT_SLOT, 0, 0, 1, 0, 0, 0);
 		evdev_support_abs(evdev, ABS_MT_TRACKING_ID, 0, -1, 127, 0, 0, 0);
 		evdev_support_abs(evdev, ABS_MT_POSITION_X, 0, 0, 1920, 0, 0, 30);
@@ -878,6 +893,7 @@ ps4dsmtp_compl_cb(HMAP_CB_ARGS)
 				    sc->data[i][PS4DS_Y2]);
 			} else
 				evdev_push_abs(evdev, ABS_MT_TRACKING_ID, -1);
+#ifdef PS4DSMTP_ENABLE_HW_TIMESTAMPS
 			/*
 			 * Export hardware timestamps in libinput-friendly way.
 			 * Make timestamp counter 32-bit, scale up hardware
@@ -904,6 +920,7 @@ ps4dsmtp_compl_cb(HMAP_CB_ARGS)
 			} else
 				sc->ev_tstamp = 0;
 			sc->touch = touch;
+#endif
 			evdev_sync(evdev);
 		}
 		break;
