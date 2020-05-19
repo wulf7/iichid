@@ -632,7 +632,9 @@ enum ps4ds_led_state {
 };
 
 enum {
+#ifdef PS4DSMTP_ENABLE_HW_TIMESTAMPS
 	PS4DS_TSTAMP,
+#endif
 	PS4DS_CID1,
 	PS4DS_TIP1,
 	PS4DS_X1,
@@ -725,8 +727,11 @@ static const struct hmap_item ps4dshead_map[] = {
 	PS4DS_MAP_VSW(0x0021,		SW_HEADPHONE_INSERT),
 };
 static const struct hmap_item ps4dsmtp_map[] = {
+
 	{ HMAP_ABS_CB(HUP_MICROSOFT, 0x0021, 		ps4dsmtp_npackets_cb)},
+#ifdef PS4DSMTP_ENABLE_HW_TIMESTAMPS
 	{ HMAP_ABS_CB(HUP_DIGITIZERS, HUD_SCAN_TIME,	ps4dsmtp_data_cb) },
+#endif
 	{ HMAP_ABS_CB(HUP_DIGITIZERS, HUD_CONTACTID,	ps4dsmtp_data_cb) },
 	{ HMAP_ABS_CB(HUP_DIGITIZERS, HUD_TIP_SWITCH,	ps4dsmtp_data_cb) },
 	{ HMAP_ABS_CB(HUP_GENERIC_DESKTOP, HUG_X,	ps4dsmtp_data_cb) },
