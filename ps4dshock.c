@@ -857,11 +857,11 @@ ps4dsmtp_compl_cb(HMAP_CB_ARGS)
 		evdev_support_event(evdev, EV_SYN);
 		evdev_support_event(evdev, EV_KEY);
 		evdev_support_event(evdev, EV_ABS);
-		evdev_support_event(evdev, EV_MSC);
-		evdev_support_key(evdev, BTN_LEFT);
 #ifdef PS4DSMTP_ENABLE_HW_TIMESTAMPS
+		evdev_support_event(evdev, EV_MSC);
 		evdev_support_msc(evdev, MSC_TIMESTAMP);
 #endif
+		evdev_support_key(evdev, BTN_LEFT);
 		evdev_support_abs(evdev, ABS_MT_SLOT, 0, 0, 1, 0, 0, 0);
 		evdev_support_abs(evdev, ABS_MT_TRACKING_ID, 0, -1, 127, 0, 0, 0);
 		evdev_support_abs(evdev, ABS_MT_POSITION_X, 0, 0, 1920, 0, 0, 30);
