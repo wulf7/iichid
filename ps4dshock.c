@@ -608,14 +608,14 @@ struct ps4ds_out5 {
 	uint8_t	led_color_r;
 	uint8_t	led_color_g;
 	uint8_t	led_color_b;
-	uint8_t	led_delay_on;
+	uint8_t	led_delay_on;	/* centiseconds */
 	uint8_t	led_delay_off;
 } __attribute__((packed));
 
 static const struct ps4ds_led {
-	uint8_t	r;
-	uint8_t	g;
-	uint8_t	b;
+	int	r;
+	int	g;
+	int	b;
 } ps4ds_leds[] = {
 	/* The first 4 entries match the PS4, other from Linux driver */
 	{ 0x00, 0x00, 0x40 },	/* Blue   */
@@ -657,11 +657,11 @@ struct ps4dshock_softc {
 	struct sx		lock;
 	enum ps4ds_led_state	led_state;
 	struct ps4ds_led	led_color;
-	uint8_t			led_delay_on;	/* in centiseconds */
-	uint8_t			led_delay_off;
+	int			led_delay_on;	/* msecs */
+	int			led_delay_off;
 
-	uint8_t			rumble_right;
-	uint8_t			rumble_left;
+	int			rumble_right;
+	int			rumble_left;
 };
 
 struct ps4dsmtp_softc {
@@ -970,8 +970,9 @@ ps4dshock_write(struct ps4dshock_softc *sc)
 		.led_color_r = led_on ? sc->led_color.r : 0,
 		.led_color_g = led_on ? sc->led_color.g : 0,
 		.led_color_b = led_on ? sc->led_color.b : 0,
-		.led_delay_on = led_blinks ? sc->led_delay_on : 0,
-		.led_delay_off = led_blinks ? sc->led_delay_off : 0,
+		/* convert milliseconds to centiseconds */
+		.led_delay_on = led_blinks ? sc->led_delay_on / 10 : 0,
+		.led_delay_off = led_blinks ? sc->led_delay_off / 10 : 0,
 	};
 
 	/*
@@ -1002,8 +1003,7 @@ static int
 ps4dshock_sysctl(SYSCTL_HANDLER_ARGS)
 {
 	struct ps4dshock_softc *sc;
-	int error;
-	uint8_t arg;
+	int error, arg;
 
 	if (oidp->oid_arg1 == NULL || oidp->oid_arg2 < 0 ||
 	    oidp->oid_arg2 > PD4DSHOCK_SYSCTL_LAST)
@@ -1013,8 +1013,8 @@ ps4dshock_sysctl(SYSCTL_HANDLER_ARGS)
 	sx_xlock(&sc->lock);
 
 	/* Read the current value. */
-	arg = *((uint8_t *)sc + oidp->oid_arg2);
-	error = sysctl_handle_8(oidp, &arg, 0, req);
+	arg = *(int *)((char *)sc + oidp->oid_arg2);
+	error = sysctl_handle_int(oidp, &arg, 0, req);
 
 	/* Sanity check. */
 	if (error || !req->newptr)
@@ -1026,14 +1026,19 @@ ps4dshock_sysctl(SYSCTL_HANDLER_ARGS)
 	 */
 	switch (oidp->oid_arg2) {
 	case PD4DSHOCK_SYSCTL_LED_STATE:
-		if (arg >= PD4DS_LED_CNT)
+		if (arg < 0 || arg >= PD4DS_LED_CNT)
 			error = EINVAL;
 		break;
 	case PD4DSHOCK_SYSCTL_LED_COLOR_R:
 	case PD4DSHOCK_SYSCTL_LED_COLOR_G:
 	case PD4DSHOCK_SYSCTL_LED_COLOR_B:
+		if (arg < 0 || arg > UINT8_MAX)
+			error = EINVAL;
+		break;
 	case PD4DSHOCK_SYSCTL_LED_DELAY_ON:
 	case PD4DSHOCK_SYSCTL_LED_DELAY_OFF:
+		if (arg < 0 || arg > UINT8_MAX * 10)
+			error = EINVAL;
 		break;
 	default:
 		error = EINVAL;
@@ -1041,7 +1046,7 @@ ps4dshock_sysctl(SYSCTL_HANDLER_ARGS)
 
 	/* Update. */
 	if (error == 0) {
-		*((uint8_t *)sc + oidp->oid_arg2) = arg;
+		*(int *)((char *)sc + oidp->oid_arg2) = arg;
 		ps4dshock_write(sc);
 	}
 unlock:
@@ -1153,41 +1158,41 @@ ps4dshock_attach(device_t dev)
 
 	sc->led_state = PS4DS_LED_ON;
 	sc->led_color = ps4ds_leds[device_get_unit(dev) % nitems(ps4ds_leds)];
-	sc->led_delay_on = 100;	/* 1 sec */
-	sc->led_delay_off = 100;
+	sc->led_delay_on = 1000;	/* 1 sec */
+	sc->led_delay_off = 1000;
 	ps4dshock_write(sc);
 
 	sx_init(&sc->lock, "ps4dshock");
 
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(tree), OID_AUTO,
-	    "led_state", CTLTYPE_U8 | CTLFLAG_RW | CTLFLAG_ANYBODY, sc,
+	    "led_state", CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_ANYBODY, sc,
 	    PD4DSHOCK_SYSCTL_LED_STATE, ps4dshock_sysctl, "I",
 	    "LED state: 0 - off, 1 - on, 2 - blinking.");
 
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(tree), OID_AUTO,
-	    "led_color_r", CTLTYPE_U8 | CTLFLAG_RW | CTLFLAG_ANYBODY, sc,
+	    "led_color_r", CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_ANYBODY, sc,
 	    PD4DSHOCK_SYSCTL_LED_COLOR_R, ps4dshock_sysctl, "I",
 	    "LED color. Red component.");
 
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(tree), OID_AUTO,
-	    "led_color_g", CTLTYPE_U8 | CTLFLAG_RW | CTLFLAG_ANYBODY, sc,
+	    "led_color_g", CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_ANYBODY, sc,
 	    PD4DSHOCK_SYSCTL_LED_COLOR_G, ps4dshock_sysctl, "I",
 	    "LED color. Green component.");
 
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(tree), OID_AUTO,
-	    "led_color_b", CTLTYPE_U8 | CTLFLAG_RW | CTLFLAG_ANYBODY, sc,
+	    "led_color_b", CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_ANYBODY, sc,
 	    PD4DSHOCK_SYSCTL_LED_COLOR_B, ps4dshock_sysctl, "I",
 	    "LED color. Blue component.");
 
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(tree), OID_AUTO,
-	    "led_delay_on", CTLTYPE_U8 | CTLFLAG_RW | CTLFLAG_ANYBODY, sc,
+	    "led_delay_on", CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_ANYBODY, sc,
 	    PD4DSHOCK_SYSCTL_LED_DELAY_ON, ps4dshock_sysctl, "I",
-	    "LED blink. On delay.");
+	    "LED blink. On delay, msecs.");
 
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(tree), OID_AUTO,
-	    "led_delay_off", CTLTYPE_U8 | CTLFLAG_RW | CTLFLAG_ANYBODY, sc,
+	    "led_delay_off", CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_ANYBODY, sc,
 	    PD4DSHOCK_SYSCTL_LED_DELAY_OFF, ps4dshock_sysctl, "I",
-	    "LED blink. Off delay.");
+	    "LED blink. Off delay, msecs.");
 
 	return (hmap_attach(dev));
 }
