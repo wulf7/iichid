@@ -1158,8 +1158,8 @@ ps4dshock_attach(device_t dev)
 
 	sc->led_state = PS4DS_LED_ON;
 	sc->led_color = ps4ds_leds[device_get_unit(dev) % nitems(ps4ds_leds)];
-	sc->led_delay_on = 1000;	/* 1 sec */
-	sc->led_delay_off = 1000;
+	sc->led_delay_on = 500;	/* 1 Hz */
+	sc->led_delay_off = 500;
 	ps4dshock_write(sc);
 
 	sx_init(&sc->lock, "ps4dshock");
