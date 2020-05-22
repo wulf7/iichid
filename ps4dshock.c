@@ -137,15 +137,15 @@ static const uint8_t	ps4dshock_rdesc[] = {
 	0x09, 0x08,		// Usage (Multi-axis Controller)
 	0xA1, 0x01,		// Collection (Application)
 	0x05, 0x01,		//   Usage Page (Generic Desktop Ctrls)
-	0x19, 0x30,		//   Usage Minimum (X)
-	0x29, 0x32,		//   Usage Maximum (Z)
+	0x19, 0x33,		//   Usage Minimum (RX)
+	0x29, 0x35,		//   Usage Maximum (RZ)
 	0x16, 0x00, 0x80,	//   Logical Minimum (-32768)
 	0x26, 0xFF, 0x7F,	//   Logical Maximum (32767)
 	0x75, 0x10,		//   Report Size (16)
 	0x95, 0x03,		//   Report Count (3)
 	0x81, 0x02,		//   Input (Data,Var,Abs)
-	0x19, 0x33,		//   Usage Minimum (RX)
-	0x29, 0x35,		//   Usage Maximum (RZ)
+	0x19, 0x30,		//   Usage Minimum (X)
+	0x29, 0x32,		//   Usage Maximum (Z)
 	0x16, 0x00, 0x80,	//   Logical Minimum (-32768)
 	0x26, 0xFF, 0x7F,	//   Logical Maximum (32767)
 	0x95, 0x03,		//   Report Count (3)
@@ -588,12 +588,16 @@ static const uint8_t	ps4dshock_rdesc[] = {
 	0xC0,			// End Collection
 };
 
+#define	PS4DS_GYRO_RES_PER_DEG_S	1024
+#define	PS4DS_ACC_RES_PER_G		8192
 #define	PS4DS_MAX_TOUCHPAD_PACKETS	4
+#define	PS4DS_FEATURE_REPORT2_SIZE	37
 #define	PS4DS_OUTPUT_REPORT5_SIZE	32
 #define	PS4DS_OUTPUT_REPORT11_SIZE	78
 
 static hmap_cb_t	ps4dshock_hat_switch_cb;
 static hmap_cb_t	ps4dshock_compl_cb;
+static hmap_cb_t	ps4dsacc_data_cb;
 static hmap_cb_t	ps4dsacc_compl_cb;
 static hmap_cb_t	ps4dsmtp_data_cb;
 static hmap_cb_t	ps4dsmtp_npackets_cb;
@@ -634,6 +638,18 @@ enum ps4ds_led_state {
 	PD4DS_LED_CNT,
 };
 
+/* Map structure for accelerometer and gyro. */
+struct ps4ds_calib_data {
+	int32_t usage;
+	int32_t code;
+	int32_t res;
+	int32_t range;
+	/* Calibration data for accelerometer and gyro. */
+	int16_t bias;
+	int32_t sens_numer;
+	int32_t sens_denom;
+};
+
 enum {
 #ifdef PS4DSMTP_ENABLE_HW_TIMESTAMPS
 	PS4DS_TSTAMP,
@@ -662,6 +678,12 @@ struct ps4dshock_softc {
 
 	int			rumble_right;
 	int			rumble_left;
+};
+
+struct ps4dsacc_softc {
+	struct hmap_softc	super_sc;
+
+	struct ps4ds_calib_data	calib_data[6];
 };
 
 struct ps4dsmtp_softc {
@@ -729,12 +751,12 @@ static const struct hmap_item ps4dshock_map[] = {
 	PS4DS_COMPLCB(			ps4dshock_compl_cb),
 };
 static const struct hmap_item ps4dsacc_map[] = {
-	PS4DS_MAP_ABS(X,		ABS_X),
-	PS4DS_MAP_ABS(Y,		ABS_Y),
-	PS4DS_MAP_ABS(Z,		ABS_Z),
-	PS4DS_MAP_ABS(RX,		ABS_RX),
-	PS4DS_MAP_ABS(RY,		ABS_RY),
-	PS4DS_MAP_ABS(RZ,		ABS_RZ),
+	PS4DS_MAP_GCB(X,		ps4dsacc_data_cb),
+	PS4DS_MAP_GCB(Y,		ps4dsacc_data_cb),
+	PS4DS_MAP_GCB(Z,		ps4dsacc_data_cb),
+	PS4DS_MAP_GCB(RX,		ps4dsacc_data_cb),
+	PS4DS_MAP_GCB(RY,		ps4dsacc_data_cb),
+	PS4DS_MAP_GCB(RZ,		ps4dsacc_data_cb),
 	PS4DS_COMPLCB(			ps4dsacc_compl_cb),
 };
 static const struct hmap_item ps4dshead_map[] = {
@@ -809,13 +831,51 @@ ps4dshock_compl_cb(HMAP_CB_ARGS)
 }
 
 static int
+ps4dsacc_data_cb(HMAP_CB_ARGS)
+{
+	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV();
+	struct ps4dsacc_softc *sc = HMAP_CB_GET_SOFTC();
+	struct hid_item *hid_item;
+	struct ps4ds_calib_data *calib;
+	u_int i;
+
+	switch (HMAP_CB_GET_STATE()) {
+	case HMAP_CB_IS_ATTACHING:
+		hid_item = (struct hid_item *)ctx;
+		for (i = 0; i < nitems(sc->calib_data); i++) {
+			if (sc->calib_data[i].usage == hid_item->usage) {
+				evdev_support_abs(evdev,
+				     sc->calib_data[i].code, 0,
+				    -sc->calib_data[i].range,
+				     sc->calib_data[i].range, 16, 0,
+				     sc->calib_data[i].res);
+				HMAP_CB_UDATA = &sc->calib_data[i];
+				break;
+			}
+		}
+		break;
+
+	case HMAP_CB_IS_RUNNING:
+		calib = HMAP_CB_UDATA;
+		evdev_push_abs(evdev, calib->code,
+		    ((int64_t)ctx - calib->bias) * calib->sens_numer / calib->sens_denom);
+		break;
+	}
+
+	return (0);
+}
+
+static int
 ps4dsacc_compl_cb(HMAP_CB_ARGS)
 {
 	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV();
 
-	if (HMAP_CB_GET_STATE() == HMAP_CB_IS_ATTACHING)
+	if (HMAP_CB_GET_STATE() == HMAP_CB_IS_ATTACHING) {
+		evdev_support_event(evdev, EV_ABS);
+		evdev_support_event(evdev, EV_MSC);
+		evdev_support_msc(evdev, MSC_TIMESTAMP);
 		evdev_support_prop(evdev, INPUT_PROP_ACCELEROMETER);
-
+	}
         /* Do not execute callback at interrupt handler and detach */
         return (ENOSYS);
 }
@@ -1213,8 +1273,9 @@ ps4dshock_detach(device_t dev)
 static int
 ps4dsacc_attach(device_t dev)
 {
-	uint8_t buf[37];
-	int error;
+	struct ps4dsacc_softc *sc = device_get_softc(dev);
+	uint8_t buf[PS4DS_FEATURE_REPORT2_SIZE];
+	int error, speed_2x, range_2g;
 
 	/* Read accelerometers and gyroscopes calibration data */
 	error = hid_get_report(dev, buf, sizeof(buf), NULL,
@@ -1222,6 +1283,76 @@ ps4dsacc_attach(device_t dev)
 	if (error)
 		DPRINTF("get feature report failed, error=%d "
 		    "(ignored)\n", error);
+
+	DPRINTFN(5, "calibration data: %*D\n", (int)sizeof(buf), buf, " ");
+
+	/*
+	 * Set gyroscope calibration and normalization parameters.
+	 * Data values will be normalized to 1/ PS4DS_GYRO_RES_PER_DEG_S
+	 * degree/s.
+	 */
+#define HGETW(w) ((int16_t)((w)[0] | (((uint16_t)((w)[1])) << 8)))
+	speed_2x = HGETW(&buf[19]) + HGETW(&buf[21]);
+	sc->calib_data[0].usage = HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_RX);
+	sc->calib_data[0].code = ABS_RX;
+	sc->calib_data[0].range = PS4DS_GYRO_RES_PER_DEG_S * 2048;
+	sc->calib_data[0].res = PS4DS_GYRO_RES_PER_DEG_S;
+	sc->calib_data[0].bias = HGETW(&buf[1]);
+	sc->calib_data[0].sens_numer = speed_2x * PS4DS_GYRO_RES_PER_DEG_S;
+	sc->calib_data[0].sens_denom = HGETW(&buf[7]) - HGETW(&buf[9]);
+	/* BT case */
+	/* sc->calib_data[0].sens_denom = HGETW(&buf[7]) - HGETW(&buf[13]); */
+
+	sc->calib_data[1].usage = HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_RY);
+	sc->calib_data[1].code = ABS_RY;
+	sc->calib_data[0].range = PS4DS_GYRO_RES_PER_DEG_S * 2048;
+	sc->calib_data[0].res = PS4DS_GYRO_RES_PER_DEG_S;
+	sc->calib_data[1].bias = HGETW(&buf[3]);
+	sc->calib_data[1].sens_numer = speed_2x * PS4DS_GYRO_RES_PER_DEG_S;
+	sc->calib_data[1].sens_denom = HGETW(&buf[11]) - HGETW(&buf[13]);
+	/* BT case */
+	/* sc->calib_data[1].sens_denom = HGETW(&buf[9]) - HGETW(&buf[15]); */
+
+	sc->calib_data[2].usage = HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_RZ);
+	sc->calib_data[2].code = ABS_RZ;
+	sc->calib_data[0].range = PS4DS_GYRO_RES_PER_DEG_S * 2048;
+	sc->calib_data[0].res = PS4DS_GYRO_RES_PER_DEG_S;
+	sc->calib_data[2].bias = HGETW(&buf[5]);
+	sc->calib_data[2].sens_numer = speed_2x * PS4DS_GYRO_RES_PER_DEG_S;
+	sc->calib_data[2].sens_denom = HGETW(&buf[15]) - HGETW(&buf[17]);
+	/* BT case */
+	/* sc->calib_data[2].sens_denom = HGETW(&buf[11]) - HGETW(&buf[17]); */
+
+	/*
+	 * Set accelerometer calibration and normalization parameters.
+	 * Data values will be normalized to 1 / PS4DS_ACC_RES_PER_G G.
+	 */
+	range_2g = HGETW(&buf[23]) - HGETW(&buf[25]);
+	sc->calib_data[3].usage = HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_X);
+	sc->calib_data[3].code = ABS_X;
+	sc->calib_data[3].range = PS4DS_ACC_RES_PER_G * 4;
+	sc->calib_data[3].res = PS4DS_ACC_RES_PER_G;
+	sc->calib_data[3].bias = HGETW(&buf[23]) - range_2g / 2;
+	sc->calib_data[3].sens_numer = 2 * PS4DS_ACC_RES_PER_G;
+	sc->calib_data[3].sens_denom = range_2g;
+
+	range_2g = HGETW(&buf[27]) - HGETW(&buf[29]);
+	sc->calib_data[4].usage =  HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_Y);
+	sc->calib_data[4].code = ABS_Y;
+	sc->calib_data[3].range = PS4DS_ACC_RES_PER_G * 4;
+	sc->calib_data[3].res = PS4DS_ACC_RES_PER_G;
+	sc->calib_data[4].bias = HGETW(&buf[27]) - range_2g / 2;
+	sc->calib_data[4].sens_numer = 2 * PS4DS_ACC_RES_PER_G;
+	sc->calib_data[4].sens_denom = range_2g;
+
+	range_2g = HGETW(&buf[31]) - HGETW(&buf[33]);
+	sc->calib_data[5].usage = HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_Z);
+	sc->calib_data[5].code = ABS_Z;
+	sc->calib_data[3].range = PS4DS_ACC_RES_PER_G * 4;
+	sc->calib_data[3].res = PS4DS_ACC_RES_PER_G;
+	sc->calib_data[5].bias = HGETW(&buf[31]) - range_2g / 2;
+	sc->calib_data[5].sens_numer = 2 * PS4DS_ACC_RES_PER_G;
+	sc->calib_data[5].sens_denom = range_2g;
 
 	return (hmap_attach(dev));
 }
@@ -1253,7 +1384,7 @@ static device_method_t ps4dsmtp_methods[] = {
 };
 
 DEFINE_CLASS_1(ps4dsacc, ps4dsacc_driver, ps4dsacc_methods,
-    sizeof(struct hmap_softc), hmap_driver);
+    sizeof(struct ps4dsacc_softc), hmap_driver);
 DRIVER_MODULE(ps4dsacc, hidbus, ps4dsacc_driver, ps4dsacc_devclass, NULL, 0);
 DEFINE_CLASS_1(ps4dshead, ps4dshead_driver, ps4dshead_methods,
     sizeof(struct hmap_softc), hmap_driver);
