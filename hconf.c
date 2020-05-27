@@ -48,6 +48,13 @@ __FBSDID("$FreeBSD$");
 
 #include "hconf.h"
 
+#ifndef	HUD_SURFACE_SWITCH
+#define	HUD_SURFACE_SWITCH	0x0057
+#endif
+#ifndef	HUD_BUTTONS_SWITCH
+#define	HUD_BUTTONS_SWITCH	0x0058
+#endif
+
 #define	HID_DEBUG_VAR	hconf_debug
 #include "hid_debug.h"
 
@@ -60,21 +67,47 @@ SYSCTL_INT(_hw_hid_hconf, OID_AUTO, debug, CTLFLAG_RWTUN,
     &hconf_debug, 1, "Debug level");
 #endif
 
-#define	SURFACE_SWITCH	0
-#define	BUTTONS_SWITCH	1
-#define	SWITCH_COUNT	2
+enum feature_control_type {
+	INPUT_MODE = 0,
+	SURFACE_SWITCH,
+	BUTTONS_SWITCH,
+	CONTROLS_COUNT
+};
+
+struct feature_control_descr {
+	const char	*name;
+	const char	*descr;
+	uint16_t	usage;
+} feature_control_descrs[] = {
+	[INPUT_MODE] = {
+		.name = "input_mode",
+		.descr = "HID device input mode: 0 = mouse, 3 = touchpad",
+		.usage = HUD_INPUT_MODE
+	},
+	[SURFACE_SWITCH] = {
+		.name = "surface_switch",
+		.descr = "Enable / disable switch for surface: 1 = on, 0 = off",
+		.usage = HUD_SURFACE_SWITCH
+	},
+	[BUTTONS_SWITCH] = {
+		.name = "buttons_switch",
+		.descr = "Enable / disable switch for buttons: 1 = on, 0 = off",
+		.usage = HUD_BUTTONS_SWITCH
+	},
+};
+
+struct feature_control {
+	u_int			val;
+	struct hid_location	loc;
+	hid_size_t		rlen;
+	uint8_t			rid;
+};
 
 struct hconf_softc {
 	device_t		dev;
 	struct sx		lock;
 
-	u_int			input_mode;
-	struct hid_location	input_mode_loc;
-	hid_size_t		input_mode_rlen;
-	uint8_t			input_mode_rid;
-	struct hid_location     switch_loc[SWITCH_COUNT];
-	uint32_t                switch_rlen[SWITCH_COUNT];
-	uint8_t                 switch_rid[SWITCH_COUNT];
+	struct feature_control	feature_controls[CONTROLS_COUNT];
 };
 
 static device_probe_t		hconf_probe;
@@ -105,31 +138,34 @@ static const struct hid_device_id hconf_devs[] = {
 };
 
 static int
-hconf_set_input_mode_impl(struct hconf_softc *sc, enum hconf_input_mode mode)
+hconf_set_feature_control(struct hconf_softc *sc, int toggle_id, u_int val)
 {
+	struct feature_control *ft;
 	uint8_t *fbuf;
 	int error;
 
-	if (sc->input_mode_rlen <= 1)
+	KASSERT(toggle_id >= 0 && toggle_id < CONTROLS_COUNT,
+	    ("impossible toggle id %d", toggle_id));
+	ft = &sc->feature_controls[toggle_id];
+	if (ft->rlen <= 1)
 		return (ENXIO);
 
-	fbuf = malloc(sc->input_mode_rlen, M_TEMP, M_WAITOK | M_ZERO);
+	fbuf = malloc(ft->rlen, M_TEMP, M_WAITOK | M_ZERO);
 	sx_xlock(&sc->lock);
 
-	/* Input Mode report is not strictly required to be readable */
-	error = hid_get_report(sc->dev, fbuf, sc->input_mode_rlen, NULL,
-	    HID_FEATURE_REPORT, sc->input_mode_rid);
+	/* Reports are not strictly required to be readable */
+	error = hid_get_report(sc->dev, fbuf, ft->rlen, NULL,
+	    HID_FEATURE_REPORT, ft->rid);
 	if (error != 0)
-		bzero(fbuf + 1, sc->input_mode_rlen - 1);
+		bzero(fbuf + 1, ft->rlen - 1);
 
-	fbuf[0] = sc->input_mode_rid;
-	hid_put_data_unsigned(fbuf + 1, sc->input_mode_rlen - 1,
-	    &sc->input_mode_loc, mode);
+	fbuf[0] = ft->rid;
+	hid_put_data_unsigned(fbuf + 1, ft->rlen - 1, &ft->loc, val);
 
-	error = hid_set_report(sc->dev, fbuf, sc->input_mode_rlen,
-	    HID_FEATURE_REPORT, sc->input_mode_rid);
+	error = hid_set_report(sc->dev, fbuf, ft->rlen,
+	    HID_FEATURE_REPORT, ft->rid);
 	if (error == 0)
-		sc->input_mode = mode;
+		ft->val = val;
 
 	sx_unlock(&sc->lock);
 	free(fbuf, M_TEMP);
@@ -138,93 +174,47 @@ hconf_set_input_mode_impl(struct hconf_softc *sc, enum hconf_input_mode mode)
 }
 
 static int
-hconf_input_mode_handler(SYSCTL_HANDLER_ARGS)
+hconf_feature_control_handler(SYSCTL_HANDLER_ARGS)
 {
+	struct feature_control *ft;
 	struct hconf_softc *sc = arg1;
+	int toggle_id = arg2;
 	u_int value;
 	int error;
 
-	value = sc->input_mode;
+	if (toggle_id < 0 || toggle_id >= CONTROLS_COUNT)
+		return (ENXIO);
+
+	ft = &sc->feature_controls[toggle_id];
+	value = ft->val;
 	error = sysctl_handle_int(oidp, &value, 0, req);
 	if (error != 0 || req->newptr == NULL)
 		return (error);
 
-	error = hconf_set_input_mode_impl(sc, value);
-	if (error)
-		DPRINTF("Failed to set input mode: %d\n", error);
-
+	error = hconf_set_feature_control(sc, toggle_id, value);
+	if (error != 0) {
+		DPRINTF("Failed to set %s: %d\n",
+		    feature_control_descrs[toggle_id].name, error);
+	}
         return (0);
 }
 
-static int
-hconf_get_switch(struct hconf_softc *sc, int swtype, u_int *mask)
-{
-	uint8_t *fbuf;
-	int error;
-
-	if (sc->switch_rlen[swtype] <= 1)
-		return (ENXIO);
-
-	fbuf = malloc(sc->switch_rlen[swtype], M_TEMP, M_WAITOK | M_ZERO);
-	sx_xlock(&sc->lock);
-
-	error = hid_get_report(sc->dev, fbuf, sc->switch_rlen[swtype], NULL,
-	    HID_FEATURE_REPORT, sc->switch_rid[swtype]);
-	if (error == 0) {
-		*mask = hid_get_data_unsigned(fbuf + 1,
-		    sc->switch_rlen[swtype] - 1, &sc->switch_loc[swtype]);
-	}
-
-	sx_unlock(&sc->lock);
-	free(fbuf, M_TEMP);
-	return (error);
-}
 
 static int
-hconf_set_switch(struct hconf_softc *sc, int swtype, u_int mask)
+hconf_parse_feature(struct feature_control *ft, uint8_t tlc_index,
+    uint16_t usage, void *d_ptr, hid_size_t d_len)
 {
-	uint8_t *fbuf;
-	int error;
+	uint32_t flags;
 
-	if (sc->switch_rlen[swtype] <= 1)
-		return (ENXIO);
+	if (!hid_tlc_locate(d_ptr, d_len, HID_USAGE2(HUP_DIGITIZERS, usage),
+	    hid_feature, tlc_index, 0, &ft->loc, &flags, &ft->rid, NULL))
+		return (ENOENT);
 
-	fbuf = malloc(sc->switch_rlen[swtype], M_TEMP, M_WAITOK | M_ZERO);
-	sx_xlock(&sc->lock);
+	if ((flags & (HIO_VARIABLE | HIO_RELATIVE)) != HIO_VARIABLE)
+		return (EINVAL);
 
-	error = hid_get_report(sc->dev, fbuf, sc->switch_rlen[swtype],
-	    NULL, HID_FEATURE_REPORT, sc->switch_rid[swtype]);
-	if (error != 0)
-		goto out;
-
-	hid_put_data_unsigned(fbuf + 1, sc->switch_rlen[swtype] - 1,
-	    &sc->switch_loc[swtype], mask);
-	error = hid_set_report(sc->dev, fbuf, sc->switch_rlen[swtype],
-	    HID_FEATURE_REPORT, sc->switch_rid[swtype]);
-
-out:
-	sx_unlock(&sc->lock);
-	free(fbuf, M_TEMP);
-	return (error);
-}
-
-static int
-hconf_switch_handler(SYSCTL_HANDLER_ARGS)
-{
-	struct hconf_softc *sc = arg1;
-	u_int value;
-	int error;
-
-	error = hconf_get_switch(sc, arg2, &value);
-	if (error != 0)
-		return (error);
-
-	error = sysctl_handle_int(oidp, &value, 0, req);
-	if (error != 0 || req->newptr == NULL)
-		return (error);
-
-	error = hconf_set_switch(sc, arg2, value);
-        return (error);
+	ft->rlen = hid_report_size_1(d_ptr, d_len, hid_feature, ft->rid);
+	return (0);
 }
 
 static int
@@ -247,11 +237,11 @@ hconf_attach(device_t dev)
 	struct hconf_softc *sc = device_get_softc(dev);
 	struct sysctl_ctx_list *ctx = device_get_sysctl_ctx(dev);
 	struct sysctl_oid *tree = device_get_sysctl_tree(dev);
-	uint32_t flags;
 	void *d_ptr;
 	hid_size_t d_len;
 	uint8_t tlc_index;
 	int error;
+	int i;
 
 	error = hid_get_report_descr(dev, &d_ptr, &d_len);
 	if (error) {
@@ -264,57 +254,21 @@ hconf_attach(device_t dev)
 	sx_init(&sc->lock, device_get_nameunit(dev));
 
 	tlc_index = hidbus_get_index(dev);
-
-	/* Parse features for input mode switch */
-	if (hid_tlc_locate(d_ptr, d_len,
-	    HID_USAGE2(HUP_DIGITIZERS, HUD_INPUT_MODE), hid_feature, tlc_index,
-	    0, &sc->input_mode_loc, &flags, &sc->input_mode_rid, NULL) &&
-	    (flags & (HIO_VARIABLE | HIO_RELATIVE)) == HIO_VARIABLE)
-		sc->input_mode_rlen = hid_report_size_1(d_ptr, d_len,
-		    hid_feature, sc->input_mode_rid);
-
-	if (sc->input_mode_rlen > 1)
-		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(tree), OID_AUTO,
-		    "input_mode", CTLTYPE_UINT | CTLFLAG_RW, sc, 0,
-		    hconf_input_mode_handler, "I",
-		    "HID device input mode: 0 = mouse, 3 = touchpad");
-
-	/* Parse features for enable / disable switches. */
-	if (hid_tlc_locate(d_ptr, d_len,
-	    HID_USAGE2(HUP_DIGITIZERS, 0x57), hid_feature, tlc_index,
-	    0, &sc->switch_loc[SURFACE_SWITCH], &flags,
-	    &sc->switch_rid[SURFACE_SWITCH], NULL) &&
-		(flags & (HIO_VARIABLE | HIO_RELATIVE)) == HIO_VARIABLE) {
-		sc->switch_rlen[SURFACE_SWITCH] = hid_report_size_1(d_ptr,
-		    d_len, hid_feature, sc->switch_rid[SURFACE_SWITCH]);
-	}
-	if (sc->switch_rlen[SURFACE_SWITCH] > 1) {
-		struct sysctl_ctx_list *ctx = device_get_sysctl_ctx(dev);
-		struct sysctl_oid *tree = device_get_sysctl_tree(dev);
-
-		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(tree), OID_AUTO,
-		    "surface_switch", CTLTYPE_UINT | CTLFLAG_RW, sc,
-		    SURFACE_SWITCH, hconf_switch_handler, "I",
-		    "Enable / disable switch for surface");
-	}
-	if (hid_tlc_locate(d_ptr, d_len,
-	    HID_USAGE2(HUP_DIGITIZERS, 0x58), hid_feature, tlc_index,
-	    0, &sc->switch_loc[BUTTONS_SWITCH], &flags,
-	    &sc->switch_rid[BUTTONS_SWITCH], NULL) &&
-		(flags & (HIO_VARIABLE | HIO_RELATIVE)) == HIO_VARIABLE) {
-		sc->switch_rlen[BUTTONS_SWITCH] = hid_report_size_1(d_ptr,
-		    d_len, hid_feature, sc->switch_rid[BUTTONS_SWITCH]);
-	}
-	if (sc->switch_rlen[BUTTONS_SWITCH] > 1) {
-		struct sysctl_ctx_list *ctx = device_get_sysctl_ctx(dev);
-		struct sysctl_oid *tree = device_get_sysctl_tree(dev);
-
-		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(tree), OID_AUTO,
-		    "buttons_switch", CTLTYPE_UINT | CTLFLAG_RW, sc,
-		    BUTTONS_SWITCH, hconf_switch_handler, "I",
-		    "Enable / disable switch for buttons");
+	for (i = 0; i < nitems(sc->feature_controls); i++) {
+		(void)hconf_parse_feature(&sc->feature_controls[i], tlc_index,
+		    feature_control_descrs[i].usage, d_ptr, d_len);
+		if (sc->feature_controls[i].rlen > 1) {
+			SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(tree), OID_AUTO,
+			    feature_control_descrs[i].name,
+			    CTLTYPE_UINT | CTLFLAG_RW,
+			    sc, i, hconf_feature_control_handler, "I",
+			    feature_control_descrs[i].descr);
+		}
 	}
 
+	/* Fully enable (at least, try to). */
+	(void)hconf_set_feature_control(sc, SURFACE_SWITCH, 1);
+	(void)hconf_set_feature_control(sc, BUTTONS_SWITCH, 1);
 	return (0);
 }
 
@@ -333,11 +287,17 @@ hconf_resume(device_t dev)
 {
 	struct hconf_softc *sc = device_get_softc(dev);
 	int error;
+	int i;
 
-	if (sc->input_mode_rlen > 1) {
-		error = hconf_set_input_mode_impl(sc, sc->input_mode);
-		if (error)
-			DPRINTF("Failed to set input mode: %d\n", error);
+	for (i = 0; i < nitems(sc->feature_controls); i++) {
+		if (sc->feature_controls[i].rlen < 2)
+			continue;
+		error = hconf_set_feature_control(sc, i,
+		    sc->feature_controls[i].val);
+		if (error != 0) {
+			DPRINTF("Failed to restore %s: %d\n",
+			    feature_control_descrs[i].name, error);
+		}
 	}
 
 	return (0);
@@ -348,7 +308,7 @@ hconf_set_input_mode(device_t dev, enum hconf_input_mode mode)
 {
 	struct hconf_softc *sc = device_get_softc(dev);
 
-	return (hconf_set_input_mode_impl(sc, mode));
+	return (hconf_set_feature_control(sc, INPUT_MODE, mode));
 }
 
 DRIVER_MODULE(hconf, hidbus, hconf_driver, hconf_devclass, NULL, 0);
