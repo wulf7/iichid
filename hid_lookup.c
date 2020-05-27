@@ -49,19 +49,23 @@
  * Else: Pointer to matching entry.
  *------------------------------------------------------------------------*/
 const struct hid_device_id *
-hidbus_lookup_id(device_t child, const struct hid_device_id *id,
+hidbus_lookup_id(device_t dev, const struct hid_device_id *id,
     size_t sizeof_id)
 {
-	struct hidbus_ivars *tlc = device_get_ivars(child);
 	const struct hid_device_id *id_end;
 	const struct hid_device_info *info;
+	int32_t usage;
+	bool is_child;
 
 	if (id == NULL) {
 		goto done;
 	}
 
 	id_end = (const void *)(((const uint8_t *)id) + sizeof_id);
-	info = hid_get_device_info(child);
+	info = hid_get_device_info(dev);
+	is_child = device_get_devclass(dev) != hidbus_devclass;
+	if (is_child)
+		usage = hidbus_get_usage(dev);
 
 	/*
 	 * Keep on matching array entries until we find a match or
@@ -69,8 +73,8 @@ hidbus_lookup_id(device_t child, const struct hid_device_id *id,
 	 */
 	for (; id != id_end; id++) {
 
-		if ((id->match_flag_usage) &&
-		    (id->usage != tlc->usage)) {
+		if (is_child && (id->match_flag_usage) &&
+		    (id->usage != usage)) {
 			continue;
 		}
 		if ((id->match_flag_bus) &&

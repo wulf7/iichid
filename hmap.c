@@ -163,9 +163,19 @@ hmap_intr(void *context, void *buf, hid_size_t len)
 		buf = (uint8_t *)buf + 1;
 	}
 
+	sc->intr_buf = buf;
+	sc->intr_len = len;
+
 	for (hi = sc->hid_items; hi < sc->hid_items + sc->nhid_items; hi++) {
+		/* At first run callbacks that not tied to HID items */
+		if (hi->type == HMAP_TYPE_COMPLCB) {
+			if (hi->cb(sc, hi, id) == 0)
+				do_sync = true;
+			continue;
+		}
+
 		/* Ignore irrelevant reports */
-		if (id != hi->id && hi->id != 0)
+		if (id != hi->id)
 			continue;
 
 		/*
@@ -344,7 +354,8 @@ hmap_probe_hid_item(struct hid_item *hi, const struct hmap_item *map,
 			if (can_map_variable(hi, map + i, uoff)) {
 				KASSERT(map[i].type == EV_KEY ||
 					map[i].type == EV_REL ||
-					map[i].type == EV_ABS,
+					map[i].type == EV_ABS ||
+					map[i].type == EV_SW,
 				    ("Unsupported event type"));
 				bit_set(caps, i);
 				return (true);
@@ -530,6 +541,10 @@ hmap_parse_hid_item(struct hmap_softc *sc, struct hid_item *hi,
 					    hi->logical_maximum, 0, 0,
 					    hid_item_resolution(hi));
 					break;
+				case EV_SW:
+					evdev_support_event(sc->evdev, EV_SW);
+					evdev_support_sw(sc->evdev, item->code);
+					break;
 				default:
 					KASSERT(0, ("Unsupported event type"));
 				}
@@ -633,9 +648,9 @@ hmap_parse_hid_descr(struct hmap_softc *sc, uint8_t tlc_index)
 		     map < sc->map[i] + sc->nmap_items[i];
 		     map++) {
 			if (map->has_cb && map->compl_cb &&
-			    map->cb(sc, NULL, 0) == 0) {
+			    map->cb(sc, item, 0) == 0) {
 				item->cb = map->cb;
-				item->type = HMAP_TYPE_CALLBACK;
+				item->type = HMAP_TYPE_COMPLCB;
 				item++;
 			}
 		}

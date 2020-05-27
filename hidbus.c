@@ -72,8 +72,6 @@ struct hidbus_softc {
 	STAILQ_HEAD(, hidbus_ivars)	tlcs;
 };
 
-devclass_t hidbus_devclass;
-
 static int
 hidbus_fill_report_descr(struct hidbus_report_descr *hrd, const void *data,
     hid_size_t len)
@@ -226,7 +224,7 @@ hidbus_detach_children(device_t dev)
 	is_bus = device_get_devclass(dev) == hidbus_devclass;
 	bus = is_bus ? dev : device_get_parent(dev);
 
-	KASSERT(device_get_class(bus) == hidbus_devclass,
+	KASSERT(device_get_devclass(bus) == hidbus_devclass,
 	    ("Device is not hidbus or it's child"));
 
 	if (is_bus) {
@@ -701,7 +699,7 @@ static device_method_t hidbus_methods[] = {
         DEVMETHOD_END
 };
 
-
+devclass_t hidbus_devclass;
 driver_t hidbus_driver = {
 	"hidbus",
 	hidbus_methods,

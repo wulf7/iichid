@@ -180,4 +180,6 @@ int	hid_set_protocol(device_t, uint16_t);
 
 const struct hid_device_info *hid_get_device_info(device_t);
 
+extern devclass_t hidbus_devclass;
+
 #endif	/* _HIDBUS_H_ */

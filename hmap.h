@@ -54,6 +54,10 @@ enum hmap_cb_state {
     ((super_sc == NULL) ? HMAP_CB_IS_PROBING : super_sc->cb_state)
 #define	HMAP_CB_GET_SOFTC(...)	((void *)super_sc)
 #define	HMAP_CB_GET_EVDEV(...)	(super_sc == NULL ? NULL : super_sc->evdev)
+#define	HMAP_CB_GET_DATA(loc)	\
+    hid_get_data(super_sc->intr_buf, super_sc->intr_len, loc)
+#define	HMAP_CB_GET_UDATA(loc)	\
+    hid_get_udata(super_sc->intr_buf, super_sc->intr_len, loc)
 #define	HMAP_CB_UDATA		(hi->udata)
 #define	HMAP_CB_UDATA64		(hi->udata64)
 typedef int hmap_cb_t(HMAP_CB_ARGS);
@@ -113,6 +117,9 @@ struct hmap_item {
 #define	HMAP_ABS(_page, _usage, _code)					\
 	HMAP_ANY((_page), (_usage), EV_ABS, (_code)),			\
 		.relabs = HMAP_ABSOLUTE
+#define	HMAP_SW(_page, _usage, _code)					\
+	HMAP_ANY((_page), (_usage), EV_SW, (_code)),			\
+		.relabs = HMAP_RELABS_ANY
 #define	HMAP_REL_CB(_page, _usage, _callback)				\
 	HMAP_ANY_CB((_page), (_usage), (_callback)),			\
 		.relabs = HMAP_RELATIVE
@@ -128,7 +135,9 @@ struct hmap_item {
 	HMAP_ANY_CB(0, 0, (_callback)), .compl_cb = true
 
 enum hmap_type {
-	HMAP_TYPE_CALLBACK = 0,	/* HID item is reported with user callback */
+	HMAP_TYPE_COMPLCB = 0,	/* No HID item associated. Runs unconditionally
+				 * at the end of other items processing */
+	HMAP_TYPE_CALLBACK,	/* HID item is reported with user callback */
 	HMAP_TYPE_VARIABLE,	/* HID item is variable (single usage) */
 	HMAP_TYPE_VAR_NULLST,	/* HID item is null state variable */
 	HMAP_TYPE_ARR_LIST,	/* HID item is array with list of usages */
@@ -175,6 +184,8 @@ struct hmap_softc {
 
 	int			*debug_var;
 	enum hmap_cb_state	cb_state;
+	void *			intr_buf;
+	hid_size_t		intr_len;
 };
 
 #define	HMAP_CAPS(name, map)	bitstr_t bit_decl((name), nitems(map));
