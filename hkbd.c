@@ -40,7 +40,9 @@ __FBSDID("$FreeBSD$");
  */
 
 #include "opt_kbd.h"
+#ifdef NOT_YET
 #include "opt_hkbd.h"
+#endif
 #include "opt_evdev.h"
 
 #include <sys/stdint.h>
