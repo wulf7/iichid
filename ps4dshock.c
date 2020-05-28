@@ -1305,8 +1305,8 @@ ps4dsacc_attach(device_t dev)
 
 	sc->calib_data[1].usage = HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_RY);
 	sc->calib_data[1].code = ABS_RY;
-	sc->calib_data[0].range = PS4DS_GYRO_RES_PER_DEG_S * 2048;
-	sc->calib_data[0].res = PS4DS_GYRO_RES_PER_DEG_S;
+	sc->calib_data[1].range = PS4DS_GYRO_RES_PER_DEG_S * 2048;
+	sc->calib_data[1].res = PS4DS_GYRO_RES_PER_DEG_S;
 	sc->calib_data[1].bias = HGETW(&buf[3]);
 	sc->calib_data[1].sens_numer = speed_2x * PS4DS_GYRO_RES_PER_DEG_S;
 	sc->calib_data[1].sens_denom = HGETW(&buf[11]) - HGETW(&buf[13]);
@@ -1315,8 +1315,8 @@ ps4dsacc_attach(device_t dev)
 
 	sc->calib_data[2].usage = HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_RZ);
 	sc->calib_data[2].code = ABS_RZ;
-	sc->calib_data[0].range = PS4DS_GYRO_RES_PER_DEG_S * 2048;
-	sc->calib_data[0].res = PS4DS_GYRO_RES_PER_DEG_S;
+	sc->calib_data[2].range = PS4DS_GYRO_RES_PER_DEG_S * 2048;
+	sc->calib_data[2].res = PS4DS_GYRO_RES_PER_DEG_S;
 	sc->calib_data[2].bias = HGETW(&buf[5]);
 	sc->calib_data[2].sens_numer = speed_2x * PS4DS_GYRO_RES_PER_DEG_S;
 	sc->calib_data[2].sens_denom = HGETW(&buf[15]) - HGETW(&buf[17]);
@@ -1339,8 +1339,8 @@ ps4dsacc_attach(device_t dev)
 	range_2g = HGETW(&buf[27]) - HGETW(&buf[29]);
 	sc->calib_data[4].usage =  HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_Y);
 	sc->calib_data[4].code = ABS_Y;
-	sc->calib_data[3].range = PS4DS_ACC_RES_PER_G * 4;
-	sc->calib_data[3].res = PS4DS_ACC_RES_PER_G;
+	sc->calib_data[4].range = PS4DS_ACC_RES_PER_G * 4;
+	sc->calib_data[4].res = PS4DS_ACC_RES_PER_G;
 	sc->calib_data[4].bias = HGETW(&buf[27]) - range_2g / 2;
 	sc->calib_data[4].sens_numer = 2 * PS4DS_ACC_RES_PER_G;
 	sc->calib_data[4].sens_denom = range_2g;
@@ -1348,8 +1348,8 @@ ps4dsacc_attach(device_t dev)
 	range_2g = HGETW(&buf[31]) - HGETW(&buf[33]);
 	sc->calib_data[5].usage = HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_Z);
 	sc->calib_data[5].code = ABS_Z;
-	sc->calib_data[3].range = PS4DS_ACC_RES_PER_G * 4;
-	sc->calib_data[3].res = PS4DS_ACC_RES_PER_G;
+	sc->calib_data[5].range = PS4DS_ACC_RES_PER_G * 4;
+	sc->calib_data[5].res = PS4DS_ACC_RES_PER_G;
 	sc->calib_data[5].bias = HGETW(&buf[31]) - range_2g / 2;
 	sc->calib_data[5].sens_numer = 2 * PS4DS_ACC_RES_PER_G;
 	sc->calib_data[5].sens_denom = range_2g;
