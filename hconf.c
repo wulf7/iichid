@@ -138,34 +138,56 @@ static const struct hid_device_id hconf_devs[] = {
 };
 
 static int
-hconf_set_feature_control(struct hconf_softc *sc, int toggle_id, u_int val)
+hconf_set_feature_control(struct hconf_softc *sc, int ctrl_id, u_int val)
 {
-	struct feature_control *ft;
+	struct feature_control *fc;
 	uint8_t *fbuf;
 	int error;
+	int i;
 
-	KASSERT(toggle_id >= 0 && toggle_id < CONTROLS_COUNT,
-	    ("impossible toggle id %d", toggle_id));
-	ft = &sc->feature_controls[toggle_id];
-	if (ft->rlen <= 1)
+	KASSERT(ctrl_id >= 0 && ctrl_id < CONTROLS_COUNT,
+	    ("impossible ctrl id %d", ctrl_id));
+	fc = &sc->feature_controls[ctrl_id];
+	if (fc->rlen <= 1)
 		return (ENXIO);
 
-	fbuf = malloc(ft->rlen, M_TEMP, M_WAITOK | M_ZERO);
+	fbuf = malloc(fc->rlen, M_TEMP, M_WAITOK | M_ZERO);
 	sx_xlock(&sc->lock);
 
 	/* Reports are not strictly required to be readable */
-	error = hid_get_report(sc->dev, fbuf, ft->rlen, NULL,
-	    HID_FEATURE_REPORT, ft->rid);
-	if (error != 0)
-		bzero(fbuf + 1, ft->rlen - 1);
+	error = hid_get_report(sc->dev, fbuf, fc->rlen, NULL,
+	    HID_FEATURE_REPORT, fc->rid);
 
-	fbuf[0] = ft->rid;
-	hid_put_data_unsigned(fbuf + 1, ft->rlen - 1, &ft->loc, val);
+	/*
+	 * If the report is write-only, then we have to check for other controls
+	 * that may share the same report and set their bits as well.
+	 */
+	if (error != 0) {
+		bzero(fbuf + 1, fc->rlen - 1);
+		for (i = 0; i < nitems(sc->feature_controls); i++) {
+			struct feature_control *ofc = &sc->feature_controls[i];
 
-	error = hid_set_report(sc->dev, fbuf, ft->rlen,
-	    HID_FEATURE_REPORT, ft->rid);
+			/* Skip unrelated report IDs. */
+			if (ofc->rid != fc->rid)
+				continue;
+			/* Skip self. */
+			if (ofc == fc)
+				continue;
+			KASSERT(fc->rlen == ofc->rlen,
+			    ("different lengths for report %d: %d vs %d\n",
+			    fc->rid, fc->rlen, ofc->rlen));
+			hid_put_data_unsigned(fbuf + 1, ofc->rlen - 1,
+			    &ofc->loc, ofc->val);
+		}
+	}
+
+	fbuf[0] = fc->rid;
+	hid_put_data_unsigned(fbuf + 1, fc->rlen - 1, &fc->loc, val);
+
+	error = hid_set_report(sc->dev, fbuf, fc->rlen,
+	    HID_FEATURE_REPORT, fc->rid);
 	if (error == 0)
-		ft->val = val;
+		fc->val = val;
 
 	sx_unlock(&sc->lock);
 	free(fbuf, M_TEMP);
@@ -176,44 +198,44 @@ hconf_set_feature_control(struct hconf_softc *sc, int toggle_id, u_int val)
 static int
 hconf_feature_control_handler(SYSCTL_HANDLER_ARGS)
 {
-	struct feature_control *ft;
+	struct feature_control *fc;
 	struct hconf_softc *sc = arg1;
-	int toggle_id = arg2;
+	int ctrl_id = arg2;
 	u_int value;
 	int error;
 
-	if (toggle_id < 0 || toggle_id >= CONTROLS_COUNT)
+	if (ctrl_id < 0 || ctrl_id >= CONTROLS_COUNT)
 		return (ENXIO);
 
-	ft = &sc->feature_controls[toggle_id];
-	value = ft->val;
+	fc = &sc->feature_controls[ctrl_id];
+	value = fc->val;
 	error = sysctl_handle_int(oidp, &value, 0, req);
 	if (error != 0 || req->newptr == NULL)
 		return (error);
 
-	error = hconf_set_feature_control(sc, toggle_id, value);
+	error = hconf_set_feature_control(sc, ctrl_id, value);
 	if (error != 0) {
 		DPRINTF("Failed to set %s: %d\n",
-		    feature_control_descrs[toggle_id].name, error);
+		    feature_control_descrs[ctrl_id].name, error);
 	}
         return (0);
 }
 
 
 static int
-hconf_parse_feature(struct feature_control *ft, uint8_t tlc_index,
+hconf_parse_feature(struct feature_control *fc, uint8_t tlc_index,
     uint16_t usage, void *d_ptr, hid_size_t d_len)
 {
 	uint32_t flags;
 
 	if (!hid_tlc_locate(d_ptr, d_len, HID_USAGE2(HUP_DIGITIZERS, usage),
-	    hid_feature, tlc_index, 0, &ft->loc, &flags, &ft->rid, NULL))
+	    hid_feature, tlc_index, 0, &fc->loc, &flags, &fc->rid, NULL))
 		return (ENOENT);
 
 	if ((flags & (HIO_VARIABLE | HIO_RELATIVE)) != HIO_VARIABLE)
 		return (EINVAL);
 
-	ft->rlen = hid_report_size_1(d_ptr, d_len, hid_feature, ft->rid);
+	fc->rlen = hid_report_size_1(d_ptr, d_len, hid_feature, fc->rid);
 	return (0);
 }
 
