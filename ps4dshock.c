@@ -31,6 +31,8 @@ __FBSDID("$FreeBSD$");
 /*
  * Sony PS4 DualShock 4 driver
  * https://eleccelerator.com/wiki/index.php?title=DualShock_4
+ * https://gist.github.com/johndrinkwater/7708901
+ * https://www.psdevwiki.com/ps4/DS4-USB
  */
 
 #include <sys/param.h>
@@ -48,6 +50,7 @@ __FBSDID("$FreeBSD$");
 #include "hidbus.h"
 #include "hid_quirk.h"
 #include "hmap.h"
+#include "usbdevs.h"
 
 #define	HID_DEBUG_VAR	ps4dshock_debug
 #include "hid_debug.h"
@@ -115,6 +118,10 @@ static const uint8_t	ps4dshock_rdesc[] = {
 	0x05, 0x01,		//   Usage Page (Generic Desktop Ctrls)
 	0x09, 0x33,		//   Usage (Rx)
 	0x09, 0x34,		//   Usage (Ry)
+	0xC0,			// End Collection
+	0x05, 0x01,		// Usage Page (Generic Desktop Ctrls)
+	0x09, 0x08,		// Usage (Multi-axis Controller)
+	0xA1, 0x01,		// Collection (Application)
 	0x15, 0x00,		//   Logical Minimum (0)
 	0x26, 0xFF, 0x00,	//   Logical Maximum (255)
 	0x75, 0x08,		//   Report Size (8)
@@ -132,10 +139,6 @@ static const uint8_t	ps4dshock_rdesc[] = {
 	0x75, 0x08,		//   Report Size (8)
 	0x95, 0x01,		//   Report Count (1)
 	0x81, 0x02,		//   Input (Data,Var,Abs)
-	0xC0,			// End Collection
-	0x05, 0x01,		// Usage Page (Generic Desktop Ctrls)
-	0x09, 0x08,		// Usage (Multi-axis Controller)
-	0xA1, 0x01,		// Collection (Application)
 	0x05, 0x01,		//   Usage Page (Generic Desktop Ctrls)
 	0x19, 0x33,		//   Usage Minimum (RX)
 	0x29, 0x35,		//   Usage Maximum (RZ)
@@ -598,6 +601,7 @@ static const uint8_t	ps4dshock_rdesc[] = {
 static hmap_cb_t	ps4dshock_hat_switch_cb;
 static hmap_cb_t	ps4dshock_compl_cb;
 static hmap_cb_t	ps4dsacc_data_cb;
+static hmap_cb_t	ps4dsacc_tstamp_cb;
 static hmap_cb_t	ps4dsacc_compl_cb;
 static hmap_cb_t	ps4dsmtp_data_cb;
 static hmap_cb_t	ps4dsmtp_npackets_cb;
@@ -683,6 +687,9 @@ struct ps4dshock_softc {
 struct ps4dsacc_softc {
 	struct hmap_softc	super_sc;
 
+	uint16_t		hw_tstamp;
+	int32_t			ev_tstamp;
+
 	struct ps4ds_calib_data	calib_data[6];
 };
 
@@ -757,6 +764,7 @@ static const struct hmap_item ps4dsacc_map[] = {
 	PS4DS_MAP_GCB(RX,		ps4dsacc_data_cb),
 	PS4DS_MAP_GCB(RY,		ps4dsacc_data_cb),
 	PS4DS_MAP_GCB(RZ,		ps4dsacc_data_cb),
+	PS4DS_MAP_VCB(0x0021,		ps4dsacc_tstamp_cb),
 	PS4DS_COMPLCB(			ps4dsacc_compl_cb),
 };
 static const struct hmap_item ps4dshead_map[] = {
@@ -776,19 +784,19 @@ static const struct hmap_item ps4dsmtp_map[] = {
 };
 
 static const struct hid_device_id ps4dshock_devs[] = {
-	{ HID_BVP(BUS_USB, 0x54c, 0x9cc),
+	{ HID_BVP(BUS_USB, USB_VENDOR_SONY, 0x9cc),
 	  HID_TLC(HUP_GENERIC_DESKTOP, HUG_GAME_PAD) },
 };
 static const struct hid_device_id ps4dsacc_devs[] = {
-	{ HID_BVP(BUS_USB, 0x54c, 0x9cc),
+	{ HID_BVP(BUS_USB, USB_VENDOR_SONY, 0x9cc),
 	  HID_TLC(HUP_GENERIC_DESKTOP, HUG_MULTIAXIS_CNTROLLER) },
 };
 static const struct hid_device_id ps4dshead_devs[] = {
-	{ HID_BVP(BUS_USB, 0x54c, 0x9cc),
+	{ HID_BVP(BUS_USB, USB_VENDOR_SONY, 0x9cc),
 	  HID_TLC(HUP_CONSUMER, HUC_HEADPHONE) },
 };
 static const struct hid_device_id ps4dsmtp_devs[] = {
-	{ HID_BVP(BUS_USB, 0x54c, 0x9cc),
+	{ HID_BVP(BUS_USB, USB_VENDOR_SONY, 0x9cc),
 	  HID_TLC(HUP_DIGITIZERS, HUD_TOUCHPAD) },
 };
 
@@ -866,14 +874,37 @@ ps4dsacc_data_cb(HMAP_CB_ARGS)
 }
 
 static int
+ps4dsacc_tstamp_cb(HMAP_CB_ARGS)
+{
+	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV();
+	struct ps4dsacc_softc *sc = HMAP_CB_GET_SOFTC();
+	uint16_t tstamp;
+
+	switch (HMAP_CB_GET_STATE()) {
+	case HMAP_CB_IS_ATTACHING:
+		evdev_support_event(evdev, EV_MSC);
+		evdev_support_msc(evdev, MSC_TIMESTAMP);
+		break;
+
+	case HMAP_CB_IS_RUNNING:
+		/* Convert timestamp (in 5.33us unit) to timestamp_us */
+		tstamp = (uint16_t)ctx;
+		sc->ev_tstamp += (uint16_t)(tstamp - sc->hw_tstamp) * 16 / 3;
+		sc->hw_tstamp = tstamp;
+		evdev_push_msc(evdev, MSC_TIMESTAMP, sc->ev_tstamp);
+		break;
+	}
+
+	return (0);
+}
+
+static int
 ps4dsacc_compl_cb(HMAP_CB_ARGS)
 {
 	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV();
 
 	if (HMAP_CB_GET_STATE() == HMAP_CB_IS_ATTACHING) {
 		evdev_support_event(evdev, EV_ABS);
-		evdev_support_event(evdev, EV_MSC);
-		evdev_support_msc(evdev, MSC_TIMESTAMP);
 		evdev_support_prop(evdev, INPUT_PROP_ACCELEROMETER);
 	}
         /* Do not execute callback at interrupt handler and detach */
