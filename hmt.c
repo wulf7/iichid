@@ -192,6 +192,12 @@ struct hmt_softc {
 	struct hid_location     cont_count_loc;
 	struct hid_location	btn_loc[HMT_BTN_MAX];
 	struct hid_location	int_btn_loc;
+	struct hid_location	scan_time_loc;
+	int32_t			scan_time_max;
+	int32_t			scan_time;
+	int32_t			timestamp;
+	bool			touch;
+	bool			prev_touch;
 
 	struct evdev_dev        *evdev;
 
@@ -412,6 +418,8 @@ hmt_attach(device_t dev)
 	}
 	evdev_support_event(sc->evdev, EV_SYN);
 	evdev_support_event(sc->evdev, EV_ABS);
+	evdev_support_event(sc->evdev, EV_MSC);
+	evdev_support_msc(sc->evdev, MSC_TIMESTAMP);
 	if (sc->max_button != 0 || sc->has_int_button) {
 		evdev_support_event(sc->evdev, EV_KEY);
 		if (sc->has_int_button)
@@ -476,6 +484,8 @@ hmt_intr(void *context, void *buf, hid_size_t len)
 	uint32_t int_btn = 0;
 	uint32_t left_btn = 0;
 	int32_t slot;
+	uint32_t scan_time;
+	int32_t delta;
 	uint8_t id;
 
 	mtx_assert(hidbus_get_lock(sc->dev), MA_OWNED);
@@ -487,6 +497,8 @@ hmt_intr(void *context, void *buf, hid_size_t len)
 	 * This snippet is to be removed after GPIO interrupt support is added.
 	 */
 	if (len == 0) {
+		sc->prev_touch = false;
+		sc->timestamp = 0;
 		for (slot = 0; slot <= sc->ai[HMT_SLOT].max; slot++) {
 			evdev_push_abs(sc->evdev, ABS_MT_SLOT, slot);
 			evdev_push_abs(sc->evdev, ABS_MT_TRACKING_ID, -1);
@@ -587,6 +599,7 @@ hmt_intr(void *context, void *buf, hid_size_t len)
 		    !(USAGE_SUPPORTED(sc->caps, HMT_CONFIDENCE) &&
 		      slot_data[HMT_CONFIDENCE] == 0)) {
 			/* This finger is in proximity of the sensor */
+			sc->touch = true;
 			slot_data[HMT_SLOT] = slot;
 			slot_data[HMT_IN_RANGE] = !slot_data[HMT_IN_RANGE];
 			/* Divided by two to match visual scale of touch */
@@ -609,6 +622,22 @@ hmt_intr(void *context, void *buf, hid_size_t len)
 
 	sc->nconts_todo -= cont_count;
 	if (sc->nconts_todo == 0) {
+		/* HUD_SCAN_TIME is measured in 100us, convert to us. */
+		scan_time = hid_get_udata(buf, len, &sc->scan_time_loc);
+		if (sc->prev_touch) {
+			delta = scan_time - sc->scan_time;
+			if (delta < 0)
+				delta += sc->scan_time_max;
+		} else
+			delta = 0;
+		sc->scan_time = scan_time;
+		sc->timestamp += delta * 100;
+		evdev_push_msc(sc->evdev, MSC_TIMESTAMP, sc->timestamp);
+		sc->prev_touch = sc->touch;
+		sc->touch = false;
+		if (!sc->prev_touch)
+			sc->timestamp = 0;
+
 		/* Report both the click and external left btns as BTN_LEFT */
 		if (sc->has_int_button)
 			int_btn = hid_get_data(buf, len, &sc->int_btn_loc);
@@ -748,6 +777,8 @@ hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, hid_size_t d_len,
 			if (hi.collevel == 1 && hi.usage ==
 			    HID_USAGE2(HUP_DIGITIZERS, HUD_SCAN_TIME)) {
 				scan_time_found = true;
+				sc->scan_time_loc = hi.loc;
+				sc->scan_time_max = hi.logical_maximum;
 				break;
 			}
 
