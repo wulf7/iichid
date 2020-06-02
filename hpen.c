@@ -45,11 +45,11 @@ __FBSDID("$FreeBSD$");
 #include <dev/evdev/input.h>
 #include <dev/evdev/evdev.h>
 
+#include "usbdevs.h"
 #include <dev/usb/input/usb_rdesc.h>
 
 #include "hid.h"
 #include "hidbus.h"
-#include "hid_quirk.h"
 #include "hmap.h"
 
 #define	HID_DEBUG_VAR	hpen_debug
@@ -172,12 +172,21 @@ hpen_identify(driver_t *driver, device_t parent)
 	const struct hid_device_info *hw = hid_get_device_info(parent);
 
 	/* the report descriptor for the Wacom Graphire is broken */
-	if (hid_test_quirk(hw, HQ_GRAPHIRE))
-		hid_set_report_descr(parent, hpen_graphire_report_descr,
-		    sizeof(hpen_graphire_report_descr));
-	else if (hid_test_quirk(hw, HQ_GRAPHIRE3_4X5))
-		hid_set_report_descr(parent, hpen_graphire3_4x5_report_descr,
-		    sizeof(hpen_graphire3_4x5_report_descr));
+	if (hw->idBus == BUS_USB && hw->idVendor == USB_VENDOR_WACOM) {
+		switch (hw->idProduct) {
+		case USB_PRODUCT_WACOM_GRAPHIRE:
+			hid_set_report_descr(parent,
+			    hpen_graphire_report_descr,
+			    sizeof(hpen_graphire_report_descr));
+	                break;
+
+		case USB_PRODUCT_WACOM_GRAPHIRE3_4X5:
+			hid_set_report_descr(parent,
+			    hpen_graphire3_4x5_report_descr,
+			    sizeof(hpen_graphire3_4x5_report_descr));
+	                break;
+		}
+	}
 }
 
 static int
@@ -211,7 +220,8 @@ hpen_attach(device_t dev)
 	const struct hid_device_info *hw = hid_get_device_info(dev);
 	int error;
 
-	if (hid_test_quirk(hw, HQ_GRAPHIRE3_4X5)) {
+	if (hw->idBus == BUS_USB && hw->idVendor == USB_VENDOR_WACOM &&
+	    hw->idProduct == USB_PRODUCT_WACOM_GRAPHIRE3_4X5) {
 		/*
 		 * The Graphire3 needs 0x0202 to be written to
 		 * feature report ID 2 before it'll start
