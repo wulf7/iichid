@@ -49,6 +49,7 @@ __FBSDID("$FreeBSD$");
 
 #include "hid.h"
 #include "hidbus.h"
+#include "hid_quirk.h"
 
 #include "hconf.h"
 
@@ -211,6 +212,7 @@ struct hmt_softc {
 	uint32_t		max_button;
 	bool			has_int_button;
 	bool			is_clickpad;
+	bool			do_timestamps;
 
 	struct hid_location     cont_max_loc;
 	uint32_t                cont_max_rlen;
@@ -394,6 +396,9 @@ hmt_attach(device_t dev)
 		sc->ai[HMT_SLOT].max = MAX_MT_SLOTS - 1;
 	}
 
+	if (hid_test_quirk(hw, HQ_MT_TIMESTAMP))
+		sc->do_timestamps = true;
+
 	hidbus_set_intr(dev, hmt_intr);
 
 	sc->evdev = evdev_alloc();
@@ -418,8 +423,10 @@ hmt_attach(device_t dev)
 	}
 	evdev_support_event(sc->evdev, EV_SYN);
 	evdev_support_event(sc->evdev, EV_ABS);
-	evdev_support_event(sc->evdev, EV_MSC);
-	evdev_support_msc(sc->evdev, MSC_TIMESTAMP);
+	if (sc->do_timestamps) {
+		evdev_support_event(sc->evdev, EV_MSC);
+		evdev_support_msc(sc->evdev, MSC_TIMESTAMP);
+	}
 	if (sc->max_button != 0 || sc->has_int_button) {
 		evdev_support_event(sc->evdev, EV_KEY);
 		if (sc->has_int_button)
@@ -621,7 +628,7 @@ hmt_intr(void *context, void *buf, hid_size_t len)
 	}
 
 	sc->nconts_todo -= cont_count;
-	if (sc->nconts_todo == 0) {
+	if (sc->do_timestamps && sc->nconts_todo == 0) {
 		/* HUD_SCAN_TIME is measured in 100us, convert to us. */
 		scan_time = hid_get_udata(buf, len, &sc->scan_time_loc);
 		if (sc->prev_touch) {
@@ -637,7 +644,8 @@ hmt_intr(void *context, void *buf, hid_size_t len)
 		sc->touch = false;
 		if (!sc->prev_touch)
 			sc->timestamp = 0;
-
+	}
+	if (sc->nconts_todo == 0) {
 		/* Report both the click and external left btns as BTN_LEFT */
 		if (sc->has_int_button)
 			int_btn = hid_get_data(buf, len, &sc->int_btn_loc);

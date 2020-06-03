@@ -655,9 +655,7 @@ struct ps4ds_calib_data {
 };
 
 enum {
-#ifdef PS4DSMTP_ENABLE_HW_TIMESTAMPS
 	PS4DS_TSTAMP,
-#endif
 	PS4DS_CID1,
 	PS4DS_TIP1,
 	PS4DS_X1,
@@ -699,13 +697,12 @@ struct ps4dsmtp_softc {
 	struct hid_location	btn_loc;
 	u_int		npackets;
 	int32_t		*data_ptr;
-	int32_t		data[PS4DS_MAX_TOUCHPAD_PACKETS][PS4DS_NTPUSAGES];
+	int32_t		data[PS4DS_MAX_TOUCHPAD_PACKETS * PS4DS_NTPUSAGES];
 
-#ifdef PS4DSMTP_ENABLE_HW_TIMESTAMPS
+	bool		do_tstamps;
 	uint8_t		hw_tstamp;
 	int32_t		ev_tstamp;
 	bool		touch;
-#endif
 };
 
 #define PD4DSHOCK_OFFSET(field) offsetof(struct ps4dshock_softc, field)
@@ -773,9 +770,7 @@ static const struct hmap_item ps4dshead_map[] = {
 };
 static const struct hmap_item ps4dsmtp_map[] = {
 	{ HMAP_ABS_CB(HUP_MICROSOFT, 0x0021, 		ps4dsmtp_npackets_cb)},
-#ifdef PS4DSMTP_ENABLE_HW_TIMESTAMPS
 	{ HMAP_ABS_CB(HUP_DIGITIZERS, HUD_SCAN_TIME,	ps4dsmtp_data_cb) },
-#endif
 	{ HMAP_ABS_CB(HUP_DIGITIZERS, HUD_CONTACTID,	ps4dsmtp_data_cb) },
 	{ HMAP_ABS_CB(HUP_DIGITIZERS, HUD_TIP_SWITCH,	ps4dsmtp_data_cb) },
 	{ HMAP_ABS_CB(HUP_GENERIC_DESKTOP, HUG_X,	ps4dsmtp_data_cb) },
@@ -919,7 +914,7 @@ ps4dsmtp_npackets_cb(HMAP_CB_ARGS)
 	if (HMAP_CB_GET_STATE() == HMAP_CB_IS_RUNNING) {
 		sc->npackets = MIN(PS4DS_MAX_TOUCHPAD_PACKETS, (u_int)ctx);
 		/* Reset pointer here as it is first usage in touchpad TLC */
-		sc->data_ptr = &sc->data[0][0];
+		sc->data_ptr = sc->data;
 	}
 
 	return (0);
@@ -938,19 +933,63 @@ ps4dsmtp_data_cb(HMAP_CB_ARGS)
 	return (0);
 }
 
+static void
+ps4dsmtp_push_packet(struct ps4dsmtp_softc *sc, struct evdev_dev *evdev,
+    int32_t *data)
+{
+	uint8_t hw_tstamp, delta;
+	bool touch;
+
+	evdev_push_abs(evdev, ABS_MT_SLOT, 0);
+	if (data[PS4DS_TIP1] == 0) {
+		evdev_push_abs(evdev, ABS_MT_TRACKING_ID, data[PS4DS_CID1]);
+		evdev_push_abs(evdev, ABS_MT_POSITION_X, data[PS4DS_X1]);
+		evdev_push_abs(evdev, ABS_MT_POSITION_Y, data[PS4DS_Y1]);
+	} else
+		evdev_push_abs(evdev, ABS_MT_TRACKING_ID, -1);
+	evdev_push_abs(evdev, ABS_MT_SLOT, 1);
+	if (data[PS4DS_TIP2] == 0) {
+		evdev_push_abs(evdev, ABS_MT_TRACKING_ID, data[PS4DS_CID2]);
+		evdev_push_abs(evdev, ABS_MT_POSITION_X, data[PS4DS_X2]);
+		evdev_push_abs(evdev, ABS_MT_POSITION_Y, data[PS4DS_Y2]);
+	} else
+		evdev_push_abs(evdev, ABS_MT_TRACKING_ID, -1);
+
+	if (sc->do_tstamps) {
+		/*
+		 * Export hardware timestamps in libinput-friendly way.
+		 * Make timestamp counter 32-bit, scale up hardware
+		 * timestamps to be on per 1usec basis and reset
+		 * counter at the start of each touch.
+		 */
+		hw_tstamp = (uint8_t)data[PS4DS_TSTAMP];
+		delta = hw_tstamp - sc->hw_tstamp;
+		sc->hw_tstamp = hw_tstamp;
+		touch = data[PS4DS_TIP1] == 0 || data[PS4DS_TIP2] == 0;
+		/* Hardware timestamp counter ticks in 682 usec interval. */
+		if ((touch || sc->touch) && delta != 0) {
+			if (sc->touch)
+				sc->ev_tstamp += delta * 682;
+			evdev_push_msc(evdev, MSC_TIMESTAMP, sc->ev_tstamp);
+		}
+		if (!touch)
+			sc->ev_tstamp = 0;
+		sc->touch = touch;
+	}
+}
+
 static int
 ps4dsmtp_compl_cb(HMAP_CB_ARGS)
 {
 	struct ps4dsmtp_softc *sc = HMAP_CB_GET_SOFTC();
 	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV();
-	u_int i;
-#ifdef PS4DSMTP_ENABLE_HW_TIMESTAMPS
-	uint8_t hw_tstamp, hw_tstamp_diff;
-	bool touch;
-#endif
+	int32_t *data;
 
 	switch (HMAP_CB_GET_STATE()) {
 	case HMAP_CB_IS_ATTACHING:
+		if (hid_test_quirk(hid_get_device_info(sc->super_sc.dev),
+		    HQ_MT_TIMESTAMP))
+			sc->do_tstamps = true;
 		/*
 		 * Dualshock 4 touchpad TLC contained in fixed report
 		 * descriptor is almost compatible with MS precission touchpad
@@ -963,10 +1002,10 @@ ps4dsmtp_compl_cb(HMAP_CB_ARGS)
 		evdev_support_event(evdev, EV_SYN);
 		evdev_support_event(evdev, EV_KEY);
 		evdev_support_event(evdev, EV_ABS);
-#ifdef PS4DSMTP_ENABLE_HW_TIMESTAMPS
-		evdev_support_event(evdev, EV_MSC);
-		evdev_support_msc(evdev, MSC_TIMESTAMP);
-#endif
+		if (sc->do_tstamps) {
+			evdev_support_event(evdev, EV_MSC);
+			evdev_support_msc(evdev, MSC_TIMESTAMP);
+		}
 		evdev_support_key(evdev, BTN_LEFT);
 		evdev_support_abs(evdev, ABS_MT_SLOT, 0, 0, 1, 0, 0, 0);
 		evdev_support_abs(evdev, ABS_MT_TRACKING_ID, 0, -1, 127, 0, 0, 0);
@@ -976,61 +1015,17 @@ ps4dsmtp_compl_cb(HMAP_CB_ARGS)
 		evdev_support_prop(evdev, INPUT_PROP_BUTTONPAD);
 		evdev_set_flag(evdev, EVDEV_FLAG_MT_STCOMPAT);
 		break;
+
 	case HMAP_CB_IS_RUNNING:
 		/* Only packets with ReportID=1 are accepted */
 		if (ctx != 1)
 			return (ENOTSUP);
 		evdev_push_key(evdev, BTN_LEFT,
 		    HMAP_CB_GET_UDATA(&sc->btn_loc));
-		for (i = 0; i < sc->npackets; i++) {
-			evdev_push_abs(evdev, ABS_MT_SLOT, 0);
-			if (sc->data[i][PS4DS_TIP1] == 0) {
-				evdev_push_abs(evdev, ABS_MT_TRACKING_ID,
-				    sc->data[i][PS4DS_CID1]);
-				evdev_push_abs(evdev, ABS_MT_POSITION_X,
-				    sc->data[i][PS4DS_X1]);
-				evdev_push_abs(evdev, ABS_MT_POSITION_Y,
-				    sc->data[i][PS4DS_Y1]);
-			} else
-				evdev_push_abs(evdev, ABS_MT_TRACKING_ID, -1);
-			evdev_push_abs(evdev, ABS_MT_SLOT, 1);
-			if (sc->data[i][PS4DS_TIP2] == 0) {
-				evdev_push_abs(evdev, ABS_MT_TRACKING_ID,
-				    sc->data[i][PS4DS_CID2]);
-				evdev_push_abs(evdev, ABS_MT_POSITION_X,
-				    sc->data[i][PS4DS_X2]);
-				evdev_push_abs(evdev, ABS_MT_POSITION_Y,
-				    sc->data[i][PS4DS_Y2]);
-			} else
-				evdev_push_abs(evdev, ABS_MT_TRACKING_ID, -1);
-#ifdef PS4DSMTP_ENABLE_HW_TIMESTAMPS
-			/*
-			 * Export hardware timestamps in libinput-friendly way.
-			 * Make timestamp counter 32-bit, scale up hardware
-			 * timestamps to be on per 1usec basis and reset
-			 * counter at the start of each touch.
-			 */
-			hw_tstamp = (uint8_t)sc->data[i][PS4DS_TSTAMP];
-			hw_tstamp_diff = hw_tstamp - sc->hw_tstamp;
-			sc->hw_tstamp = hw_tstamp;
-			touch = sc->data[i][PS4DS_TIP1] == 0 ||
-			    sc->data[i][PS4DS_TIP2] == 0;
-			if (touch) {
-				if (hw_tstamp_diff != 0) {
-					if (sc->touch)
-						/*
-						 * Hardware timestamp counter
-						 * ticks in 682 usec interval.
-						 */
-						sc->ev_tstamp += hw_tstamp_diff
-						    * 682;
-					evdev_push_msc(evdev, MSC_TIMESTAMP,
-					    sc->ev_tstamp);
-				}
-			} else
-				sc->ev_tstamp = 0;
-			sc->touch = touch;
-#endif
+		for (data = sc->data;
+		     data < sc->data + PS4DS_NTPUSAGES * sc->npackets;
+		     data += PS4DS_NTPUSAGES) {
+			ps4dsmtp_push_packet(sc, evdev, data);
 			evdev_sync(evdev);
 		}
 		break;
@@ -1075,16 +1070,18 @@ ps4dshock_write(struct ps4dshock_softc *sc)
 	 * 0x3E - 62ms
 	 * 0x3F - disabled
 	 */
-//	if (sc->sc->is_bluetooth) {
-//		buf[1] = 0xC0 /* HID + CRC */ | sc->bt_poll_interval;
+#if 0
+	if (sc->sc->is_bluetooth) {
+		buf[1] = 0xC0 /* HID + CRC */ | sc->bt_poll_interval;
 		/* CRC generation */
-//		uint8_t bthdr = 0xA2;
-//		uint32_t crc;
+		uint8_t bthdr = 0xA2;
+		uint32_t crc;
 
-//		crc = crc32_le(0xFFFFFFFF, &bthdr, 1);
-//		crc = ~crc32_le(crc, buf, osize - 4);
-//		put_unaligned_le32(crc, &buf[74]);
-//	}
+		crc = crc32_le(0xFFFFFFFF, &bthdr, 1);
+		crc = ~crc32_le(crc, buf, osize - 4);
+		put_unaligned_le32(crc, &buf[74]);
+	}
+#endif
 
 	return (hid_write(sc->super_sc.dev, buf, osize));
 }
