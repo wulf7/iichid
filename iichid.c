@@ -54,6 +54,12 @@ __FBSDID("$FreeBSD$");
 #include <dev/iicbus/iic.h>
 #include <dev/iicbus/iiconf.h>
 
+#define HAVE_GPIO_INTR
+#ifdef HAVE_GPIO_INTR
+#include <sys/gpio.h>
+#include <dev/gpio/gpiobusvar.h>
+#endif
+
 #include "hid.h"
 #include "hidbus.h"
 #include "hid_if.h"
@@ -112,6 +118,10 @@ struct iichid_softc {
 	uint8_t			*intr_buf;
 	iichid_size_t		intr_bufsize;
 
+#ifdef HAVE_GPIO_INTR
+	device_t		irq_dev;
+	gpio_pin_t		irq_pin;
+#endif
 	int			irq_rid;
 	struct resource		*irq_res;
 	void			*irq_cookie;
@@ -268,6 +278,203 @@ iichid_get_handle(device_t dev)
 	return (dev_handle);
 }
 #endif /* HAVE_ACPI_IICBUS */
+
+#ifdef HAVE_GPIO_INTR
+struct gpio_params {
+	ACPI_HANDLE start_handle;
+	device_t dev;
+	u_int pin;
+	//enum intr_trigger trig;
+	//enum intr_polarity pol;
+	uint32_t mode;
+	bool shareable;
+};
+
+static uint32_t
+acpi_gpio_intr_mode(uint8_t trig, uint8_t pol)
+{
+	uint32_t intr_mode;
+
+	switch (trig) {
+	case ACPI_LEVEL_SENSITIVE:
+		switch (pol) {
+		case ACPI_ACTIVE_LOW:
+			intr_mode = GPIO_INTR_LEVEL_LOW;
+			break;
+		case ACPI_ACTIVE_HIGH:
+			intr_mode = GPIO_INTR_LEVEL_HIGH;
+			break;
+		default:
+			return (GPIO_INTR_NONE);
+		}
+		break;
+	case ACPI_EDGE_SENSITIVE:
+		switch (pol) {
+		case ACPI_ACTIVE_LOW:
+			intr_mode = GPIO_INTR_EDGE_FALLING;
+			break;
+		case ACPI_ACTIVE_HIGH:
+			intr_mode = GPIO_INTR_EDGE_RISING;
+			break;
+		case ACPI_ACTIVE_BOTH:
+			intr_mode = GPIO_INTR_EDGE_BOTH;
+			break;
+		default:
+			return (GPIO_INTR_NONE);
+		}
+		break;
+	default:
+		return (GPIO_INTR_NONE);
+	}
+
+	return (intr_mode);
+}
+
+static ACPI_STATUS
+iichid_gpio_cb(ACPI_RESOURCE *res, void *context)
+{
+	struct gpio_params *gpio = context;
+	ACPI_HANDLE handle;
+	ACPI_STATUS status;
+
+	if (res->Type == ACPI_RESOURCE_TYPE_GPIO &&
+	    res->Data.Gpio.ConnectionType == ACPI_RESOURCE_GPIO_TYPE_INT &&
+	    res->Data.Gpio.ProducerConsumer == ACPI_CONSUMER &&
+	    res->Data.Gpio.PinTableLength == 1) {
+		/* Allow both relative and absolute paths. */
+		status = AcpiGetHandle(gpio->start_handle,
+		    res->Data.Gpio.ResourceSource.StringPtr, &handle);
+		if (ACPI_FAILURE(status))
+			return (status);
+		gpio->dev = acpi_get_device(handle);
+		gpio->mode = acpi_gpio_intr_mode(res->Data.Gpio.Triggering,
+		    res->Data.Gpio.Polarity);
+		gpio->pin = res->Data.Gpio.PinTable[0];
+		gpio->shareable = res->Data.Gpio.Shareable;
+		return (AE_CTRL_TERMINATE);
+	}
+
+	return (AE_OK);
+}
+
+static int
+acpi_get_gpio_params(ACPI_HANDLE handle, struct gpio_params *gpio)
+{
+	ACPI_STATUS status;
+
+	gpio->start_handle = handle;
+	status = AcpiWalkResources(handle, "_CRS", iichid_gpio_cb, gpio);
+	gpio->start_handle = NULL;
+	if (ACPI_FAILURE(status))
+		return (ENOENT);
+	return (0);
+}
+
+static int
+iichid_gpio_proxy_probe(device_t dev)
+{
+	return (BUS_PROBE_SPECIFIC);
+}
+
+static int
+iichid_gpio_proxy_attach(device_t dev)
+{
+	return (0);
+}
+
+static int
+iichid_gpio_proxy_detach(device_t dev)
+{
+	return (0);
+}
+
+static device_method_t iichid_gpio_proxy_methods[] = {
+	DEVMETHOD(device_probe,		iichid_gpio_proxy_probe),
+	DEVMETHOD(device_attach,	iichid_gpio_proxy_attach),
+	DEVMETHOD(device_detach,	iichid_gpio_proxy_detach),
+};
+
+driver_t iichid_gpio_proxy_driver = {
+	"iichidgpio",
+	iichid_gpio_proxy_methods,
+	0
+};
+
+devclass_t	iichid_gpio_proxy_devclass;
+DRIVER_MODULE(iichidgpio, gpiobus, iichid_gpio_proxy_driver,
+    iichid_gpio_proxy_devclass, NULL, NULL);
+MODULE_VERSION(iichidgpio, 1);
+
+static int
+iichid_setup_gpio_intr(struct iichid_softc* sc, struct gpio_params *gpio)
+{
+	struct resource *res;
+	device_t gpio_bus;
+	device_t child;
+	gpio_pin_t pin;
+	int flags, rid;
+	int err;
+
+	if (gpio->dev == NULL || !device_is_attached(gpio->dev)) {
+		device_printf(sc->dev, "ACPI provides GPIO interrupt, "
+		    "but controller is not attached\n");
+		return (ENXIO);
+	}
+
+	if (gpio->mode == GPIO_INTR_NONE) {
+		device_printf(sc->dev, "Failed to parse GPIO interrupt mode\n");
+		return (EINVAL);
+	}
+
+	gpio_bus = GPIO_GET_BUS(gpio->dev);
+	if (gpio_bus == NULL) {
+		device_printf(sc->dev, "GPIO bus device is missing for %s\n",
+		    device_get_nameunit(gpio->dev));
+		return (ENXIO);
+	}
+
+	/* Create a proxy device under GPIO bus. */
+	child = device_find_child(gpio_bus, "iichidgpio",
+	    device_get_unit(sc->dev));
+	if (child == NULL) {
+		child = BUS_ADD_CHILD(gpio_bus, 0, "iichidgpio",
+		    device_get_unit(sc->dev));
+		if (child != NULL) {
+			gpiobus_set_npins(child, 1);
+			gpiobus_set_pins(child, &gpio->pin);
+		}
+	}
+	if (child == NULL) {
+		device_printf(sc->dev, "failed to add gpio device\n");
+		return (ENXIO);
+	}
+
+	/* XXX do we need to attach the child? */
+
+	err = gpio_pin_get_by_child_index(child, 0, &pin);
+	if (err != 0) {
+		device_printf(sc->dev, "failed to acquire gpio pin: %d\n", err);
+		return (err);
+	}
+
+	rid = 0;
+	flags = RF_ACTIVE;
+	if (gpio->shareable)
+		flags |= RF_SHAREABLE;
+	res = gpio_alloc_intr_resource(child, &rid, flags, pin, gpio->mode);
+	if (res == NULL) {
+		device_printf(sc->dev, "failed to allocate gpio "
+		    "interrupt resource\n");
+		return (ENXIO);
+	}
+
+	sc->irq_res = res;
+	sc->irq_rid = rid;
+	sc->irq_dev = child;
+	sc->irq_pin = pin;
+	return (0);
+}
+#endif
 
 static int
 iichid_cmd_read(struct iichid_softc* sc, void *buf, iichid_size_t maxlen,
@@ -695,14 +902,17 @@ iichid_power_task(void *context, int pending)
 static int
 iichid_setup_interrupt(struct iichid_softc *sc)
 {
-	sc->irq_cookie = 0;
+	sc->irq_cookie = NULL;
 
-	int error = bus_setup_intr(sc->dev, sc->irq_res,
+	int error = bus_setup_intr(sc->irq_dev, sc->irq_res,
 	    INTR_TYPE_TTY|INTR_MPSAFE, NULL, iichid_intr, sc, &sc->irq_cookie);
-	if (error != 0)
-		DPRINTF(sc, "Could not setup interrupt handler\n");
-	else
+	if (error != 0) {
+		device_printf(sc->dev,
+		    "Could not setup interrupt handler: %d\n", error);
+	}
+	else {
 		DPRINTF(sc, "successfully setup interrupt\n");
+	}
 
 	return (error);
 }
@@ -711,9 +921,9 @@ static void
 iichid_teardown_interrupt(struct iichid_softc *sc)
 {
 	if (sc->irq_cookie)
-		bus_teardown_intr(sc->dev, sc->irq_res, sc->irq_cookie);
+		bus_teardown_intr(sc->irq_dev, sc->irq_res, sc->irq_cookie);
 
-	sc->irq_cookie = 0;
+	sc->irq_cookie = NULL;
 }
 
 #ifdef IICHID_SAMPLING
@@ -1091,6 +1301,9 @@ static int
 iichid_attach(device_t dev)
 {
 	struct iichid_softc* sc = device_get_softc(dev);
+#ifdef HAVE_GPIO_INTR
+	struct gpio_params gpio;
+#endif
 	ACPI_HANDLE handle;
 	device_t child;
 	int error;
@@ -1153,8 +1366,19 @@ iichid_attach(device_t dev)
 	if (sc->irq_res != NULL) {
 		DPRINTF(sc, "allocated irq at %p and rid %d\n",
 		    sc->irq_res, sc->irq_rid);
+		sc->irq_dev = sc->dev;
 		error = iichid_setup_interrupt(sc);
 	}
+#ifdef HAVE_GPIO_INTR
+	/* No regular interrupt, try GPIO. */
+	else if (acpi_get_gpio_params(handle, &gpio) != 0) {
+		/* No GPIO either. */
+	} else if (iichid_setup_gpio_intr(sc, &gpio) == 0) {
+		device_printf(sc->dev, "allocated gpio irq at %p and rid %d\n",
+		    sc->irq_res, sc->irq_rid);
+		error = iichid_setup_interrupt(sc);
+	}
+#endif
 
 	if (sc->irq_res == NULL || error != 0) {
 #ifdef IICHID_SAMPLING
@@ -1216,8 +1440,12 @@ iichid_detach(device_t dev)
 	iichid_teardown_interrupt(sc);
 
 	if (sc->irq_res)
-		bus_release_resource(dev, SYS_RES_IRQ, sc->irq_rid,
+		bus_release_resource(sc->irq_dev, SYS_RES_IRQ, sc->irq_rid,
 		    sc->irq_res);
+#ifdef HAVE_GPIO_INTR
+	if (sc->irq_pin != NULL)
+		gpio_pin_release(sc->irq_pin);
+#endif
 
 	if (sc->taskqueue)
 		taskqueue_free(sc->taskqueue);
@@ -1386,6 +1614,9 @@ static driver_t iichid_driver = {
 DRIVER_MODULE(iichid, iicbus, iichid_driver, iichid_devclass, NULL, 0);
 MODULE_DEPEND(iichid, iicbus, IICBUS_MINVER, IICBUS_PREFVER, IICBUS_MAXVER);
 MODULE_DEPEND(iichid, acpi, 1, 1, 1);
+#ifdef HAVE_GPIO_INTR
+MODULE_DEPEND(iichid, gpiobus, 1, 1, 1);
+#endif
 MODULE_DEPEND(iichid, hid, 1, 1, 1);
 MODULE_VERSION(iichid, 1);
 
