@@ -36,7 +36,7 @@ SRCS	+= usbhid.c
 .endif
 SRCS	+= hidraw.c hidraw.h
 SRCS	+= hid_quirk.h hid_quirk.c
-SRCS	+= acpi_if.h bus_if.h device_if.h iicbus_if.h
+SRCS	+= acpi_if.h bus_if.h device_if.h iicbus_if.h gpio_if.h
 SRCS	+= opt_acpi.h opt_usb.h opt_evdev.h
 SRCS	+= strcasestr.c strcasestr.h
 # Revert 5d3a4a2 for compiling hkbd on pre 1300068 systems
