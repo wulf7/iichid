@@ -53,8 +53,9 @@ $ sudo make install
 
 and you will get the compiled module installed in **/boot/modules**
 
-To load the module at a boot time, add the module **iichid** to **kld_list**
-variable in **/etc/rc.conf**
+To load the module at a boot time, add both I2C driver module (it is usually
+an **ig4**) and HID module **iichid** to **kld_list** variable in
+**/etc/rc.conf**.
 
 To handle keyboards in single user mode and at the early stages
 of booting process, iichid should be loaded at kernel startup.
