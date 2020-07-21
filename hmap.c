@@ -67,8 +67,6 @@ __FBSDID("$FreeBSD$");
 /* HID report descriptor parser limit hardcoded in usbhid.h */
 #define	MAXUSAGE	64
 
-static device_probe_t hmap_probe;
-
 static evdev_open_t hmap_ev_open;
 static evdev_close_t hmap_ev_close;
 
@@ -667,14 +665,6 @@ hmap_parse_hid_descr(struct hmap_softc *sc, uint8_t tlc_index)
 	return (0);
 }
 
-static int
-hmap_probe(device_t dev)
-{
-
-	/* It is an abstract driver */
-	return (ENXIO);
-}
-
 int
 hmap_attach(device_t dev)
 {
@@ -741,18 +731,6 @@ hmap_detach(device_t dev)
 	return (0);
 }
 
-static devclass_t hmap_devclass;
-
-static device_method_t hmap_methods[] = {
-	DEVMETHOD(device_probe, hmap_probe),
-	DEVMETHOD(device_attach, hmap_attach),
-	DEVMETHOD(device_detach, hmap_detach),
-
-	DEVMETHOD_END
-};
-
-DEFINE_CLASS_0(hmap, hmap_driver, hmap_methods, sizeof(struct hmap_softc));
-DRIVER_MODULE(hmap, hidbus, hmap_driver, hmap_devclass, NULL, 0);
 MODULE_DEPEND(hmap, hid, 1, 1, 1);
 MODULE_DEPEND(hmap, evdev, 1, 1, 1);
 MODULE_VERSION(hmap, 1);

@@ -348,13 +348,14 @@ static device_method_t hskbd_methods[] = {
 	DEVMETHOD(device_identify,	hskbd_identify),
 	DEVMETHOD(device_probe,		hskbd_probe),
 	DEVMETHOD(device_attach,	hskbd_attach),
+	DEVMETHOD(device_detach,	hmap_detach),
+
 	DEVMETHOD_END
 };
 
 SYSINIT(hskbd_init, SI_SUB_DRIVERS, SI_ORDER_ANY, hskbd_init, NULL);
 
-DEFINE_CLASS_1(hskbd, hskbd_driver, hskbd_methods, sizeof(struct hskbd_softc),
-    hmap_driver);
+DEFINE_CLASS_0(hskbd, hskbd_driver, hskbd_methods, sizeof(struct hskbd_softc));
 DRIVER_MODULE(hskbd, hidbus, hskbd_driver, hskbd_devclass, NULL, 0);
 MODULE_DEPEND(hskbd, hid, 1, 1, 1);
 MODULE_DEPEND(hskbd, hmap, 1, 1, 1);

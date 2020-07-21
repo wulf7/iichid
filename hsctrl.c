@@ -110,12 +110,15 @@ hsctrl_probe(device_t dev)
 
 static devclass_t hsctrl_devclass;
 static device_method_t hsctrl_methods[] = {
-	DEVMETHOD(device_probe, hsctrl_probe),
+	DEVMETHOD(device_probe,		hsctrl_probe),
+	DEVMETHOD(device_attach,	hmap_attach),
+	DEVMETHOD(device_detach,	hmap_detach),
+
 	DEVMETHOD_END
 };
 
-DEFINE_CLASS_1(hsctrl, hsctrl_driver, hsctrl_methods,
-    sizeof(struct hmap_softc), hmap_driver);
+DEFINE_CLASS_0(hsctrl, hsctrl_driver, hsctrl_methods,
+    sizeof(struct hmap_softc));
 DRIVER_MODULE(hsctrl, hidbus, hsctrl_driver, hsctrl_devclass, NULL, 0);
 MODULE_DEPEND(hsctrl, hid, 1, 1, 1);
 MODULE_DEPEND(hsctrl, hmap, 1, 1, 1);

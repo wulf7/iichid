@@ -1392,36 +1392,41 @@ static devclass_t ps4dsmtp_devclass;
 
 static device_method_t ps4dshock_methods[] = {
 	DEVMETHOD(device_identify,	ps4dshock_identify),
+	DEVMETHOD(device_probe,		ps4dshock_probe),
 	DEVMETHOD(device_attach,	ps4dshock_attach),
 	DEVMETHOD(device_detach,	ps4dshock_detach),
-	DEVMETHOD(device_probe,		ps4dshock_probe),
 	DEVMETHOD_END
 };
 static device_method_t ps4dsacc_methods[] = {
 	DEVMETHOD(device_probe,		ps4dsacc_probe),
 	DEVMETHOD(device_attach,	ps4dsacc_attach),
+	DEVMETHOD(device_detach,	hmap_detach),
 	DEVMETHOD_END
 };
 static device_method_t ps4dshead_methods[] = {
 	DEVMETHOD(device_probe,		ps4dshead_probe),
+	DEVMETHOD(device_attach,	hmap_attach),
+	DEVMETHOD(device_detach,	hmap_detach),
 	DEVMETHOD_END
 };
 static device_method_t ps4dsmtp_methods[] = {
 	DEVMETHOD(device_probe,		ps4dsmtp_probe),
+	DEVMETHOD(device_attach,	hmap_attach),
+	DEVMETHOD(device_detach,	hmap_detach),
 	DEVMETHOD_END
 };
 
-DEFINE_CLASS_1(ps4dsacc, ps4dsacc_driver, ps4dsacc_methods,
-    sizeof(struct ps4dsacc_softc), hmap_driver);
+DEFINE_CLASS_0(ps4dsacc, ps4dsacc_driver, ps4dsacc_methods,
+    sizeof(struct ps4dsacc_softc));
 DRIVER_MODULE(ps4dsacc, hidbus, ps4dsacc_driver, ps4dsacc_devclass, NULL, 0);
-DEFINE_CLASS_1(ps4dshead, ps4dshead_driver, ps4dshead_methods,
-    sizeof(struct hmap_softc), hmap_driver);
+DEFINE_CLASS_0(ps4dshead, ps4dshead_driver, ps4dshead_methods,
+    sizeof(struct hmap_softc));
 DRIVER_MODULE(ps4dshead, hidbus, ps4dshead_driver, ps4dshead_devclass, NULL, 0);
-DEFINE_CLASS_1(ps4dsmtp, ps4dsmtp_driver, ps4dsmtp_methods,
-    sizeof(struct ps4dsmtp_softc), hmap_driver);
+DEFINE_CLASS_0(ps4dsmtp, ps4dsmtp_driver, ps4dsmtp_methods,
+    sizeof(struct ps4dsmtp_softc));
 DRIVER_MODULE(ps4dsmtp, hidbus, ps4dsmtp_driver, ps4dsmtp_devclass, NULL, 0);
-DEFINE_CLASS_1(ps4dshock, ps4dshock_driver, ps4dshock_methods,
-    sizeof(struct ps4dshock_softc), hmap_driver);
+DEFINE_CLASS_0(ps4dshock, ps4dshock_driver, ps4dshock_methods,
+    sizeof(struct ps4dshock_softc));
 DRIVER_MODULE(ps4dshock, hidbus, ps4dshock_driver, ps4dshock_devclass, NULL, 0);
 
 MODULE_DEPEND(ps4dshock, hid, 1, 1, 1);

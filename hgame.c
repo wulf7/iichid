@@ -191,11 +191,12 @@ static devclass_t hgame_devclass;
 
 static device_method_t hgame_methods[] = {
 	DEVMETHOD(device_probe,		hgame_probe),
+	DEVMETHOD(device_attach,	hmap_attach),
+	DEVMETHOD(device_detach,	hmap_detach),
 	DEVMETHOD_END
 };
 
-DEFINE_CLASS_1(hgame, hgame_driver, hgame_methods,
-    sizeof(struct hgame_softc), hmap_driver);
+DEFINE_CLASS_0(hgame, hgame_driver, hgame_methods, sizeof(struct hgame_softc));
 DRIVER_MODULE(hgame, hidbus, hgame_driver, hgame_devclass, NULL, 0);
 MODULE_DEPEND(hgame, hid, 1, 1, 1);
 MODULE_DEPEND(hgame, hmap, 1, 1, 1);

@@ -306,12 +306,15 @@ hcons_probe(device_t dev)
 
 static devclass_t hcons_devclass;
 static device_method_t hcons_methods[] = {
-	DEVMETHOD(device_probe, hcons_probe),
+	DEVMETHOD(device_probe,		hcons_probe),
+	DEVMETHOD(device_attach,	hmap_attach),
+	DEVMETHOD(device_detach,	hmap_detach),
+
 	DEVMETHOD_END
 };
 
-DEFINE_CLASS_1(hcons, hcons_driver, hcons_methods,
-    sizeof(struct hmap_softc), hmap_driver);
+DEFINE_CLASS_0(hcons, hcons_driver, hcons_methods,
+    sizeof(struct hmap_softc));
 DRIVER_MODULE(hcons, hidbus, hcons_driver, hcons_devclass, NULL, 0);
 MODULE_DEPEND(hcons, hid, 1, 1, 1);
 MODULE_DEPEND(hcons, hmap, 1, 1, 1);

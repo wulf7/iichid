@@ -217,6 +217,4 @@ uint32_t	hmap_add_map(device_t dev, const struct hmap_item *map,
 device_attach_t	hmap_attach;
 device_detach_t	hmap_detach;
 
-extern driver_t hmap_driver;
-
 #endif	/* _HMAP_H_ */

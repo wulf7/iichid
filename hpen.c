@@ -244,11 +244,11 @@ static device_method_t hpen_methods[] = {
 	DEVMETHOD(device_identify,	hpen_identify),
 	DEVMETHOD(device_probe,		hpen_probe),
 	DEVMETHOD(device_attach,	hpen_attach),
+	DEVMETHOD(device_detach,	hmap_detach),
 	DEVMETHOD_END
 };
 
-DEFINE_CLASS_1(hpen, hpen_driver, hpen_methods,
-    sizeof(struct hmap_softc), hmap_driver);
+DEFINE_CLASS_0(hpen, hpen_driver, hpen_methods, sizeof(struct hmap_softc));
 DRIVER_MODULE(hpen, hidbus, hpen_driver, hpen_devclass, NULL, 0);
 MODULE_DEPEND(hpen, hid, 1, 1, 1);
 MODULE_DEPEND(hpen, hmap, 1, 1, 1);
