@@ -399,7 +399,7 @@ hmt_attach(device_t dev)
 	if (hid_test_quirk(hw, HQ_MT_TIMESTAMP))
 		sc->do_timestamps = true;
 
-	hidbus_set_intr(dev, hmt_intr);
+	hidbus_set_intr(dev, hmt_intr, sc);
 
 	sc->evdev = evdev_alloc();
 	evdev_set_name(sc->evdev, device_get_desc(dev));
@@ -480,8 +480,7 @@ hmt_detach(device_t dev)
 static void
 hmt_intr(void *context, void *buf, hid_size_t len)
 {
-	device_t dev = context;
-	struct hmt_softc *sc = device_get_softc(dev);
+	struct hmt_softc *sc = context;
 	size_t usage;
 	uint32_t *slot_data = sc->slot_data;
 	uint32_t cont, btn;

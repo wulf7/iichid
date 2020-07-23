@@ -346,9 +346,6 @@ hidbus_read_ivar(device_t bus, device_t child, int which, uintptr_t *result)
 	case HIDBUS_IVAR_USAGE:
 		*result = tlc->usage;
 		break;
-	case HIDBUS_IVAR_INTR:
-		*result = (uintptr_t)tlc->intr;
-		break;
 	case HIDBUS_IVAR_DRIVER_INFO:
 		*result = tlc->driver_info;
 		break;
@@ -369,9 +366,6 @@ hidbus_write_ivar(device_t bus, device_t child, int which, uintptr_t value)
 		break;
 	case HIDBUS_IVAR_USAGE:
 		tlc->usage = value;
-		break;
-	case HIDBUS_IVAR_INTR:
-		tlc->intr = (hid_intr_t *)value;
 		break;
 	case HIDBUS_IVAR_DRIVER_INFO:
 		tlc->driver_info = value;
@@ -446,11 +440,20 @@ hidbus_intr(void *context, void *buf, hid_size_t len)
 	 */
 	 STAILQ_FOREACH(tlc, &sc->tlcs, link) {
 		if (tlc->open) {
-			KASSERT(tlc->intr != NULL,
+			KASSERT(tlc->intr_handler != NULL,
 			    ("hidbus: interrupt handler is NULL"));
-			tlc->intr(tlc->child, buf, len);
+			tlc->intr_handler(tlc->intr_ctx, buf, len);
 		}
 	}
+}
+
+void
+hidbus_set_intr(device_t child, hid_intr_t *handler, void *context)
+{
+	struct hidbus_ivars *tlc = device_get_ivars(child);
+
+	tlc->intr_handler = handler;
+	tlc->intr_ctx = context;
 }
 
 int

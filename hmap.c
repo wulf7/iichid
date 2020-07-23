@@ -144,8 +144,7 @@ hmap_ev_open(struct evdev_dev *evdev)
 static void
 hmap_intr(void *context, void *buf, hid_size_t len)
 {
-	device_t dev = context;
-	struct hmap_softc *sc = device_get_softc(dev);
+	struct hmap_softc *sc = context;
 	struct hmap_hid_item *hi;
 	const struct hmap_item *mi;
 	int32_t usage;
@@ -154,7 +153,7 @@ hmap_intr(void *context, void *buf, hid_size_t len)
 	uint8_t id = 0;
 	bool found, do_sync = false;
 
-	mtx_assert(hidbus_get_lock(dev), MA_OWNED);
+	mtx_assert(hidbus_get_lock(sc->dev), MA_OWNED);
 
 	/* Strip leading "report ID" byte */
 	if (sc->hid_items[0].id) {
@@ -689,7 +688,7 @@ hmap_attach(device_t dev)
 	sc->hid_items = malloc(sc->nhid_items * sizeof(struct hid_item),
 	    M_DEVBUF, M_WAITOK | M_ZERO);
 
-	hidbus_set_intr(dev, hmap_intr);
+	hidbus_set_intr(dev, hmap_intr, sc);
 	sc->evdev_methods = (struct evdev_methods) {
 		.ev_open = &hmap_ev_open,
 		.ev_close = &hmap_ev_close,

@@ -48,7 +48,8 @@ struct hidbus_ivars {
 	int32_t				usage;
 	uint8_t				index;
 	uintptr_t			driver_info;	/* for internal use */
-	hid_intr_t			*intr;
+	hid_intr_t			*intr_handler;
+	void				*intr_ctx;
 	bool				open;
 	STAILQ_ENTRY(hidbus_ivars)	link;
 };
@@ -56,7 +57,6 @@ struct hidbus_ivars {
 enum {
 	HIDBUS_IVAR_USAGE,
 	HIDBUS_IVAR_INDEX,
-	HIDBUS_IVAR_INTR,
 	HIDBUS_IVAR_DRIVER_INFO,
 };
 
@@ -65,7 +65,6 @@ enum {
 
 HIDBUS_ACCESSOR(usage,		USAGE,		int32_t)
 HIDBUS_ACCESSOR(index,		INDEX,		uint8_t)
-HIDBUS_ACCESSOR(intr,		INTR,		hid_intr_t *)
 HIDBUS_ACCESSOR(driver_info,	DRIVER_INFO,	uintptr_t)
 
 /*
@@ -162,6 +161,7 @@ struct hidbus_report_descr *hidbus_get_report_descr(device_t);
 int		hidbus_lookup_driver_info(device_t,
 		    const struct hid_device_id *, size_t);
 struct mtx *	hidbus_get_lock(device_t);
+void		hidbus_set_intr(device_t, hid_intr_t*, void *);
 int		hidbus_intr_start(device_t);
 int		hidbus_intr_stop(device_t);
 void		hidbus_intr_poll(device_t);

@@ -631,8 +631,7 @@ hkbd_apple_swap(uint32_t keycode)
 static void
 hkbd_intr_callback(void *context, void *data, hid_size_t len)
 {
-	device_t dev = context;
-	struct hkbd_softc *sc = device_get_softc(dev);
+	struct hkbd_softc *sc = context;
 	uint8_t *buf = data;
 	uint32_t i;
 	uint8_t id = 0;
@@ -887,7 +886,7 @@ hkbd_attach(device_t dev)
 
 	callout_init_mtx(&sc->sc_callout, sc->sc_lock, 0);
 
-	hidbus_set_intr(dev, hkbd_intr_callback);
+	hidbus_set_intr(dev, hkbd_intr_callback, sc);
 
 	/* setup default keyboard maps */
 

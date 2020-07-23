@@ -212,7 +212,7 @@ hidraw_attach(device_t self)
 		return (error);
 	}
 
-	hidbus_set_intr(sc->sc_dev, hidraw_intr);
+	hidbus_set_intr(sc->sc_dev, hidraw_intr, sc);
 
 	return 0;
 }
@@ -246,8 +246,7 @@ hidraw_detach(device_t self)
 void
 hidraw_intr(void *context, void *buf, hid_size_t len)
 {
-	device_t dev = context;
-	struct hidraw_softc *sc = device_get_softc(dev);
+	struct hidraw_softc *sc = context;
 	int next;
 
 	DPRINTFN(5, "len=%d\n", len);
