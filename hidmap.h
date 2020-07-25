@@ -48,8 +48,15 @@ enum hidmap_cb_state {
 
 #define	HIDMAP_KEY_NULL	0xFF	/* Special event code to discard input */
 
+/* Third parameter of hidmap callback has different type depending on state */
+union hidmap_cb_ctx {
+	struct hid_item	*hi;	/* Probe and attach stage callbacks */
+	int32_t		data;	/* Run stage callbacks */
+	uint8_t		rid;	/* Run stage completion callbacks */
+};
+
 #define	HIDMAP_CB_ARGS							\
-	struct hidmap *hm, struct hidmap_hid_item *hi, intptr_t ctx
+	struct hidmap *hm, struct hidmap_hid_item *hi, union hidmap_cb_ctx ctx
 #define	HIDMAP_CB_GET_STATE(...)					\
 	((hm == NULL) ? HIDMAP_CB_IS_PROBING : hm->cb_state)
 #define	HIDMAP_CB_GET_SOFTC(...)					\

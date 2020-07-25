@@ -258,7 +258,6 @@ static int
 hcons_rel_volume_cb(HIDMAP_CB_ARGS)
 {
 	struct evdev_dev *evdev = HIDMAP_CB_GET_EVDEV();
-	int32_t data;
 	int32_t code;
 	int nrepeats;
 
@@ -269,12 +268,11 @@ hcons_rel_volume_cb(HIDMAP_CB_ARGS)
 		evdev_support_key(evdev, KEY_VOLUMEDOWN);
 		break;
 	case HIDMAP_CB_IS_RUNNING:
-		data = ctx;
 		/* Nothing to report. */
-		if (data == 0)
+		if (ctx.data == 0)
 			return (ENOMSG);
-		code = data > 0 ? KEY_VOLUMEUP : KEY_VOLUMEDOWN;
-		for (nrepeats = abs(data); nrepeats > 0; nrepeats--) {
+		code = ctx.data > 0 ? KEY_VOLUMEUP : KEY_VOLUMEDOWN;
+		for (nrepeats = abs(ctx.data); nrepeats > 0; nrepeats--) {
 			evdev_push_key(evdev, code, 1);
 			evdev_push_key(evdev, code, 0);
 		}

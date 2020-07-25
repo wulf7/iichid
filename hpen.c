@@ -135,7 +135,7 @@ hpen_battery_strenght_cb(HIDMAP_CB_ARGS)
 		/* TODO */
 		break;
 	case HIDMAP_CB_IS_RUNNING:
-		data = ctx;
+		data = ctx.data;
 		/* TODO */
 	}
 

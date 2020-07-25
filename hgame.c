@@ -103,42 +103,42 @@ hgame_dpad_cb(HIDMAP_CB_ARGS)
 {
 	struct hgame_softc *sc = HIDMAP_CB_GET_SOFTC();
 	struct evdev_dev *evdev = HIDMAP_CB_GET_EVDEV();
-	struct hid_item *hid_item;
+	int32_t data;
 
 	switch (HIDMAP_CB_GET_STATE()) {
 	case HIDMAP_CB_IS_ATTACHING:
-		hid_item = (struct hid_item *)ctx;
-		HIDMAP_CB_UDATA64 = HID_GET_USAGE(hid_item->usage);
+		HIDMAP_CB_UDATA64 = HID_GET_USAGE(ctx.hi->usage);
 		evdev_support_event(evdev, EV_ABS);
 		evdev_support_abs(evdev, ABS_HAT0X, 0, -1, 1, 0, 0, 0);
 		evdev_support_abs(evdev, ABS_HAT0Y, 0, -1, 1, 0, 0, 0);
 		break;
 
 	case HIDMAP_CB_IS_RUNNING:
+		data = ctx.data;
 		switch (HIDMAP_CB_UDATA64) {
 		case HUG_D_PAD_UP:
 			if (sc->dpad_down)
 				break;
-			evdev_push_abs(evdev, ABS_HAT0Y, (ctx == 0) ? 0 : -1);
-			sc->dpad_up = (ctx != 0);
+			evdev_push_abs(evdev, ABS_HAT0Y, (data == 0) ? 0 : -1);
+			sc->dpad_up = (data != 0);
 			break;
 		case HUG_D_PAD_DOWN:
 			if (sc->dpad_up)
 				break;
-			evdev_push_abs(evdev, ABS_HAT0Y, (ctx == 0) ? 0 : 1);
-			sc->dpad_down = (ctx != 0);
+			evdev_push_abs(evdev, ABS_HAT0Y, (data == 0) ? 0 : 1);
+			sc->dpad_down = (data != 0);
 			break;
 		case HUG_D_PAD_RIGHT:
 			if (sc->dpad_left)
 				break;
-			evdev_push_abs(evdev, ABS_HAT0X, (ctx == 0) ? 0 : 1);
-			sc->dpad_right = (ctx != 0);
+			evdev_push_abs(evdev, ABS_HAT0X, (data == 0) ? 0 : 1);
+			sc->dpad_right = (data != 0);
 			break;
 		case HUG_D_PAD_LEFT:
 			if (sc->dpad_right)
 				break;
-			evdev_push_abs(evdev, ABS_HAT0X, (ctx == 0) ? 0 : -1);
-			sc->dpad_left = (ctx != 0);
+			evdev_push_abs(evdev, ABS_HAT0X, (data == 0) ? 0 : -1);
+			sc->dpad_left = (data != 0);
 			break;
 		}
 	}

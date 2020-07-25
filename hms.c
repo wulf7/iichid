@@ -159,7 +159,7 @@ hms_wheel_cb(HIDMAP_CB_ARGS)
 		evdev_support_rel(evdev, REL_WHEEL);
 		break;
 	case HIDMAP_CB_IS_RUNNING:
-		data = ctx;
+		data = ctx.data;
 		/* No movement. Nothing to report. */
 		if (data == 0)
 			return (ENOMSG);

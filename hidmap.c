@@ -164,7 +164,8 @@ hidmap_intr(void *context, void *buf, hid_size_t len)
 	for (hi = hm->hid_items; hi < hm->hid_items + hm->nhid_items; hi++) {
 		/* At first run callbacks that not tied to HID items */
 		if (hi->type == HIDMAP_TYPE_COMPLCB) {
-			if (hi->cb(hm, hi, id) == 0)
+			if (hi->cb(hm, hi, (union hidmap_cb_ctx){.rid = id})
+			    == 0)
 				do_sync = true;
 			continue;
 		}
@@ -185,7 +186,8 @@ hidmap_intr(void *context, void *buf, hid_size_t len)
 
 		switch (hi->type) {
 		case HIDMAP_TYPE_CALLBACK:
-			if (hi->cb(hm, hi, data) != 0)
+			if (hi->cb(hm, hi, (union hidmap_cb_ctx){.data = data})
+			    != 0)
 				continue;
 			break;
 
@@ -337,7 +339,8 @@ hidmap_probe_hid_item(struct hid_item *hi, const struct hidmap_item *map,
 
 	HIDMAP_FOREACH_INDEX(map, nmap_items, i, uoff) {
 		if (can_map_callback(hi, map + i, uoff)) {
-			if (map[i].cb(NULL, NULL, (intptr_t)hi) != 0)
+			if (map[i].cb(NULL, NULL,
+			    (union hidmap_cb_ctx){.hi = hi}) != 0)
 				break;
 			bit_set(caps, i);
 			return (true);
@@ -422,7 +425,7 @@ hidmap_probe_hid_descr(void *d_ptr, hid_size_t d_len, uint8_t tlc_index,
 	/* Take completion callbacks in to account */
 	for (i = 0; i < nmap_items; i++) {
 		if (map[i].has_cb && map[i].compl_cb &&
-		    map[i].cb(NULL, NULL, 0) == 0) {
+		    map[i].cb(NULL, NULL, (union hidmap_cb_ctx){}) == 0) {
 			bit_set(caps, i);
 			items++;
 		}
@@ -504,7 +507,8 @@ hidmap_parse_hid_item(struct hidmap *hm, struct hid_item *hi,
 			 * Values returned by probe- and attach-stage
 			 * callbacks MUST be identical.
 			 */
-			if (mi->cb(hm, &hi_temp, (intptr_t)hi) != 0)
+			if (mi->cb(hm, &hi_temp,
+			    (union hidmap_cb_ctx){.hi = hi}) != 0)
 				break;
 			bcopy(&hi_temp, item, sizeof(hi_temp));
 			goto mapped;
@@ -647,7 +651,7 @@ hidmap_parse_hid_descr(struct hidmap *hm, uint8_t tlc_index)
 		     map < hm->map[i] + hm->nmap_items[i];
 		     map++) {
 			if (map->has_cb && map->compl_cb &&
-			    map->cb(hm, item, 0) == 0) {
+			    map->cb(hm, item, (union hidmap_cb_ctx){}) == 0) {
 				item->cb = map->cb;
 				item->type = HIDMAP_TYPE_COMPLCB;
 				item++;
@@ -722,7 +726,7 @@ hidmap_detach(struct hidmap* hm)
 		     hi < hm->hid_items + hm->nhid_items;
 		     hi++)
 			if (hi->type == HIDMAP_TYPE_CALLBACK)
-				hi->cb(hm, hi, 0);
+				hi->cb(hm, hi, (union hidmap_cb_ctx){});
 			else if (hi->type == HIDMAP_TYPE_ARR_LIST)
 				free(hi->codes, M_DEVBUF);
 		free(hm->hid_items, M_DEVBUF);

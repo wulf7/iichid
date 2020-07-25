@@ -813,7 +813,7 @@ ps4dshock_hat_switch_cb(HIDMAP_CB_ARGS)
 		break;
 
 	case HIDMAP_CB_IS_RUNNING:
-		idx = MIN(nitems(hat_switch_map) - 1, (u_int)ctx);
+		idx = MIN(nitems(hat_switch_map) - 1, (u_int)ctx.data);
 		evdev_push_abs(evdev, ABS_HAT0X, hat_switch_map[idx].x);
 		evdev_push_abs(evdev, ABS_HAT0Y, hat_switch_map[idx].y);
 	}
@@ -838,15 +838,13 @@ ps4dsacc_data_cb(HIDMAP_CB_ARGS)
 {
 	struct evdev_dev *evdev = HIDMAP_CB_GET_EVDEV();
 	struct ps4dsacc_softc *sc = HIDMAP_CB_GET_SOFTC();
-	struct hid_item *hid_item;
 	struct ps4ds_calib_data *calib;
 	u_int i;
 
 	switch (HIDMAP_CB_GET_STATE()) {
 	case HIDMAP_CB_IS_ATTACHING:
-		hid_item = (struct hid_item *)ctx;
 		for (i = 0; i < nitems(sc->calib_data); i++) {
-			if (sc->calib_data[i].usage == hid_item->usage) {
+			if (sc->calib_data[i].usage == ctx.hi->usage) {
 				evdev_support_abs(evdev,
 				     sc->calib_data[i].code, 0,
 				    -sc->calib_data[i].range,
@@ -861,7 +859,8 @@ ps4dsacc_data_cb(HIDMAP_CB_ARGS)
 	case HIDMAP_CB_IS_RUNNING:
 		calib = HIDMAP_CB_UDATA;
 		evdev_push_abs(evdev, calib->code,
-		    ((int64_t)ctx - calib->bias) * calib->sens_numer / calib->sens_denom);
+		    ((int64_t)ctx.data - calib->bias) * calib->sens_numer /
+		    calib->sens_denom);
 		break;
 	}
 
@@ -883,7 +882,7 @@ ps4dsacc_tstamp_cb(HIDMAP_CB_ARGS)
 
 	case HIDMAP_CB_IS_RUNNING:
 		/* Convert timestamp (in 5.33us unit) to timestamp_us */
-		tstamp = (uint16_t)ctx;
+		tstamp = (uint16_t)ctx.data;
 		sc->ev_tstamp += (uint16_t)(tstamp - sc->hw_tstamp) * 16 / 3;
 		sc->hw_tstamp = tstamp;
 		evdev_push_msc(evdev, MSC_TIMESTAMP, sc->ev_tstamp);
@@ -912,7 +911,7 @@ ps4dsmtp_npackets_cb(HIDMAP_CB_ARGS)
 	struct ps4dsmtp_softc *sc = HIDMAP_CB_GET_SOFTC();
 
 	if (HIDMAP_CB_GET_STATE() == HIDMAP_CB_IS_RUNNING) {
-		sc->npackets = MIN(PS4DS_MAX_TOUCHPAD_PACKETS, (u_int)ctx);
+		sc->npackets = MIN(PS4DS_MAX_TOUCHPAD_PACKETS,(u_int)ctx.data);
 		/* Reset pointer here as it is first usage in touchpad TLC */
 		sc->data_ptr = sc->data;
 	}
@@ -926,7 +925,7 @@ ps4dsmtp_data_cb(HIDMAP_CB_ARGS)
 	struct ps4dsmtp_softc *sc = HIDMAP_CB_GET_SOFTC();
 
 	if (HIDMAP_CB_GET_STATE() == HIDMAP_CB_IS_RUNNING) {
-		*sc->data_ptr = (int32_t)ctx;
+		*sc->data_ptr = ctx.data;
 		++sc->data_ptr;
 	}
 
@@ -1018,7 +1017,7 @@ ps4dsmtp_compl_cb(HIDMAP_CB_ARGS)
 
 	case HIDMAP_CB_IS_RUNNING:
 		/* Only packets with ReportID=1 are accepted */
-		if (ctx != 1)
+		if (ctx.rid != 1)
 			return (ENOTSUP);
 		evdev_push_key(evdev, BTN_LEFT,
 		    HIDMAP_CB_GET_UDATA(&sc->btn_loc));
