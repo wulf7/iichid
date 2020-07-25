@@ -78,8 +78,6 @@ enum hidmap_relabs {
 };
 
 struct hidmap_item {
-	int32_t 		usage;		/* HID usage (base) */
-	uint16_t		nusages;	/* number of usages */
 	union {
 		struct {
 			uint16_t	type;	/* Evdev event type */
@@ -87,11 +85,13 @@ struct hidmap_item {
 		};
 		hidmap_cb_t		*cb;	/* Reporting callback */
 	};
+	int32_t 		usage;		/* HID usage (base) */
+	uint16_t		nusages;	/* number of usages */
 	bool			required:1;	/* Required by driver */
 	enum hidmap_relabs	relabs:2;
 	bool			has_cb:1;
 	bool			compl_cb:1;
-	u_int			reserved:3;
+	u_int			reserved:11;
 };
 
 #define	HIDMAP_ANY(_page, _usage, _type, _code)				\
