@@ -35,13 +35,11 @@ hmap_cb_t	hgame_dpad_cb;
 hmap_cb_t	hgame_compl_cb;
 
 struct hgame_softc {
-	struct hmap_softc	super_sc;
-	bool			dpad_up;
-	bool			dpad_down;
-	bool			dpad_right;
-	bool			dpad_left;
+	struct hmap	hm;
+	bool		dpad_up;
+	bool		dpad_down;
+	bool		dpad_right;
+	bool		dpad_left;
 };
-
-extern driver_t hgame_driver;
 
 #endif /* !_HGAME_H_ */

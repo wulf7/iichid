@@ -668,7 +668,7 @@ enum {
 };
 
 struct ps4dshock_softc {
-	struct hmap_softc	super_sc;
+	struct hmap		hm;
 
 	bool			is_bluetooth;
 
@@ -683,7 +683,7 @@ struct ps4dshock_softc {
 };
 
 struct ps4dsacc_softc {
-	struct hmap_softc	super_sc;
+	struct hmap		hm;
 
 	uint16_t		hw_tstamp;
 	int32_t			ev_tstamp;
@@ -692,7 +692,7 @@ struct ps4dsacc_softc {
 };
 
 struct ps4dsmtp_softc {
-	struct hmap_softc	super_sc;
+	struct hmap		hm;
 
 	struct hid_location	btn_loc;
 	u_int		npackets;
@@ -987,7 +987,7 @@ ps4dsmtp_compl_cb(HMAP_CB_ARGS)
 
 	switch (HMAP_CB_GET_STATE()) {
 	case HMAP_CB_IS_ATTACHING:
-		if (hid_test_quirk(hid_get_device_info(sc->super_sc.dev),
+		if (hid_test_quirk(hid_get_device_info(sc->hm.dev),
 		    HQ_MT_TIMESTAMP))
 			sc->do_tstamps = true;
 		/*
@@ -1083,7 +1083,7 @@ ps4dshock_write(struct ps4dshock_softc *sc)
 	}
 #endif
 
-	return (hid_write(sc->super_sc.dev, buf, osize));
+	return (hid_write(sc->hm.dev, buf, osize));
 }
 
 /* Synaptics Touchpad */
@@ -1157,15 +1157,18 @@ ps4dshock_identify(driver_t *driver, device_t parent)
 static int
 ps4dshock_probe(device_t dev)
 {
+	struct ps4dshock_softc *sc = device_get_softc(dev);
 	int error;
 
 	error = hidbus_lookup_driver_info(dev, ps4dshock_devs, sizeof(ps4dshock_devs));
 	if (error != 0)
 		return (error);
 
-	hmap_set_debug_var(dev, &HID_DEBUG_VAR);
+	hmap_set_dev(&sc->hm, dev);
+	hmap_set_debug_var(&sc->hm, &HID_DEBUG_VAR);
 
-	error = hmap_add_map(dev, ps4dshock_map, nitems(ps4dshock_map), NULL);
+	error = hmap_add_map(&sc->hm, ps4dshock_map, nitems(ps4dshock_map),
+	    NULL);
 	if (error != 0)
 		return (error);
 
@@ -1177,15 +1180,17 @@ ps4dshock_probe(device_t dev)
 static int
 ps4dsacc_probe(device_t dev)
 {
+	struct ps4dsacc_softc *sc = device_get_softc(dev);
 	int error;
 
 	error = hidbus_lookup_driver_info(dev, ps4dsacc_devs, sizeof(ps4dsacc_devs));
 	if (error != 0)
 		return (error);
 
-	hmap_set_debug_var(dev, &HID_DEBUG_VAR);
+	hmap_set_dev(&sc->hm, dev);
+	hmap_set_debug_var(&sc->hm, &HID_DEBUG_VAR);
 
-	error = hmap_add_map(dev, ps4dsacc_map, nitems(ps4dsacc_map), NULL);
+	error = hmap_add_map(&sc->hm, ps4dsacc_map, nitems(ps4dsacc_map),NULL);
 	if (error != 0)
 		return (error);
 
@@ -1197,15 +1202,17 @@ ps4dsacc_probe(device_t dev)
 static int
 ps4dshead_probe(device_t dev)
 {
+	struct hmap *hm = device_get_softc(dev);
 	int error;
 
 	error = hidbus_lookup_driver_info(dev, ps4dshead_devs, sizeof(ps4dshead_devs));
 	if (error != 0)
 		return (error);
 
-	hmap_set_debug_var(dev, &HID_DEBUG_VAR);
+	hmap_set_dev(hm, dev);
+	hmap_set_debug_var(hm, &HID_DEBUG_VAR);
 
-	error = hmap_add_map(dev, ps4dshead_map, nitems(ps4dshead_map), NULL);
+	error = hmap_add_map(hm, ps4dshead_map, nitems(ps4dshead_map), NULL);
 	if (error != 0)
 		return (error);
 
@@ -1217,15 +1224,18 @@ ps4dshead_probe(device_t dev)
 static int
 ps4dsmtp_probe(device_t dev)
 {
+	struct ps4dshock_softc *sc = device_get_softc(dev);
 	int error;
 
-	error = hidbus_lookup_driver_info(dev, ps4dsmtp_devs, sizeof(ps4dsmtp_devs));
+	error = hidbus_lookup_driver_info(dev, ps4dsmtp_devs,
+	    sizeof(ps4dsmtp_devs));
 	if (error != 0)
 		return (error);
 
-	hmap_set_debug_var(dev, &HID_DEBUG_VAR);
+	hmap_set_dev(&sc->hm, dev);
+	hmap_set_debug_var(&sc->hm, &HID_DEBUG_VAR);
 
-	error = hmap_add_map(dev, ps4dsmtp_map, nitems(ps4dsmtp_map), NULL);
+	error = hmap_add_map(&sc->hm, ps4dsmtp_map, nitems(ps4dsmtp_map),NULL);
 	if (error != 0)
 		return (error);
 
@@ -1240,9 +1250,6 @@ ps4dshock_attach(device_t dev)
 	struct ps4dshock_softc *sc = device_get_softc(dev);
 	struct sysctl_ctx_list *ctx = device_get_sysctl_ctx(dev);
 	struct sysctl_oid *tree = device_get_sysctl_tree(dev);
-
-	/* ps4dshock_write() needs super_sc.dev initialized */
-	sc->super_sc.dev = dev;
 
 	sc->led_state = PS4DS_LED_ON;
 	sc->led_color = ps4ds_leds[device_get_unit(dev) % nitems(ps4ds_leds)];
@@ -1282,20 +1289,7 @@ ps4dshock_attach(device_t dev)
 	    PD4DSHOCK_SYSCTL_LED_DELAY_OFF, ps4dshock_sysctl, "I",
 	    "LED blink. Off delay, msecs.");
 
-	return (hmap_attach(dev));
-}
-
-static int
-ps4dshock_detach(device_t dev)
-{
-	struct ps4dshock_softc *sc = device_get_softc(dev);
-
-	hmap_detach(dev);
-	sc->led_state = PS4DS_LED_OFF;
-	ps4dshock_write(sc);
-	sx_destroy(&sc->lock);
-
-	return (0);
+	return (hmap_attach(&sc->hm));
 }
 
 static int
@@ -1382,7 +1376,56 @@ ps4dsacc_attach(device_t dev)
 	sc->calib_data[5].sens_numer = 2 * PS4DS_ACC_RES_PER_G;
 	sc->calib_data[5].sens_denom = range_2g;
 
-	return (hmap_attach(dev));
+	return (hmap_attach(&sc->hm));
+}
+
+static int
+ps4dshead_attach(device_t dev)
+{
+	return (hmap_attach(device_get_softc(dev)));
+}
+
+static int
+ps4dsmtp_attach(device_t dev)
+{
+	struct ps4dsmtp_softc *sc = device_get_softc(dev);
+
+	return (hmap_attach(&sc->hm));
+}
+
+static int
+ps4dshock_detach(device_t dev)
+{
+	struct ps4dshock_softc *sc = device_get_softc(dev);
+
+	hmap_detach(&sc->hm);
+	sc->led_state = PS4DS_LED_OFF;
+	ps4dshock_write(sc);
+	sx_destroy(&sc->lock);
+
+	return (0);
+}
+
+static int
+ps4dsacc_detach(device_t dev)
+{
+	struct ps4dsacc_softc *sc = device_get_softc(dev);
+
+	return (hmap_detach(&sc->hm));
+}
+
+static int
+ps4dshead_detach(device_t dev)
+{
+	return (hmap_detach(device_get_softc(dev)));
+}
+
+static int
+ps4dsmtp_detach(device_t dev)
+{
+	struct ps4dsmtp_softc *sc = device_get_softc(dev);
+
+	return (hmap_detach(&sc->hm));
 }
 
 static devclass_t ps4dshock_devclass;
@@ -1395,24 +1438,28 @@ static device_method_t ps4dshock_methods[] = {
 	DEVMETHOD(device_probe,		ps4dshock_probe),
 	DEVMETHOD(device_attach,	ps4dshock_attach),
 	DEVMETHOD(device_detach,	ps4dshock_detach),
+
 	DEVMETHOD_END
 };
 static device_method_t ps4dsacc_methods[] = {
 	DEVMETHOD(device_probe,		ps4dsacc_probe),
 	DEVMETHOD(device_attach,	ps4dsacc_attach),
-	DEVMETHOD(device_detach,	hmap_detach),
+	DEVMETHOD(device_detach,	ps4dsacc_detach),
+
 	DEVMETHOD_END
 };
 static device_method_t ps4dshead_methods[] = {
 	DEVMETHOD(device_probe,		ps4dshead_probe),
-	DEVMETHOD(device_attach,	hmap_attach),
-	DEVMETHOD(device_detach,	hmap_detach),
+	DEVMETHOD(device_attach,	ps4dshead_attach),
+	DEVMETHOD(device_detach,	ps4dshead_detach),
+
 	DEVMETHOD_END
 };
 static device_method_t ps4dsmtp_methods[] = {
 	DEVMETHOD(device_probe,		ps4dsmtp_probe),
-	DEVMETHOD(device_attach,	hmap_attach),
-	DEVMETHOD(device_detach,	hmap_detach),
+	DEVMETHOD(device_attach,	ps4dsmtp_attach),
+	DEVMETHOD(device_detach,	ps4dsmtp_detach),
+
 	DEVMETHOD_END
 };
 
@@ -1420,7 +1467,7 @@ DEFINE_CLASS_0(ps4dsacc, ps4dsacc_driver, ps4dsacc_methods,
     sizeof(struct ps4dsacc_softc));
 DRIVER_MODULE(ps4dsacc, hidbus, ps4dsacc_driver, ps4dsacc_devclass, NULL, 0);
 DEFINE_CLASS_0(ps4dshead, ps4dshead_driver, ps4dshead_methods,
-    sizeof(struct hmap_softc));
+    sizeof(struct hmap));
 DRIVER_MODULE(ps4dshead, hidbus, ps4dshead_driver, ps4dshead_devclass, NULL, 0);
 DEFINE_CLASS_0(ps4dsmtp, ps4dsmtp_driver, ps4dsmtp_methods,
     sizeof(struct ps4dsmtp_softc));

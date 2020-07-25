@@ -91,31 +91,29 @@ hmap_get_next_map_index(const struct hmap_item *map, int nmap_items,
 }
 
 static const struct hmap_item *
-hmap_get_next_map_item(struct hmap_softc *sc, u_int *map, u_int *item,
+hmap_get_next_map_item(struct hmap *hm, u_int *map, u_int *item,
     u_int *uoff_int, uint16_t *uoff)
 {
 
 	*uoff = *uoff_int;
 	while (!hmap_get_next_map_index(
-	   sc->map[*map], sc->nmap_items[*map], item, uoff)) {
+	   hm->map[*map], hm->nmap_items[*map], item, uoff)) {
 		++*map;
 		*item = 0;
 		*uoff = -1;
-		if (*map >= sc->nmaps)
+		if (*map >= hm->nmaps)
 			return (NULL);
 	}
 	*uoff_int = *uoff;
 
-	return (sc->map[*map] + *item);
+	return (hm->map[*map] + *item);
 }
 
 void
-hmap_set_debug_var(device_t dev, int *debug_var)
+hmap_set_debug_var(struct hmap *hm, int *debug_var)
 {
 #ifdef HID_DEBUG
-	struct hmap_softc *sc = device_get_softc(dev);
-
-	sc->debug_var = debug_var;
+	hm->debug_var = debug_var;
 #endif
 }
 
@@ -142,7 +140,7 @@ hmap_ev_open(struct evdev_dev *evdev)
 static void
 hmap_intr(void *context, void *buf, hid_size_t len)
 {
-	struct hmap_softc *sc = context;
+	struct hmap *hm = context;
 	struct hmap_hid_item *hi;
 	const struct hmap_item *mi;
 	int32_t usage;
@@ -151,22 +149,22 @@ hmap_intr(void *context, void *buf, hid_size_t len)
 	uint8_t id = 0;
 	bool found, do_sync = false;
 
-	mtx_assert(hidbus_get_lock(sc->dev), MA_OWNED);
+	mtx_assert(hidbus_get_lock(hm->dev), MA_OWNED);
 
 	/* Strip leading "report ID" byte */
-	if (sc->hid_items[0].id) {
+	if (hm->hid_items[0].id) {
 		id = *(uint8_t *)buf;
 		len--;
 		buf = (uint8_t *)buf + 1;
 	}
 
-	sc->intr_buf = buf;
-	sc->intr_len = len;
+	hm->intr_buf = buf;
+	hm->intr_len = len;
 
-	for (hi = sc->hid_items; hi < sc->hid_items + sc->nhid_items; hi++) {
+	for (hi = hm->hid_items; hi < hm->hid_items + hm->nhid_items; hi++) {
 		/* At first run callbacks that not tied to HID items */
 		if (hi->type == HMAP_TYPE_COMPLCB) {
-			if (hi->cb(sc, hi, id) == 0)
+			if (hi->cb(hm, hi, id) == 0)
 				do_sync = true;
 			continue;
 		}
@@ -187,7 +185,7 @@ hmap_intr(void *context, void *buf, hid_size_t len)
 
 		switch (hi->type) {
 		case HMAP_TYPE_CALLBACK:
-			if (hi->cb(sc, hi, data) != 0)
+			if (hi->cb(hm, hi, data) != 0)
 				continue;
 			break;
 
@@ -208,7 +206,7 @@ hmap_intr(void *context, void *buf, hid_size_t len)
 			 */
 			if (data == (hi->evtype == EV_REL ? 0 : hi->last_val))
 				continue;
-			evdev_push_event(sc->evdev, hi->evtype,
+			evdev_push_event(hm->evdev, hi->evtype,
 			    hi->code, data);
 			hi->last_val = data;
 			break;
@@ -228,7 +226,7 @@ hmap_intr(void *context, void *buf, hid_size_t len)
 			 */
 			key = hi->codes[data - hi->lmin];
 			if (key == KEY_RESERVED)
-				DPRINTF(sc, "Can not map unknown HID "
+				DPRINTF(hm, "Can not map unknown HID "
 				    "array index: %08x\n", data);
 			goto report_key;
 
@@ -248,7 +246,7 @@ hmap_intr(void *context, void *buf, hid_size_t len)
 			 */
 			usage = data - hi->lmin + hi->umin;
 			found = false;
-			HMAP_FOREACH_ITEM(sc, mi, uoff) {
+			HMAP_FOREACH_ITEM(hm, mi, uoff) {
 				if (usage == mi->usage + uoff &&
 				    mi->type == EV_KEY && !mi->has_cb) {
 					key = mi->code;
@@ -257,15 +255,15 @@ hmap_intr(void *context, void *buf, hid_size_t len)
 				}
 			}
 			if (!found)
-				DPRINTF(sc, "Can not map unknown HID "
+				DPRINTF(hm, "Can not map unknown HID "
 				    "usage: %08x\n", usage);
 report_key:
 			if (key == HMAP_KEY_NULL || key == hi->last_key)
 				continue;
 			if (hi->last_key != KEY_RESERVED)
-				evdev_push_key(sc->evdev, hi->last_key, 0);
+				evdev_push_key(hm->evdev, hi->last_key, 0);
 			if (key != KEY_RESERVED)
-				evdev_push_key(sc->evdev, key, 1);
+				evdev_push_key(hm->evdev, key, 1);
 			hi->last_key = key;
 			break;
 
@@ -276,7 +274,7 @@ report_key:
 	}
 
 	if (do_sync)
-		evdev_sync(sc->evdev);
+		evdev_sync(hm->evdev);
 }
 
 static inline bool
@@ -449,46 +447,45 @@ hmap_probe_hid_descr(void *d_ptr, hid_size_t d_len, uint8_t tlc_index,
 }
 
 uint32_t
-hmap_add_map(device_t dev, const struct hmap_item *map, int nmap_items,
+hmap_add_map(struct hmap *hm, const struct hmap_item *map, int nmap_items,
     bitstr_t *caps)
 {
-	struct hmap_softc *sc = device_get_softc(dev);
-	uint8_t tlc_index = hidbus_get_index(dev);
+	uint8_t tlc_index = hidbus_get_index(hm->dev);
 	uint32_t items;
 	void *d_ptr;
 	hid_size_t d_len;
 	int i, error;
 
 	/* Avoid double-adding of map in probe() handler */
-	for (i = 0; i < sc->nmaps; i++)
-		if (sc->map[i] == map)
+	for (i = 0; i < hm->nmaps; i++)
+		if (hm->map[i] == map)
 			return (0);
 
-	error = hid_get_report_descr(dev, &d_ptr, &d_len);
+	error = hid_get_report_descr(hm->dev, &d_ptr, &d_len);
 	if (error != 0) {
-		DPRINTF(sc, "could not retrieve report descriptor from "
+		DPRINTF(hm, "could not retrieve report descriptor from "
 		     "device: %d\n", error);
 		return (error);
 	}
 
-	sc->cb_state = HMAP_CB_IS_PROBING;
+	hm->cb_state = HMAP_CB_IS_PROBING;
 	items = hmap_probe_hid_descr(d_ptr, d_len, tlc_index, map, nmap_items,
 	    caps);
 	if (items == 0)
 		return (ENXIO);
 
-	KASSERT(sc->nmaps < HMAP_MAX_MAPS,
+	KASSERT(hm->nmaps < HMAP_MAX_MAPS,
 	    ("Not more than %d maps is supported", HMAP_MAX_MAPS));
-	sc->nhid_items += items;
-	sc->map[sc->nmaps] = map;
-	sc->nmap_items[sc->nmaps] = nmap_items;
-	sc->nmaps++;
+	hm->nhid_items += items;
+	hm->map[hm->nmaps] = map;
+	hm->nmap_items[hm->nmaps] = nmap_items;
+	hm->nmaps++;
 
 	return (0);
 }
 
 static bool
-hmap_parse_hid_item(struct hmap_softc *sc, struct hid_item *hi,
+hmap_parse_hid_item(struct hmap *hm, struct hid_item *hi,
     struct hmap_hid_item *item)
 {
 	const struct hmap_item *mi;
@@ -498,7 +495,7 @@ hmap_parse_hid_item(struct hmap_softc *sc, struct hid_item *hi,
 	uint16_t uoff;
 	bool found = false;
 
-	HMAP_FOREACH_ITEM(sc, mi, uoff) {
+	HMAP_FOREACH_ITEM(hm, mi, uoff) {
 		if (can_map_callback(hi, mi, uoff)) {
 			bzero(&hi_temp, sizeof(hi_temp));
 			hi_temp.cb = mi->cb;
@@ -507,7 +504,7 @@ hmap_parse_hid_item(struct hmap_softc *sc, struct hid_item *hi,
 			 * Values returned by probe- and attach-stage
 			 * callbacks MUST be identical.
 			 */
-			if (mi->cb(sc, &hi_temp, (intptr_t)hi) != 0)
+			if (mi->cb(hm, &hi_temp, (intptr_t)hi) != 0)
 				break;
 			bcopy(&hi_temp, item, sizeof(hi_temp));
 			goto mapped;
@@ -515,7 +512,7 @@ hmap_parse_hid_item(struct hmap_softc *sc, struct hid_item *hi,
 	}
 
 	if (hi->flags & HIO_VARIABLE) {
-		HMAP_FOREACH_ITEM(sc, mi, uoff) {
+		HMAP_FOREACH_ITEM(hm, mi, uoff) {
 			if (can_map_variable(hi, mi, uoff)) {
 				item->evtype = mi->type;
 				item->code = mi->code + uoff;
@@ -524,23 +521,23 @@ hmap_parse_hid_item(struct hmap_softc *sc, struct hid_item *hi,
 				item->last_val = 0;
 				switch (mi->type) {
 				case EV_KEY:
-					evdev_support_event(sc->evdev, EV_KEY);
-					evdev_support_key(sc->evdev, item->code);
+					evdev_support_event(hm->evdev, EV_KEY);
+					evdev_support_key(hm->evdev, item->code);
 					break;
 				case EV_REL:
-					evdev_support_event(sc->evdev, EV_REL);
-					evdev_support_rel(sc->evdev, item->code);
+					evdev_support_event(hm->evdev, EV_REL);
+					evdev_support_rel(hm->evdev, item->code);
 					break;
 				case EV_ABS:
-					evdev_support_event(sc->evdev, EV_ABS);
-					evdev_support_abs(sc->evdev, item->code,
+					evdev_support_event(hm->evdev, EV_ABS);
+					evdev_support_abs(hm->evdev, item->code,
 					    0, hi->logical_minimum,
 					    hi->logical_maximum, 0, 0,
 					    hid_item_resolution(hi));
 					break;
 				case EV_SW:
-					evdev_support_event(sc->evdev, EV_SW);
-					evdev_support_sw(sc->evdev, item->code);
+					evdev_support_event(hm->evdev, EV_SW);
+					evdev_support_sw(hm->evdev, item->code);
 					break;
 				default:
 					KASSERT(0, ("Unsupported event type"));
@@ -552,9 +549,9 @@ hmap_parse_hid_item(struct hmap_softc *sc, struct hid_item *hi,
 	}
 
 	if (hi->usage_minimum != 0 || hi->usage_maximum != 0) {
-		HMAP_FOREACH_ITEM(sc, mi, uoff) {
+		HMAP_FOREACH_ITEM(hm, mi, uoff) {
 			if (can_map_arr_range(hi, mi, uoff)) {
-				evdev_support_key(sc->evdev, mi->code + uoff);
+				evdev_support_key(hm->evdev, mi->code + uoff);
 				found = true;
 			}
 		}
@@ -563,7 +560,7 @@ hmap_parse_hid_item(struct hmap_softc *sc, struct hid_item *hi,
 		item->umin = hi->usage_minimum;
 		item->type = HMAP_TYPE_ARR_RANGE;
 		item->last_key = KEY_RESERVED;
-		evdev_support_event(sc->evdev, EV_KEY);
+		evdev_support_event(hm->evdev, EV_KEY);
 		goto mapped;
 	}
 
@@ -579,9 +576,9 @@ hmap_parse_hid_item(struct hmap_softc *sc, struct hid_item *hi,
 		if (i != 0)
 			break;
 		usage = hi->usage;
-		HMAP_FOREACH_ITEM(sc, mi, uoff) {
+		HMAP_FOREACH_ITEM(hm, mi, uoff) {
 			if (can_map_arr_list(hi, mi, usage, uoff)) {
-				evdev_support_key(sc->evdev, mi->code + uoff);
+				evdev_support_key(hm->evdev, mi->code + uoff);
 				if (item->codes == NULL)
 					item->codes = malloc(
 					    arr_size * sizeof(uint16_t),
@@ -596,7 +593,7 @@ hmap_parse_hid_item(struct hmap_softc *sc, struct hid_item *hi,
 		return (false);
 	item->type = HMAP_TYPE_ARR_LIST;
 	item->last_key = KEY_RESERVED;
-	evdev_support_event(sc->evdev, EV_KEY);
+	evdev_support_event(hm->evdev, EV_KEY);
 
 mapped:
 	item->id = hi->report_ID;
@@ -608,19 +605,19 @@ mapped:
 }
 
 static int
-hmap_parse_hid_descr(struct hmap_softc *sc, uint8_t tlc_index)
+hmap_parse_hid_descr(struct hmap *hm, uint8_t tlc_index)
 {
 	struct hid_item hi;
 	struct hid_data *hd;
 	const struct hmap_item *map;
-	struct hmap_hid_item *item = sc->hid_items;
+	struct hmap_hid_item *item = hm->hid_items;
 	void *d_ptr;
 	hid_size_t d_len;
 	int i, error;
 
-	error = hid_get_report_descr(sc->dev, &d_ptr, &d_len);
+	error = hid_get_report_descr(hm->dev, &d_ptr, &d_len);
 	if (error != 0) {
-		DPRINTF(sc, "could not retrieve report descriptor from "
+		DPRINTF(hm, "could not retrieve report descriptor from "
 		     "device: %d\n", error);
 		return (error);
 	}
@@ -632,20 +629,20 @@ hmap_parse_hid_descr(struct hmap_softc *sc, uint8_t tlc_index)
 			continue;
 		if (hi.flags & HIO_CONST)
 			continue;
-		if (hmap_parse_hid_item(sc, &hi, item))
+		if (hmap_parse_hid_item(hm, &hi, item))
 			item++;
-		KASSERT(item <= sc->hid_items + sc->nhid_items,
+		KASSERT(item <= hm->hid_items + hm->nhid_items,
 		    ("Parsed HID item array overflow"));
 	}
 	hid_end_parse(hd);
 
 	/* Add completion callbacks to the end of list */
-	for (i = 0; i < sc->nmaps; i++) {
-		for (map = sc->map[i];
-		     map < sc->map[i] + sc->nmap_items[i];
+	for (i = 0; i < hm->nmaps; i++) {
+		for (map = hm->map[i];
+		     map < hm->map[i] + hm->nmap_items[i];
 		     map++) {
 			if (map->has_cb && map->compl_cb &&
-			    map->cb(sc, item, 0) == 0) {
+			    map->cb(hm, item, 0) == 0) {
 				item->cb = map->cb;
 				item->type = HMAP_TYPE_COMPLCB;
 				item++;
@@ -657,52 +654,50 @@ hmap_parse_hid_descr(struct hmap_softc *sc, uint8_t tlc_index)
 	 * Resulting number of parsed HID items can be less than expected as
 	 * map items might be duplicated in different maps. Save real number.
 	 */
-	if (sc->nhid_items != item - sc->hid_items)
-		DPRINTF(sc, "Parsed HID item number mismatch: expected=%u "
-		    "result=%ld\n", sc->nhid_items, item - sc->hid_items);
-	sc->nhid_items = item - sc->hid_items;
+	if (hm->nhid_items != item - hm->hid_items)
+		DPRINTF(hm, "Parsed HID item number mismatch: expected=%u "
+		    "result=%ld\n", hm->nhid_items, item - hm->hid_items);
+	hm->nhid_items = item - hm->hid_items;
 
 	return (0);
 }
 
 int
-hmap_attach(device_t dev)
+hmap_attach(struct hmap* hm)
 {
-	struct hmap_softc *sc = device_get_softc(dev);
-	const struct hid_device_info *hw = hid_get_device_info(dev);
+	const struct hid_device_info *hw = hid_get_device_info(hm->dev);
 	int error;
 
-	sc->cb_state = HMAP_CB_IS_ATTACHING;
+	hm->cb_state = HMAP_CB_IS_ATTACHING;
 
-	sc->dev = dev;
-	sc->hid_items = malloc(sc->nhid_items * sizeof(struct hid_item),
+	hm->hid_items = malloc(hm->nhid_items * sizeof(struct hid_item),
 	    M_DEVBUF, M_WAITOK | M_ZERO);
 
-	hidbus_set_intr(dev, hmap_intr, sc);
-	sc->evdev_methods = (struct evdev_methods) {
+	hidbus_set_intr(hm->dev, hmap_intr, hm);
+	hm->evdev_methods = (struct evdev_methods) {
 		.ev_open = &hmap_ev_open,
 		.ev_close = &hmap_ev_close,
 	};
 
-	sc->evdev = evdev_alloc();
-	evdev_set_name(sc->evdev, device_get_desc(dev));
-	evdev_set_phys(sc->evdev, device_get_nameunit(dev));
-	evdev_set_id(sc->evdev, hw->idBus, hw->idVendor, hw->idProduct,
+	hm->evdev = evdev_alloc();
+	evdev_set_name(hm->evdev, device_get_desc(hm->dev));
+	evdev_set_phys(hm->evdev, device_get_nameunit(hm->dev));
+	evdev_set_id(hm->evdev, hw->idBus, hw->idVendor, hw->idProduct,
 	    hw->idVersion);
-	evdev_set_serial(sc->evdev, hw->serial);
-	evdev_support_event(sc->evdev, EV_SYN);
-	error = hmap_parse_hid_descr(sc, hidbus_get_index(dev));
+	evdev_set_serial(hm->evdev, hw->serial);
+	evdev_support_event(hm->evdev, EV_SYN);
+	error = hmap_parse_hid_descr(hm, hidbus_get_index(hm->dev));
 	if (error) {
-		hmap_detach(dev);
+		hmap_detach(hm);
 		return (ENXIO);
 	}
 
-	evdev_set_methods(sc->evdev, dev, &sc->evdev_methods);
-	sc->cb_state = HMAP_CB_IS_RUNNING;
+	evdev_set_methods(hm->evdev, hm->dev, &hm->evdev_methods);
+	hm->cb_state = HMAP_CB_IS_RUNNING;
 
-	error = evdev_register_mtx(sc->evdev, hidbus_get_lock(dev));
+	error = evdev_register_mtx(hm->evdev, hidbus_get_lock(hm->dev));
 	if (error) {
-		hmap_detach(dev);
+		hmap_detach(hm);
 		return (ENXIO);
 	}
 
@@ -710,22 +705,21 @@ hmap_attach(device_t dev)
 }
 
 int
-hmap_detach(device_t dev)
+hmap_detach(struct hmap* hm)
 {
-	struct hmap_softc *sc = device_get_softc(dev);
 	struct hmap_hid_item *hi;
 
-	sc->cb_state = HMAP_CB_IS_DETACHING;
+	hm->cb_state = HMAP_CB_IS_DETACHING;
 
-	evdev_free(sc->evdev);
-	if (sc->hid_items != NULL) {
-		for (hi = sc->hid_items; hi < sc->hid_items + sc->nhid_items;
+	evdev_free(hm->evdev);
+	if (hm->hid_items != NULL) {
+		for (hi = hm->hid_items; hi < hm->hid_items + hm->nhid_items;
 		    hi++)
 			if (hi->type == HMAP_TYPE_CALLBACK)
-				hi->cb(sc, hi, 0);
+				hi->cb(hm, hi, 0);
 			else if (hi->type == HMAP_TYPE_ARR_LIST)
 				free(hi->codes, M_DEVBUF);
-		free(sc->hid_items, M_DEVBUF);
+		free(hm->hid_items, M_DEVBUF);
 	}
 
 	return (0);

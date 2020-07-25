@@ -90,16 +90,18 @@ static const struct hid_device_id hsctrl_devs[] = {
 static int
 hsctrl_probe(device_t dev)
 {
+	struct hmap *hm = device_get_softc(dev);
 	int error;
 
 	error = hidbus_lookup_driver_info(dev, hsctrl_devs, sizeof(hsctrl_devs));
 	if (error != 0)
 		return (error);
 
-	hmap_set_debug_var(dev, &HID_DEBUG_VAR);
+	hmap_set_dev(hm, dev);
+	hmap_set_debug_var(hm, &HID_DEBUG_VAR);
 
 	/* Check if report descriptor belongs to a System control TLC */
-	error = hmap_add_map(dev, hsctrl_map, nitems(hsctrl_map), NULL);
+	error = hmap_add_map(hm, hsctrl_map, nitems(hsctrl_map), NULL);
 	if (error != 0)
 		return (error);
 
@@ -108,17 +110,28 @@ hsctrl_probe(device_t dev)
 	return (BUS_PROBE_DEFAULT);
 }
 
+static int
+hsctrl_attach(device_t dev)
+{
+	return (hmap_attach(device_get_softc(dev)));
+}
+
+static int
+hsctrl_detach(device_t dev)
+{
+	return (hmap_detach(device_get_softc(dev)));
+}
+
 static devclass_t hsctrl_devclass;
 static device_method_t hsctrl_methods[] = {
 	DEVMETHOD(device_probe,		hsctrl_probe),
-	DEVMETHOD(device_attach,	hmap_attach),
-	DEVMETHOD(device_detach,	hmap_detach),
+	DEVMETHOD(device_attach,	hsctrl_attach),
+	DEVMETHOD(device_detach,	hsctrl_detach),
 
 	DEVMETHOD_END
 };
 
-DEFINE_CLASS_0(hsctrl, hsctrl_driver, hsctrl_methods,
-    sizeof(struct hmap_softc));
+DEFINE_CLASS_0(hsctrl, hsctrl_driver, hsctrl_methods, sizeof(struct hmap));
 DRIVER_MODULE(hsctrl, hidbus, hsctrl_driver, hsctrl_devclass, NULL, 0);
 MODULE_DEPEND(hsctrl, hid, 1, 1, 1);
 MODULE_DEPEND(hsctrl, hmap, 1, 1, 1);

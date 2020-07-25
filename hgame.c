@@ -154,14 +154,15 @@ hgame_compl_cb(HMAP_CB_ARGS)
 	if (HMAP_CB_GET_STATE() == HMAP_CB_IS_ATTACHING)
 		evdev_support_prop(evdev, INPUT_PROP_DIRECT);
 
-        /* Do not execute callback at interrupt handler and detach */
-        return (ENOSYS);
+	/* Do not execute callback at interrupt handler and detach */
+	return (ENOSYS);
 }
 
 static int
 hgame_probe(device_t dev)
 {
 	const struct hid_device_info *hw = hid_get_device_info(dev);
+	struct hgame_softc *sc = device_get_softc(dev);
 	int error, error2;
 
 	if (hid_test_quirk(hw, HQ_IS_XBOX360GP))
@@ -171,13 +172,14 @@ hgame_probe(device_t dev)
 	if (error != 0)
 		return (error);
 
-	hmap_set_debug_var(dev, &HID_DEBUG_VAR);
+	hmap_set_dev(&sc->hm, dev);
+	hmap_set_debug_var(&sc->hm, &HID_DEBUG_VAR);
 
 	if (hidbus_get_driver_info(dev) == HUG_GAME_PAD)
-		error = hmap_add_map(dev, hgame_gamepad_map, nitems(hgame_gamepad_map), NULL);
+		error = hmap_add_map(&sc->hm, hgame_gamepad_map, nitems(hgame_gamepad_map), NULL);
 	else
-		error = hmap_add_map(dev, hgame_joystick_map, nitems(hgame_joystick_map), NULL);
-	error2 = hmap_add_map(dev, hgame_common_map, nitems(hgame_common_map), NULL);
+		error = hmap_add_map(&sc->hm, hgame_joystick_map, nitems(hgame_joystick_map), NULL);
+	error2 = hmap_add_map(&sc->hm, hgame_common_map, nitems(hgame_common_map), NULL);
 	if (error != 0 && error2 != 0)
 		return (error);
 
@@ -187,12 +189,28 @@ hgame_probe(device_t dev)
 	return (BUS_PROBE_GENERIC);
 }
 
-static devclass_t hgame_devclass;
+static int
+hgame_attach(device_t dev)
+{
+	struct hgame_softc *sc = device_get_softc(dev);
 
+	return (hmap_attach(&sc->hm));
+}
+
+static int
+hgame_detach(device_t dev)
+{
+	struct hgame_softc *sc = device_get_softc(dev);
+
+	return (hmap_detach(&sc->hm));
+}
+
+static devclass_t hgame_devclass;
 static device_method_t hgame_methods[] = {
 	DEVMETHOD(device_probe,		hgame_probe),
-	DEVMETHOD(device_attach,	hmap_attach),
-	DEVMETHOD(device_detach,	hmap_detach),
+	DEVMETHOD(device_attach,	hgame_attach),
+	DEVMETHOD(device_detach,	hgame_detach),
+
 	DEVMETHOD_END
 };
 

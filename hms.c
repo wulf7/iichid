@@ -140,7 +140,7 @@ static const struct hid_device_id hms_devs[] = {
 };
 
 struct hms_softc {
-	struct hmap_softc	super_sc;
+	struct hmap		hm;
 	HMAP_CAPS(caps, hms_map);
 	bool			rev_wheel;
 };
@@ -219,10 +219,11 @@ hms_probe(device_t dev)
 	if (error != 0)
 		return (error);
 
-	hmap_set_debug_var(dev, &HID_DEBUG_VAR);
+	hmap_set_dev(&sc->hm, dev);
+	hmap_set_debug_var(&sc->hm, &HID_DEBUG_VAR);
 
 	/* Check if report descriptor belongs to mouse */
-	error = hmap_add_map(dev, hms_map, nitems(hms_map), sc->caps);
+	error = hmap_add_map(&sc->hm, hms_map, nitems(hms_map), sc->caps);
 	if (error != 0)
 		return (error);
 
@@ -270,13 +271,13 @@ hms_attach(device_t dev)
 		sc->rev_wheel = true;
 	}
 
-	error = hmap_attach(dev);
+	error = hmap_attach(&sc->hm);
 	if (error)
 		return (error);
 
 	/* Count number of input usages of variable type mapped to buttons */
-	for (hi = sc->super_sc.hid_items;
-	     hi < sc->super_sc.hid_items + sc->super_sc.nhid_items;
+	for (hi = sc->hm.hid_items;
+	     hi < sc->hm.hid_items + sc->hm.nhid_items;
 	     hi++)
 		if (hi->type == HMAP_TYPE_VARIABLE && hi->evtype == EV_KEY)
 			nbuttons++;
@@ -292,9 +293,17 @@ hms_attach(device_t dev)
 	     hmap_test_cap(sc->caps, HMS_ABS_Z)) ? "Z" : "",
 	    hmap_test_cap(sc->caps, HMS_WHEEL) ? "W" : "",
 	    hmap_test_cap(sc->caps, HMS_HWHEEL) ? "H" : "",
-	    sc->super_sc.hid_items[0].id);
+	    sc->hm.hid_items[0].id);
 
 	return (0);
+}
+
+static int
+hms_detach(device_t dev)
+{
+	struct hms_softc *sc = device_get_softc(dev);
+
+	return (hmap_detach(&sc->hm));
 }
 
 static devclass_t hms_devclass;
@@ -302,7 +311,7 @@ static device_method_t hms_methods[] = {
 	DEVMETHOD(device_identify,	hms_identify),
 	DEVMETHOD(device_probe,		hms_probe),
 	DEVMETHOD(device_attach,	hms_attach),
-	DEVMETHOD(device_detach,	hmap_detach),
+	DEVMETHOD(device_detach,	hms_detach),
 
 	DEVMETHOD_END
 };

@@ -120,15 +120,17 @@ xb360gp_identify(driver_t *driver, device_t parent)
 static int
 xb360gp_probe(device_t dev)
 {
+	struct hgame_softc *sc = device_get_softc(dev);
 	const struct hid_device_info *hw = hid_get_device_info(dev);
 	int error;
 
 	if (!hid_test_quirk(hw, HQ_IS_XBOX360GP))
 		return (ENXIO);
 
-	hmap_set_debug_var(dev, &HID_DEBUG_VAR);
+	hmap_set_dev(&sc->hm, dev);
+	hmap_set_debug_var(&sc->hm, &HID_DEBUG_VAR);
 
-	error = hmap_add_map(dev, xb360gp_map, nitems(xb360gp_map), NULL);
+	error = hmap_add_map(&sc->hm, xb360gp_map, nitems(xb360gp_map), NULL);
 	if (error != 0)
 		return (error);
 
@@ -140,6 +142,7 @@ xb360gp_probe(device_t dev)
 static int
 xb360gp_attach(device_t dev)
 {
+	struct hgame_softc *sc = device_get_softc(dev);
 	int error;
 
 	/*
@@ -153,16 +156,23 @@ xb360gp_attach(device_t dev)
 		DPRINTF("set output report failed, error=%d "
 		    "(ignored)\n", error);
 
-	return (hmap_attach(dev));
+	return (hmap_attach(&sc->hm));
+}
+
+static int
+xb360gp_detach(device_t dev)
+{
+	struct hgame_softc *sc = device_get_softc(dev);
+
+	return (hmap_detach(&sc->hm));
 }
 
 static devclass_t xb360gp_devclass;
-
 static device_method_t xb360gp_methods[] = {
 	DEVMETHOD(device_identify,	xb360gp_identify),
 	DEVMETHOD(device_probe,		xb360gp_probe),
 	DEVMETHOD(device_attach,	xb360gp_attach),
-	DEVMETHOD(device_detach,	hmap_detach),
+	DEVMETHOD(device_detach,	xb360gp_detach),
 	DEVMETHOD_END
 };
 

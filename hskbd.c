@@ -129,7 +129,7 @@ static const struct hid_device_id hskbd_devs[] = {
 };
 
 struct hskbd_softc {
-	struct hmap_softc	super_sc;
+	struct hmap		hm;
 
 	/* LED report parameters */
 	struct hid_location	sc_loc_numlock;
@@ -213,7 +213,7 @@ hskbd_ev_event(struct evdev_dev *evdev, uint16_t type, uint16_t code,
 	DPRINTF("len=%d, id=%d\n", len, id);
 
 	/* Start data transfer. */
-	evdev_push_event(sc->super_sc.evdev, type, code, value);
+	evdev_push_event(sc->hm.evdev, type, code, value);
 	mtx_unlock(hidbus_get_lock(dev));
 	hid_write(dev, buf, len);
 }
@@ -236,7 +236,7 @@ hskbd_compl_cb(HMAP_CB_ARGS)
 			evdev_support_led(evdev, LED_SCROLLL);
 		evdev_support_event(evdev, EV_REP);
 		evdev_set_flag(evdev, EVDEV_FLAG_SOFTREPEAT);
-		sc->super_sc.evdev_methods.ev_event = &hskbd_ev_event;
+		sc->hm.evdev_methods.ev_event = &hskbd_ev_event;
 	}
 
 	/* Do not execute callback at interrupt handler and detach */
@@ -266,16 +266,18 @@ hskbd_identify(driver_t *driver, device_t parent)
 static int
 hskbd_probe(device_t dev)
 {
+	struct hskbd_softc *sc = device_get_softc(dev);
 	int error;
 
 	error = hidbus_lookup_driver_info(dev, hskbd_devs, sizeof(hskbd_devs));
 	if (error != 0)
 		return (error);
 
-	hmap_set_debug_var(dev, &HID_DEBUG_VAR);
+	hmap_set_dev(&sc->hm, dev);
+	hmap_set_debug_var(&sc->hm, &HID_DEBUG_VAR);
 
 	/* Check if report descriptor belongs to keyboard */
-	error = hmap_add_map(dev, hskbd_map, hskbd_nmap_items, NULL);
+	error = hmap_add_map(&sc->hm, hskbd_map, hskbd_nmap_items, NULL);
 	if (error != 0)
 		return (error);
 
@@ -340,7 +342,15 @@ hskbd_attach(device_t dev)
 		sc->sc_led_size = hid_report_size_1(d_ptr, d_len,
 		    hid_output, sc->sc_id_leds);
 
-	return (hmap_attach(dev));
+	return (hmap_attach(&sc->hm));
+}
+
+static int
+hskbd_detach(device_t dev)
+{
+	struct hskbd_softc *sc = device_get_softc(dev);
+
+	return (hmap_detach(&sc->hm));
 }
 
 static devclass_t hskbd_devclass;
@@ -348,7 +358,7 @@ static device_method_t hskbd_methods[] = {
 	DEVMETHOD(device_identify,	hskbd_identify),
 	DEVMETHOD(device_probe,		hskbd_probe),
 	DEVMETHOD(device_attach,	hskbd_attach),
-	DEVMETHOD(device_detach,	hmap_detach),
+	DEVMETHOD(device_detach,	hskbd_detach),
 
 	DEVMETHOD_END
 };

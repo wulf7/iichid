@@ -192,6 +192,7 @@ hpen_identify(driver_t *driver, device_t parent)
 static int
 hpen_probe(device_t dev)
 {
+	struct hmap *hm = device_get_softc(dev);
 	int error;
 	bool is_pen;
 
@@ -199,13 +200,14 @@ hpen_probe(device_t dev)
 	if (error != 0)
 		return (error);
 
-	hmap_set_debug_var(dev, &HID_DEBUG_VAR);
+	hmap_set_dev(hm, dev);
+	hmap_set_debug_var(hm, &HID_DEBUG_VAR);
 
 	/* Check if report descriptor belongs to a HID tablet device */
 	is_pen = hidbus_get_usage(dev) == HID_USAGE2(HUP_DIGITIZERS, HUD_PEN);
 	error = is_pen
-	    ? hmap_add_map(dev, hpen_map_pen, nitems(hpen_map_pen), NULL)
-	    : hmap_add_map(dev, hpen_map_digi, nitems(hpen_map_digi), NULL);
+	    ? hmap_add_map(hm, hpen_map_pen, nitems(hpen_map_pen), NULL)
+	    : hmap_add_map(hm, hpen_map_digi, nitems(hpen_map_digi), NULL);
 	if (error != 0)
 		return (error);
 
@@ -218,6 +220,7 @@ static int
 hpen_attach(device_t dev)
 {
 	const struct hid_device_info *hw = hid_get_device_info(dev);
+	struct hmap *hm = device_get_softc(dev);
 	int error;
 
 	if (hw->idBus == BUS_USB && hw->idVendor == USB_VENDOR_WACOM &&
@@ -235,20 +238,27 @@ hpen_attach(device_t dev)
 			    "(ignored)\n", error);
 	}
 
-	return (hmap_attach(dev));
+	return (hmap_attach(hm));
 }
 
-static devclass_t hpen_devclass;
+static int
+hpen_detach(device_t dev)
+{
+	return (hmap_detach(device_get_softc(dev)));
+}
 
+
+static devclass_t hpen_devclass;
 static device_method_t hpen_methods[] = {
 	DEVMETHOD(device_identify,	hpen_identify),
 	DEVMETHOD(device_probe,		hpen_probe),
 	DEVMETHOD(device_attach,	hpen_attach),
-	DEVMETHOD(device_detach,	hmap_detach),
+	DEVMETHOD(device_detach,	hpen_detach),
+
 	DEVMETHOD_END
 };
 
-DEFINE_CLASS_0(hpen, hpen_driver, hpen_methods, sizeof(struct hmap_softc));
+DEFINE_CLASS_0(hpen, hpen_driver, hpen_methods, sizeof(struct hmap));
 DRIVER_MODULE(hpen, hidbus, hpen_driver, hpen_devclass, NULL, 0);
 MODULE_DEPEND(hpen, hid, 1, 1, 1);
 MODULE_DEPEND(hpen, hmap, 1, 1, 1);

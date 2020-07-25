@@ -37,7 +37,7 @@
 
 struct hmap_hid_item;
 struct hmap_item;
-struct hmap_softc;
+struct hmap;
 
 enum hmap_cb_state {
 	HMAP_CB_IS_PROBING,
@@ -48,16 +48,13 @@ enum hmap_cb_state {
 
 #define	HMAP_KEY_NULL	0xFF	/* Special event code to discard input */
 
-#define	HMAP_CB_ARGS	\
-    struct hmap_softc *super_sc, struct hmap_hid_item *hi, intptr_t ctx
+#define	HMAP_CB_ARGS	struct hmap *hm, struct hmap_hid_item *hi, intptr_t ctx
 #define	HMAP_CB_GET_STATE(...)	\
-    ((super_sc == NULL) ? HMAP_CB_IS_PROBING : super_sc->cb_state)
-#define	HMAP_CB_GET_SOFTC(...)	((void *)super_sc)
-#define	HMAP_CB_GET_EVDEV(...)	(super_sc == NULL ? NULL : super_sc->evdev)
-#define	HMAP_CB_GET_DATA(loc)	\
-    hid_get_data(super_sc->intr_buf, super_sc->intr_len, loc)
-#define	HMAP_CB_GET_UDATA(loc)	\
-    hid_get_udata(super_sc->intr_buf, super_sc->intr_len, loc)
+    ((hm == NULL) ? HMAP_CB_IS_PROBING : hm->cb_state)
+#define	HMAP_CB_GET_SOFTC(...)	(hm == NULL ? NULL : device_get_softc(hm->dev))
+#define	HMAP_CB_GET_EVDEV(...)	(hm == NULL ? NULL : hm->evdev)
+#define	HMAP_CB_GET_DATA(loc)	hid_get_data(hm->intr_buf, hm->intr_len, loc)
+#define	HMAP_CB_GET_UDATA(loc)	hid_get_udata(hm->intr_buf, hm->intr_len, loc)
 #define	HMAP_CB_UDATA		(hi->udata)
 #define	HMAP_CB_UDATA64		(hi->udata64)
 typedef int hmap_cb_t(HMAP_CB_ARGS);
@@ -167,7 +164,7 @@ struct hmap_hid_item {
 	};
 };
 
-struct hmap_softc {
+struct hmap {
 	device_t		dev;
 
 	struct evdev_dev	*evdev;
@@ -210,11 +207,16 @@ hmap_count_caps(bitstr_t *caps, int first, int last)
  * that makes possible to write probe-only drivers with attach/detach handlers
  * inherited from hmap. See hcons and hsctrl drivers for example.
  */
-void		hmap_set_debug_var(device_t dev, int *debug_var);
-uint32_t	hmap_add_map(device_t dev, const struct hmap_item *map,
+static inline void
+hmap_set_dev(struct hmap *hm, device_t dev)
+{
+	hm->dev = dev;
+}
+void		hmap_set_debug_var(struct hmap *hm, int *debug_var);
+uint32_t	hmap_add_map(struct hmap *hm, const struct hmap_item *map,
 		    int nmap_items, bitstr_t *caps);
 
-device_attach_t	hmap_attach;
-device_detach_t	hmap_detach;
+int	hmap_attach(struct hmap *hm);
+int	hmap_detach(struct hmap *hm);
 
 #endif	/* _HMAP_H_ */
