@@ -29,13 +29,13 @@
 #ifndef _HGAME_H_
 #define _HGAME_H_
 
-#include "hmap.h"
+#include "hidmap.h"
 
-hmap_cb_t	hgame_dpad_cb;
-hmap_cb_t	hgame_compl_cb;
+hidmap_cb_t	hgame_dpad_cb;
+hidmap_cb_t	hgame_compl_cb;
 
 struct hgame_softc {
-	struct hmap	hm;
+	struct hidmap	hm;
 	bool		dpad_up;
 	bool		dpad_down;
 	bool		dpad_right;

@@ -25,47 +25,47 @@
  * SUCH DAMAGE.
  */
 
-#ifndef _HMAP_H_
-#define _HMAP_H_
+#ifndef _HIDMAP_H_
+#define _HIDMAP_H_
 
 #include <sys/param.h>
 #include <sys/bitstring.h>
 
 #include "hid.h"
 
-#define	HMAP_MAX_MAPS	4
+#define	HIDMAP_MAX_MAPS	4
 
-struct hmap_hid_item;
-struct hmap_item;
-struct hmap;
+struct hidmap_hid_item;
+struct hidmap_item;
+struct hidmap;
 
-enum hmap_cb_state {
-	HMAP_CB_IS_PROBING,
-	HMAP_CB_IS_ATTACHING,
-	HMAP_CB_IS_RUNNING,
-	HMAP_CB_IS_DETACHING,
+enum hidmap_cb_state {
+	HIDMAP_CB_IS_PROBING,
+	HIDMAP_CB_IS_ATTACHING,
+	HIDMAP_CB_IS_RUNNING,
+	HIDMAP_CB_IS_DETACHING,
 };
 
-#define	HMAP_KEY_NULL	0xFF	/* Special event code to discard input */
+#define	HIDMAP_KEY_NULL	0xFF	/* Special event code to discard input */
 
-#define	HMAP_CB_ARGS	struct hmap *hm, struct hmap_hid_item *hi, intptr_t ctx
-#define	HMAP_CB_GET_STATE(...)	\
-    ((hm == NULL) ? HMAP_CB_IS_PROBING : hm->cb_state)
-#define	HMAP_CB_GET_SOFTC(...)	(hm == NULL ? NULL : device_get_softc(hm->dev))
-#define	HMAP_CB_GET_EVDEV(...)	(hm == NULL ? NULL : hm->evdev)
-#define	HMAP_CB_GET_DATA(loc)	hid_get_data(hm->intr_buf, hm->intr_len, loc)
-#define	HMAP_CB_GET_UDATA(loc)	hid_get_udata(hm->intr_buf, hm->intr_len, loc)
-#define	HMAP_CB_UDATA		(hi->udata)
-#define	HMAP_CB_UDATA64		(hi->udata64)
-typedef int hmap_cb_t(HMAP_CB_ARGS);
+#define	HIDMAP_CB_ARGS	struct hidmap *hm, struct hidmap_hid_item *hi, intptr_t ctx
+#define	HIDMAP_CB_GET_STATE(...)	\
+    ((hm == NULL) ? HIDMAP_CB_IS_PROBING : hm->cb_state)
+#define	HIDMAP_CB_GET_SOFTC(...)	(hm == NULL ? NULL : device_get_softc(hm->dev))
+#define	HIDMAP_CB_GET_EVDEV(...)	(hm == NULL ? NULL : hm->evdev)
+#define	HIDMAP_CB_GET_DATA(loc)	hid_get_data(hm->intr_buf, hm->intr_len, loc)
+#define	HIDMAP_CB_GET_UDATA(loc)	hid_get_udata(hm->intr_buf, hm->intr_len, loc)
+#define	HIDMAP_CB_UDATA		(hi->udata)
+#define	HIDMAP_CB_UDATA64		(hi->udata64)
+typedef int hidmap_cb_t(HIDMAP_CB_ARGS);
 
-enum hmap_relabs {
-	HMAP_RELABS_ANY = 0,
-	HMAP_RELATIVE,
-	HMAP_ABSOLUTE,
+enum hidmap_relabs {
+	HIDMAP_RELABS_ANY = 0,
+	HIDMAP_RELATIVE,
+	HIDMAP_ABSOLUTE,
 };
 
-struct hmap_item {
+struct hidmap_item {
 	int32_t 		usage;		/* HID usage (base) */
 	uint16_t		nusages;	/* number of usages */
 	union {
@@ -73,78 +73,78 @@ struct hmap_item {
 			uint16_t	type;	/* Evdev event type */
 			uint16_t	code;	/* Evdev event code */
 		};
-		hmap_cb_t		*cb;	/* Reporting callback */
+		hidmap_cb_t		*cb;	/* Reporting callback */
 	};
 	bool			required:1;	/* Required by driver */
-	enum hmap_relabs	relabs:2;
+	enum hidmap_relabs	relabs:2;
 	bool			has_cb:1;
 	bool			compl_cb:1;
 	u_int			reserved:3;
 };
 
-#define	HMAP_ANY(_page, _usage, _type, _code)				\
+#define	HIDMAP_ANY(_page, _usage, _type, _code)				\
 	.usage = HID_USAGE2((_page), (_usage)),				\
 	.nusages = 1,							\
 	.type = (_type),						\
 	.code = (_code)
-#define	HMAP_ANY_RANGE(_page, _usage_from, _usage_to, _type, _code)	\
+#define	HIDMAP_ANY_RANGE(_page, _usage_from, _usage_to, _type, _code)	\
 	.usage = HID_USAGE2((_page), (_usage_from)),			\
 	.nusages = (_usage_to) - (_usage_from) + 1,			\
 	.type = (_type),						\
 	.code = (_code)
-#define	HMAP_ANY_CB(_page, _usage, _callback)				\
+#define	HIDMAP_ANY_CB(_page, _usage, _callback)				\
 	.usage = HID_USAGE2((_page), (_usage)),				\
 	.nusages = 1,							\
 	.cb = (_callback),						\
 	.has_cb = true
-#define	HMAP_ANY_CB_RANGE(_page, _usage_from, _usage_to, _callback)	\
+#define	HIDMAP_ANY_CB_RANGE(_page, _usage_from, _usage_to, _callback)	\
 	.usage = HID_USAGE2((_page), (_usage_from)),			\
 	.nusages = (_usage_to) - (_usage_from) + 1,			\
 	.cb = (_callback),						\
 	.has_cb = true
-#define	HMAP_KEY(_page, _usage, _code)					\
-	HMAP_ANY((_page), (_usage), EV_KEY, (_code)),			\
-		.relabs = HMAP_RELABS_ANY
-#define	HMAP_KEY_RANGE(_page, _ufrom, _uto, _code)			\
-	HMAP_ANY_RANGE((_page), (_ufrom), (_uto), EV_KEY, (_code)),	\
-		.relabs = HMAP_RELABS_ANY
-#define	HMAP_REL(_page, _usage, _code)					\
-	HMAP_ANY((_page), (_usage), EV_REL, (_code)),			\
-		.relabs = HMAP_RELATIVE
-#define	HMAP_ABS(_page, _usage, _code)					\
-	HMAP_ANY((_page), (_usage), EV_ABS, (_code)),			\
-		.relabs = HMAP_ABSOLUTE
-#define	HMAP_SW(_page, _usage, _code)					\
-	HMAP_ANY((_page), (_usage), EV_SW, (_code)),			\
-		.relabs = HMAP_RELABS_ANY
-#define	HMAP_REL_CB(_page, _usage, _callback)				\
-	HMAP_ANY_CB((_page), (_usage), (_callback)),			\
-		.relabs = HMAP_RELATIVE
-#define	HMAP_ABS_CB(_page, _usage, _callback)				\
-	HMAP_ANY_CB((_page), (_usage), (_callback)),			\
-		.relabs = HMAP_ABSOLUTE
+#define	HIDMAP_KEY(_page, _usage, _code)					\
+	HIDMAP_ANY((_page), (_usage), EV_KEY, (_code)),			\
+		.relabs = HIDMAP_RELABS_ANY
+#define	HIDMAP_KEY_RANGE(_page, _ufrom, _uto, _code)			\
+	HIDMAP_ANY_RANGE((_page), (_ufrom), (_uto), EV_KEY, (_code)),	\
+		.relabs = HIDMAP_RELABS_ANY
+#define	HIDMAP_REL(_page, _usage, _code)					\
+	HIDMAP_ANY((_page), (_usage), EV_REL, (_code)),			\
+		.relabs = HIDMAP_RELATIVE
+#define	HIDMAP_ABS(_page, _usage, _code)					\
+	HIDMAP_ANY((_page), (_usage), EV_ABS, (_code)),			\
+		.relabs = HIDMAP_ABSOLUTE
+#define	HIDMAP_SW(_page, _usage, _code)					\
+	HIDMAP_ANY((_page), (_usage), EV_SW, (_code)),			\
+		.relabs = HIDMAP_RELABS_ANY
+#define	HIDMAP_REL_CB(_page, _usage, _callback)				\
+	HIDMAP_ANY_CB((_page), (_usage), (_callback)),			\
+		.relabs = HIDMAP_RELATIVE
+#define	HIDMAP_ABS_CB(_page, _usage, _callback)				\
+	HIDMAP_ANY_CB((_page), (_usage), (_callback)),			\
+		.relabs = HIDMAP_ABSOLUTE
 /*
  * Special callback function which is not tied to particular HID input usage
  * but called at the end evdev properties setting or interrupt handler
  * just before evdev_register() or evdev_sync() calls.
  */
-#define	HMAP_COMPL_CB(_callback)					\
-	HMAP_ANY_CB(0, 0, (_callback)), .compl_cb = true
+#define	HIDMAP_COMPL_CB(_callback)					\
+	HIDMAP_ANY_CB(0, 0, (_callback)), .compl_cb = true
 
-enum hmap_type {
-	HMAP_TYPE_COMPLCB = 0,	/* No HID item associated. Runs unconditionally
+enum hidmap_type {
+	HIDMAP_TYPE_COMPLCB = 0,	/* No HID item associated. Runs unconditionally
 				 * at the end of other items processing */
-	HMAP_TYPE_CALLBACK,	/* HID item is reported with user callback */
-	HMAP_TYPE_VARIABLE,	/* HID item is variable (single usage) */
-	HMAP_TYPE_VAR_NULLST,	/* HID item is null state variable */
-	HMAP_TYPE_ARR_LIST,	/* HID item is array with list of usages */
-	HMAP_TYPE_ARR_RANGE,	/* Array with range (min;max) of usages */
+	HIDMAP_TYPE_CALLBACK,	/* HID item is reported with user callback */
+	HIDMAP_TYPE_VARIABLE,	/* HID item is variable (single usage) */
+	HIDMAP_TYPE_VAR_NULLST,	/* HID item is null state variable */
+	HIDMAP_TYPE_ARR_LIST,	/* HID item is array with list of usages */
+	HIDMAP_TYPE_ARR_RANGE,	/* Array with range (min;max) of usages */
 };
 
-struct hmap_hid_item {
-	enum hmap_type		type;
+struct hidmap_hid_item {
+	enum hidmap_type		type;
 	union {
-		hmap_cb_t	*cb;		/* Callback */
+		hidmap_cb_t	*cb;		/* Callback */
 		struct {			/* Variable */
 			uint16_t	evtype;	/* Evdev event type */
 			uint16_t	code;	/* Evdev event code */
@@ -164,7 +164,7 @@ struct hmap_hid_item {
 	};
 };
 
-struct hmap {
+struct hidmap {
 	device_t		dev;
 
 	struct evdev_dev	*evdev;
@@ -172,29 +172,29 @@ struct hmap {
 
 	/* Scatter-gather list of maps */
 	int			nmaps;
-	uint32_t		nmap_items[HMAP_MAX_MAPS];
-	const struct hmap_item	*map[HMAP_MAX_MAPS];
+	uint32_t		nmap_items[HIDMAP_MAX_MAPS];
+	const struct hidmap_item	*map[HIDMAP_MAX_MAPS];
 
 	/* List of preparsed HID items */
 	uint32_t		nhid_items;
-	struct hmap_hid_item	*hid_items;
+	struct hidmap_hid_item	*hid_items;
 
 	int			*debug_var;
-	enum hmap_cb_state	cb_state;
+	enum hidmap_cb_state	cb_state;
 	void *			intr_buf;
 	hid_size_t		intr_len;
 };
 
-#define	HMAP_CAPS(name, map)	bitstr_t bit_decl((name), nitems(map));
+#define	HIDMAP_CAPS(name, map)	bitstr_t bit_decl((name), nitems(map));
 static inline bool
-hmap_test_cap(bitstr_t *caps, int cap)
+hidmap_test_cap(bitstr_t *caps, int cap)
 {
 
 	return (bit_test(caps, cap));
 }
 
 static inline int
-hmap_count_caps(bitstr_t *caps, int first, int last)
+hidmap_count_caps(bitstr_t *caps, int first, int last)
 {
 	int count;
 
@@ -205,18 +205,18 @@ hmap_count_caps(bitstr_t *caps, int first, int last)
 /*
  * It is safe to call any of following procedures in device_probe context
  * that makes possible to write probe-only drivers with attach/detach handlers
- * inherited from hmap. See hcons and hsctrl drivers for example.
+ * inherited from hidmap. See hcons and hsctrl drivers for example.
  */
 static inline void
-hmap_set_dev(struct hmap *hm, device_t dev)
+hidmap_set_dev(struct hidmap *hm, device_t dev)
 {
 	hm->dev = dev;
 }
-void		hmap_set_debug_var(struct hmap *hm, int *debug_var);
-uint32_t	hmap_add_map(struct hmap *hm, const struct hmap_item *map,
+void		hidmap_set_debug_var(struct hidmap *hm, int *debug_var);
+uint32_t	hidmap_add_map(struct hidmap *hm, const struct hidmap_item *map,
 		    int nmap_items, bitstr_t *caps);
 
-int	hmap_attach(struct hmap *hm);
-int	hmap_detach(struct hmap *hm);
+int	hidmap_attach(struct hidmap *hm);
+int	hidmap_detach(struct hidmap *hm);
 
-#endif	/* _HMAP_H_ */
+#endif	/* _HIDMAP_H_ */

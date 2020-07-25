@@ -29,7 +29,7 @@ SRCS	+= hconf.c hconf.h hgame.c hgame.h hms.c hmt.c hpen.c hsctrl.c hcons.c
 SRCS	+= xb360gp.c ps4dshock.c
 SRCS	+= hidbus.c hidbus.h hid_if.c hid_if.h hid.c hid.h hid_lookup.c
 SRCS	+= hid_debug.h hid_debug.c
-SRCS	+= hmap.h hmap.c
+SRCS	+= hidmap.h hidmap.c
 SRCS	+= usbdevs.h
 .if !defined(DISABLE_USBHID)
 SRCS	+= usbhid.c

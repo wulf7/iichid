@@ -50,7 +50,7 @@ __FBSDID("$FreeBSD$");
 #include "hid.h"
 #include "hidbus.h"
 #include "hid_quirk.h"
-#include "hmap.h"
+#include "hidmap.h"
 
 #define	HID_DEBUG_VAR	xb360gp_debug
 #include "hid_debug.h"
@@ -67,17 +67,17 @@ SYSCTL_INT(_hw_hid_xb360gp, OID_AUTO, debug, CTLFLAG_RWTUN,
 static const uint8_t	xb360gp_rdesc[] = {UHID_XB360GP_REPORT_DESCR()};
 
 #define XB360GP_MAP_BUT(number, code)	\
-	{ HMAP_KEY(HUP_BUTTON, number, code) }
+	{ HIDMAP_KEY(HUP_BUTTON, number, code) }
 #define XB360GP_MAP_ABS(usage, code)	\
-	{ HMAP_ABS(HUP_GENERIC_DESKTOP, HUG_##usage, code) }
+	{ HIDMAP_ABS(HUP_GENERIC_DESKTOP, HUG_##usage, code) }
 #define XB360GP_MAP_CRG(usage_from, usage_to, callback)	\
-	{ HMAP_ANY_CB_RANGE(HUP_GENERIC_DESKTOP,	\
+	{ HIDMAP_ANY_CB_RANGE(HUP_GENERIC_DESKTOP,	\
 	    HUG_##usage_from, HUG_##usage_to, callback) }
 #define XB360GP_COMPLCB(cb)		\
-	{ HMAP_COMPL_CB(&cb) }
+	{ HIDMAP_COMPL_CB(&cb) }
 
 /* Customized to match usbhid's XBox 360 descriptor */
-static const struct hmap_item xb360gp_map[] = {
+static const struct hidmap_item xb360gp_map[] = {
 	XB360GP_MAP_BUT(1,		BTN_SOUTH),
 	XB360GP_MAP_BUT(2,		BTN_EAST),
 	XB360GP_MAP_BUT(3,		BTN_WEST),
@@ -127,10 +127,10 @@ xb360gp_probe(device_t dev)
 	if (!hid_test_quirk(hw, HQ_IS_XBOX360GP))
 		return (ENXIO);
 
-	hmap_set_dev(&sc->hm, dev);
-	hmap_set_debug_var(&sc->hm, &HID_DEBUG_VAR);
+	hidmap_set_dev(&sc->hm, dev);
+	hidmap_set_debug_var(&sc->hm, &HID_DEBUG_VAR);
 
-	error = hmap_add_map(&sc->hm, xb360gp_map, nitems(xb360gp_map), NULL);
+	error = hidmap_add_map(&sc->hm, xb360gp_map, nitems(xb360gp_map), NULL);
 	if (error != 0)
 		return (error);
 
@@ -156,7 +156,7 @@ xb360gp_attach(device_t dev)
 		DPRINTF("set output report failed, error=%d "
 		    "(ignored)\n", error);
 
-	return (hmap_attach(&sc->hm));
+	return (hidmap_attach(&sc->hm));
 }
 
 static int
@@ -164,7 +164,7 @@ xb360gp_detach(device_t dev)
 {
 	struct hgame_softc *sc = device_get_softc(dev);
 
-	return (hmap_detach(&sc->hm));
+	return (hidmap_detach(&sc->hm));
 }
 
 static devclass_t xb360gp_devclass;
@@ -180,7 +180,7 @@ DEFINE_CLASS_0(xb360gp, xb360gp_driver, xb360gp_methods,
     sizeof(struct hgame_softc));
 DRIVER_MODULE(xb360gp, hidbus, xb360gp_driver, xb360gp_devclass, NULL, 0);
 MODULE_DEPEND(xb360gp, hid, 1, 1, 1);
-MODULE_DEPEND(xb360gp, hmap, 1, 1, 1);
+MODULE_DEPEND(xb360gp, hidmap, 1, 1, 1);
 MODULE_DEPEND(xb360gp, hgame, 1, 1, 1);
 MODULE_DEPEND(xb360gp, evdev, 1, 1, 1);
 MODULE_VERSION(xb360gp, 1);

@@ -45,7 +45,7 @@ __FBSDID("$FreeBSD$");
 
 #include "hid.h"
 #include "hidbus.h"
-#include "hmap.h"
+#include "hidmap.h"
 
 #define	HID_DEBUG_VAR	hsctrl_debug
 #include "hid_debug.h"
@@ -63,9 +63,9 @@ SYSCTL_INT(_hw_hid_hsctrl, OID_AUTO, debug, CTLFLAG_RWTUN,
 #define HUG_SYSTEM_RESTART	0x008f
 
 #define	HSCTRL_MAP(usage, code)	\
-	{ HMAP_KEY(HUP_GENERIC_DESKTOP, HUG_SYSTEM_##usage, code) }
+	{ HIDMAP_KEY(HUP_GENERIC_DESKTOP, HUG_SYSTEM_##usage, code) }
 
-static const struct hmap_item hsctrl_map[] = {
+static const struct hidmap_item hsctrl_map[] = {
 	HSCTRL_MAP(POWER_DOWN,		KEY_POWER),
 	HSCTRL_MAP(SLEEP,		KEY_SLEEP),
 	HSCTRL_MAP(WAKEUP,		KEY_WAKEUP),
@@ -90,18 +90,18 @@ static const struct hid_device_id hsctrl_devs[] = {
 static int
 hsctrl_probe(device_t dev)
 {
-	struct hmap *hm = device_get_softc(dev);
+	struct hidmap *hm = device_get_softc(dev);
 	int error;
 
 	error = HIDBUS_LOOKUP_DRIVER_INFO(dev, hsctrl_devs);
 	if (error != 0)
 		return (error);
 
-	hmap_set_dev(hm, dev);
-	hmap_set_debug_var(hm, &HID_DEBUG_VAR);
+	hidmap_set_dev(hm, dev);
+	hidmap_set_debug_var(hm, &HID_DEBUG_VAR);
 
 	/* Check if report descriptor belongs to a System control TLC */
-	error = hmap_add_map(hm, hsctrl_map, nitems(hsctrl_map), NULL);
+	error = hidmap_add_map(hm, hsctrl_map, nitems(hsctrl_map), NULL);
 	if (error != 0)
 		return (error);
 
@@ -113,13 +113,13 @@ hsctrl_probe(device_t dev)
 static int
 hsctrl_attach(device_t dev)
 {
-	return (hmap_attach(device_get_softc(dev)));
+	return (hidmap_attach(device_get_softc(dev)));
 }
 
 static int
 hsctrl_detach(device_t dev)
 {
-	return (hmap_detach(device_get_softc(dev)));
+	return (hidmap_detach(device_get_softc(dev)));
 }
 
 static devclass_t hsctrl_devclass;
@@ -131,9 +131,9 @@ static device_method_t hsctrl_methods[] = {
 	DEVMETHOD_END
 };
 
-DEFINE_CLASS_0(hsctrl, hsctrl_driver, hsctrl_methods, sizeof(struct hmap));
+DEFINE_CLASS_0(hsctrl, hsctrl_driver, hsctrl_methods, sizeof(struct hidmap));
 DRIVER_MODULE(hsctrl, hidbus, hsctrl_driver, hsctrl_devclass, NULL, 0);
 MODULE_DEPEND(hsctrl, hid, 1, 1, 1);
-MODULE_DEPEND(hsctrl, hmap, 1, 1, 1);
+MODULE_DEPEND(hsctrl, hidmap, 1, 1, 1);
 MODULE_DEPEND(hsctrl, evdev, 1, 1, 1);
 MODULE_VERSION(hsctrl, 1);

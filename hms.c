@@ -44,7 +44,7 @@ __FBSDID("$FreeBSD$");
 #include "hid.h"
 #include "hidbus.h"
 #include "hid_quirk.h"
-#include "hmap.h"
+#include "hidmap.h"
 
 #define	HID_DEBUG_VAR	hms_debug
 #include "hid_debug.h"
@@ -101,25 +101,25 @@ enum {
 	HMS_COMPL_CB,
 };
 
-static hmap_cb_t	hms_wheel_cb;
-static hmap_cb_t	hms_compl_cb;
+static hidmap_cb_t	hms_wheel_cb;
+static hidmap_cb_t	hms_compl_cb;
 
 #define HMS_MAP_BUT_RG(usage_from, usage_to, code)	\
-	{ HMAP_KEY_RANGE(HUP_BUTTON, usage_from, usage_to, code) }
+	{ HIDMAP_KEY_RANGE(HUP_BUTTON, usage_from, usage_to, code) }
 #define HMS_MAP_BUT_MS(usage, code)	\
-	{ HMAP_KEY(HUP_MICROSOFT, usage, code) }
+	{ HIDMAP_KEY(HUP_MICROSOFT, usage, code) }
 #define HMS_MAP_ABS(usage, code)	\
-	{ HMAP_ABS(HUP_GENERIC_DESKTOP, usage, code) }
+	{ HIDMAP_ABS(HUP_GENERIC_DESKTOP, usage, code) }
 #define HMS_MAP_REL(usage, code)	\
-	{ HMAP_REL(HUP_GENERIC_DESKTOP, usage, code) }
+	{ HIDMAP_REL(HUP_GENERIC_DESKTOP, usage, code) }
 #define HMS_MAP_REL_CN(usage, code)	\
-	{ HMAP_REL(HUP_CONSUMER, usage, code) }
+	{ HIDMAP_REL(HUP_CONSUMER, usage, code) }
 #define HMS_MAP_REL_CB(usage, cb)	\
-	{ HMAP_REL_CB(HUP_GENERIC_DESKTOP, usage, &cb) }
+	{ HIDMAP_REL_CB(HUP_GENERIC_DESKTOP, usage, &cb) }
 #define	HMS_COMPL_CB(cb)		\
-	{ HMAP_COMPL_CB(&cb) }
+	{ HIDMAP_COMPL_CB(&cb) }
 
-static const struct hmap_item hms_map[] = {
+static const struct hidmap_item hms_map[] = {
 	[HMS_REL_X]	= HMS_MAP_REL(HUG_X,		REL_X),
 	[HMS_REL_Y]	= HMS_MAP_REL(HUG_Y,		REL_Y),
 	[HMS_REL_Z]	= HMS_MAP_REL(HUG_Z,		REL_Z),
@@ -140,25 +140,25 @@ static const struct hid_device_id hms_devs[] = {
 };
 
 struct hms_softc {
-	struct hmap		hm;
-	HMAP_CAPS(caps, hms_map);
+	struct hidmap		hm;
+	HIDMAP_CAPS(caps, hms_map);
 	bool			rev_wheel;
 };
 
 /* Reverse wheel if required. */
 static int
-hms_wheel_cb(HMAP_CB_ARGS)
+hms_wheel_cb(HIDMAP_CB_ARGS)
 {
-	struct hms_softc *sc = HMAP_CB_GET_SOFTC();
-	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV();
+	struct hms_softc *sc = HIDMAP_CB_GET_SOFTC();
+	struct evdev_dev *evdev = HIDMAP_CB_GET_EVDEV();
 	int32_t data;
 
-	switch (HMAP_CB_GET_STATE()) {
-	case HMAP_CB_IS_ATTACHING:
+	switch (HIDMAP_CB_GET_STATE()) {
+	case HIDMAP_CB_IS_ATTACHING:
 		evdev_support_event(evdev, EV_REL);
 		evdev_support_rel(evdev, REL_WHEEL);
 		break;
-	case HMAP_CB_IS_RUNNING:
+	case HIDMAP_CB_IS_RUNNING:
 		data = ctx;
 		/* No movement. Nothing to report. */
 		if (data == 0)
@@ -172,14 +172,14 @@ hms_wheel_cb(HMAP_CB_ARGS)
 }
 
 static int
-hms_compl_cb(HMAP_CB_ARGS)
+hms_compl_cb(HIDMAP_CB_ARGS)
 {
-	struct hms_softc *sc = HMAP_CB_GET_SOFTC();
-	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV();
+	struct hms_softc *sc = HIDMAP_CB_GET_SOFTC();
+	struct evdev_dev *evdev = HIDMAP_CB_GET_EVDEV();
 
-	if (HMAP_CB_GET_STATE() == HMAP_CB_IS_ATTACHING) {
-		if (hmap_test_cap(sc->caps, HMS_ABS_X) ||
-		    hmap_test_cap(sc->caps, HMS_ABS_Y))
+	if (HIDMAP_CB_GET_STATE() == HIDMAP_CB_IS_ATTACHING) {
+		if (hidmap_test_cap(sc->caps, HMS_ABS_X) ||
+		    hidmap_test_cap(sc->caps, HMS_ABS_Y))
 			evdev_support_prop(evdev, INPUT_PROP_DIRECT);
 		else
 			evdev_support_prop(evdev, INPUT_PROP_POINTER);
@@ -219,23 +219,23 @@ hms_probe(device_t dev)
 	if (error != 0)
 		return (error);
 
-	hmap_set_dev(&sc->hm, dev);
-	hmap_set_debug_var(&sc->hm, &HID_DEBUG_VAR);
+	hidmap_set_dev(&sc->hm, dev);
+	hidmap_set_debug_var(&sc->hm, &HID_DEBUG_VAR);
 
 	/* Check if report descriptor belongs to mouse */
-	error = hmap_add_map(&sc->hm, hms_map, nitems(hms_map), sc->caps);
+	error = hidmap_add_map(&sc->hm, hms_map, nitems(hms_map), sc->caps);
 	if (error != 0)
 		return (error);
 
 	/* There should be at least one X or Y axis */
-	if (!hmap_test_cap(sc->caps, HMS_REL_X) &&
-	    !hmap_test_cap(sc->caps, HMS_REL_X) &&
-	    !hmap_test_cap(sc->caps, HMS_ABS_X) &&
-	    !hmap_test_cap(sc->caps, HMS_ABS_Y))
+	if (!hidmap_test_cap(sc->caps, HMS_REL_X) &&
+	    !hidmap_test_cap(sc->caps, HMS_REL_X) &&
+	    !hidmap_test_cap(sc->caps, HMS_ABS_X) &&
+	    !hidmap_test_cap(sc->caps, HMS_ABS_Y))
 		return (ENXIO);
 
-	if (hmap_test_cap(sc->caps, HMS_ABS_X) ||
-	    hmap_test_cap(sc->caps, HMS_ABS_Y))
+	if (hidmap_test_cap(sc->caps, HMS_ABS_X) ||
+	    hidmap_test_cap(sc->caps, HMS_ABS_Y))
 		hidbus_set_desc(dev, "Tablet");
 	 else
 		hidbus_set_desc(dev, "Mouse");
@@ -248,7 +248,7 @@ hms_attach(device_t dev)
 {
 	struct hms_softc *sc = device_get_softc(dev);
 	const struct hid_device_info *hw = hid_get_device_info(dev);
-	struct hmap_hid_item *hi;
+	struct hidmap_hid_item *hi;
 	void *d_ptr;
 	hid_size_t d_len;
 	bool set_report_proto;
@@ -271,7 +271,7 @@ hms_attach(device_t dev)
 		sc->rev_wheel = true;
 	}
 
-	error = hmap_attach(&sc->hm);
+	error = hidmap_attach(&sc->hm);
 	if (error)
 		return (error);
 
@@ -279,20 +279,20 @@ hms_attach(device_t dev)
 	for (hi = sc->hm.hid_items;
 	     hi < sc->hm.hid_items + sc->hm.nhid_items;
 	     hi++)
-		if (hi->type == HMAP_TYPE_VARIABLE && hi->evtype == EV_KEY)
+		if (hi->type == HIDMAP_TYPE_VARIABLE && hi->evtype == EV_KEY)
 			nbuttons++;
 
 	/* announce information about the mouse */
 	device_printf(dev, "%d buttons and [%s%s%s%s%s] coordinates ID=%u\n",
 	    nbuttons,
-	    (hmap_test_cap(sc->caps, HMS_REL_X) ||
-	     hmap_test_cap(sc->caps, HMS_ABS_X)) ? "X" : "",
-	    (hmap_test_cap(sc->caps, HMS_REL_Y) ||
-	     hmap_test_cap(sc->caps, HMS_ABS_Y)) ? "Y" : "",
-	    (hmap_test_cap(sc->caps, HMS_REL_Z) ||
-	     hmap_test_cap(sc->caps, HMS_ABS_Z)) ? "Z" : "",
-	    hmap_test_cap(sc->caps, HMS_WHEEL) ? "W" : "",
-	    hmap_test_cap(sc->caps, HMS_HWHEEL) ? "H" : "",
+	    (hidmap_test_cap(sc->caps, HMS_REL_X) ||
+	     hidmap_test_cap(sc->caps, HMS_ABS_X)) ? "X" : "",
+	    (hidmap_test_cap(sc->caps, HMS_REL_Y) ||
+	     hidmap_test_cap(sc->caps, HMS_ABS_Y)) ? "Y" : "",
+	    (hidmap_test_cap(sc->caps, HMS_REL_Z) ||
+	     hidmap_test_cap(sc->caps, HMS_ABS_Z)) ? "Z" : "",
+	    hidmap_test_cap(sc->caps, HMS_WHEEL) ? "W" : "",
+	    hidmap_test_cap(sc->caps, HMS_HWHEEL) ? "H" : "",
 	    sc->hm.hid_items[0].id);
 
 	return (0);
@@ -303,7 +303,7 @@ hms_detach(device_t dev)
 {
 	struct hms_softc *sc = device_get_softc(dev);
 
-	return (hmap_detach(&sc->hm));
+	return (hidmap_detach(&sc->hm));
 }
 
 static devclass_t hms_devclass;
@@ -319,7 +319,7 @@ static device_method_t hms_methods[] = {
 DEFINE_CLASS_0(hms, hms_driver, hms_methods, sizeof(struct hms_softc));
 DRIVER_MODULE(hms, hidbus, hms_driver, hms_devclass, NULL, 0);
 MODULE_DEPEND(hms, hid, 1, 1, 1);
-MODULE_DEPEND(hms, hmap, 1, 1, 1);
+MODULE_DEPEND(hms, hidmap, 1, 1, 1);
 MODULE_DEPEND(hms, evdev, 1, 1, 1);
 MODULE_VERSION(hms, 1);
 /* USB_PNP_HOST_INFO(hms_devs); */

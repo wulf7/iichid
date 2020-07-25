@@ -46,7 +46,7 @@ __FBSDID("$FreeBSD$");
 #include "hid.h"
 #include "hidbus.h"
 #include "hid_quirk.h"
-#include "hmap.h"
+#include "hidmap.h"
 
 #define	HID_DEBUG_VAR	hgame_debug
 #include "hid_debug.h"
@@ -61,16 +61,16 @@ SYSCTL_INT(_hw_hid_hgame, OID_AUTO, debug, CTLFLAG_RWTUN,
 #endif
 
 #define HGAME_MAP_BRG(number_from, number_to, code)	\
-	{ HMAP_KEY_RANGE(HUP_BUTTON, number_from, number_to, code) }
+	{ HIDMAP_KEY_RANGE(HUP_BUTTON, number_from, number_to, code) }
 #define HGAME_MAP_ABS(usage, code)	\
-	{ HMAP_ABS(HUP_GENERIC_DESKTOP, HUG_##usage, code) }
+	{ HIDMAP_ABS(HUP_GENERIC_DESKTOP, HUG_##usage, code) }
 #define HGAME_MAP_CRG(usage_from, usage_to, callback)	\
-	{ HMAP_ANY_CB_RANGE(HUP_GENERIC_DESKTOP,	\
+	{ HIDMAP_ANY_CB_RANGE(HUP_GENERIC_DESKTOP,	\
 	    HUG_##usage_from, HUG_##usage_to, callback) }
 #define HGAME_COMPLCB(cb)	\
-	{ HMAP_COMPL_CB(&cb) }
+	{ HIDMAP_COMPL_CB(&cb) }
 
-static const struct hmap_item hgame_common_map[] = {
+static const struct hidmap_item hgame_common_map[] = {
 	HGAME_MAP_ABS(X,		ABS_X),
 	HGAME_MAP_ABS(Y,		ABS_Y),
 	HGAME_MAP_ABS(Z,		ABS_Z),
@@ -83,11 +83,11 @@ static const struct hmap_item hgame_common_map[] = {
 	HGAME_COMPLCB(			hgame_compl_cb),
 };
 
-static const struct hmap_item hgame_joystick_map[] = {
+static const struct hidmap_item hgame_joystick_map[] = {
 	HGAME_MAP_BRG(1, 16,		BTN_TRIGGER),
 };
 
-static const struct hmap_item hgame_gamepad_map[] = {
+static const struct hidmap_item hgame_gamepad_map[] = {
 	HGAME_MAP_BRG(1, 16,		BTN_GAMEPAD),
 };
 
@@ -99,23 +99,23 @@ static const struct hid_device_id hgame_devs[] = {
 /* Emulate the hat switch report via the D-pad usages
  * found on XInput/XBox style devices */
 int
-hgame_dpad_cb(HMAP_CB_ARGS)
+hgame_dpad_cb(HIDMAP_CB_ARGS)
 {
-	struct hgame_softc *sc = HMAP_CB_GET_SOFTC();
-	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV();
+	struct hgame_softc *sc = HIDMAP_CB_GET_SOFTC();
+	struct evdev_dev *evdev = HIDMAP_CB_GET_EVDEV();
 	struct hid_item *hid_item;
 
-	switch (HMAP_CB_GET_STATE()) {
-	case HMAP_CB_IS_ATTACHING:
+	switch (HIDMAP_CB_GET_STATE()) {
+	case HIDMAP_CB_IS_ATTACHING:
 		hid_item = (struct hid_item *)ctx;
-		HMAP_CB_UDATA64 = HID_GET_USAGE(hid_item->usage);
+		HIDMAP_CB_UDATA64 = HID_GET_USAGE(hid_item->usage);
 		evdev_support_event(evdev, EV_ABS);
 		evdev_support_abs(evdev, ABS_HAT0X, 0, -1, 1, 0, 0, 0);
 		evdev_support_abs(evdev, ABS_HAT0Y, 0, -1, 1, 0, 0, 0);
 		break;
 
-	case HMAP_CB_IS_RUNNING:
-		switch (HMAP_CB_UDATA64) {
+	case HIDMAP_CB_IS_RUNNING:
+		switch (HIDMAP_CB_UDATA64) {
 		case HUG_D_PAD_UP:
 			if (sc->dpad_down)
 				break;
@@ -147,11 +147,11 @@ hgame_dpad_cb(HMAP_CB_ARGS)
 }
 
 int
-hgame_compl_cb(HMAP_CB_ARGS)
+hgame_compl_cb(HIDMAP_CB_ARGS)
 {
-	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV();
+	struct evdev_dev *evdev = HIDMAP_CB_GET_EVDEV();
 
-	if (HMAP_CB_GET_STATE() == HMAP_CB_IS_ATTACHING)
+	if (HIDMAP_CB_GET_STATE() == HIDMAP_CB_IS_ATTACHING)
 		evdev_support_prop(evdev, INPUT_PROP_DIRECT);
 
 	/* Do not execute callback at interrupt handler and detach */
@@ -172,14 +172,14 @@ hgame_probe(device_t dev)
 	if (error != 0)
 		return (error);
 
-	hmap_set_dev(&sc->hm, dev);
-	hmap_set_debug_var(&sc->hm, &HID_DEBUG_VAR);
+	hidmap_set_dev(&sc->hm, dev);
+	hidmap_set_debug_var(&sc->hm, &HID_DEBUG_VAR);
 
 	if (hidbus_get_driver_info(dev) == HUG_GAME_PAD)
-		error = hmap_add_map(&sc->hm, hgame_gamepad_map, nitems(hgame_gamepad_map), NULL);
+		error = hidmap_add_map(&sc->hm, hgame_gamepad_map, nitems(hgame_gamepad_map), NULL);
 	else
-		error = hmap_add_map(&sc->hm, hgame_joystick_map, nitems(hgame_joystick_map), NULL);
-	error2 = hmap_add_map(&sc->hm, hgame_common_map, nitems(hgame_common_map), NULL);
+		error = hidmap_add_map(&sc->hm, hgame_joystick_map, nitems(hgame_joystick_map), NULL);
+	error2 = hidmap_add_map(&sc->hm, hgame_common_map, nitems(hgame_common_map), NULL);
 	if (error != 0 && error2 != 0)
 		return (error);
 
@@ -194,7 +194,7 @@ hgame_attach(device_t dev)
 {
 	struct hgame_softc *sc = device_get_softc(dev);
 
-	return (hmap_attach(&sc->hm));
+	return (hidmap_attach(&sc->hm));
 }
 
 static int
@@ -202,7 +202,7 @@ hgame_detach(device_t dev)
 {
 	struct hgame_softc *sc = device_get_softc(dev);
 
-	return (hmap_detach(&sc->hm));
+	return (hidmap_detach(&sc->hm));
 }
 
 static devclass_t hgame_devclass;
@@ -217,6 +217,6 @@ static device_method_t hgame_methods[] = {
 DEFINE_CLASS_0(hgame, hgame_driver, hgame_methods, sizeof(struct hgame_softc));
 DRIVER_MODULE(hgame, hidbus, hgame_driver, hgame_devclass, NULL, 0);
 MODULE_DEPEND(hgame, hid, 1, 1, 1);
-MODULE_DEPEND(hgame, hmap, 1, 1, 1);
+MODULE_DEPEND(hgame, hidmap, 1, 1, 1);
 MODULE_DEPEND(hgame, evdev, 1, 1, 1);
 MODULE_VERSION(hgame, 1);

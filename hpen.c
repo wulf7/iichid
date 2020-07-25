@@ -50,7 +50,7 @@ __FBSDID("$FreeBSD$");
 
 #include "hid.h"
 #include "hidbus.h"
-#include "hmap.h"
+#include "hidmap.h"
 
 #define	HID_DEBUG_VAR	hpen_debug
 #include "hid_debug.h"
@@ -69,21 +69,21 @@ static const uint8_t	hpen_graphire_report_descr[] =
 static const uint8_t	hpen_graphire3_4x5_report_descr[] =
 			   { UHID_GRAPHIRE3_4X5_REPORT_DESCR() };
 
-static hmap_cb_t	hpen_battery_strenght_cb;
-static hmap_cb_t	hpen_compl_digi_cb;
-static hmap_cb_t	hpen_compl_pen_cb;
+static hidmap_cb_t	hpen_battery_strenght_cb;
+static hidmap_cb_t	hpen_compl_digi_cb;
+static hidmap_cb_t	hpen_compl_pen_cb;
 
 #define HPEN_MAP_BUT(usage, code)	\
-	HMAP_KEY(HUP_DIGITIZERS, HUD_##usage, code)
+	HIDMAP_KEY(HUP_DIGITIZERS, HUD_##usage, code)
 #define HPEN_MAP_ABS(usage, code)	\
-	HMAP_ABS(HUP_DIGITIZERS, HUD_##usage, code)
+	HIDMAP_ABS(HUP_DIGITIZERS, HUD_##usage, code)
 #define HPEN_MAP_ABS_GD(usage, code)	\
-	HMAP_ABS(HUP_GENERIC_DESKTOP, HUG_##usage, code)
+	HIDMAP_ABS(HUP_GENERIC_DESKTOP, HUG_##usage, code)
 #define HPEN_MAP_ABS_CB(usage, cb)	\
-	HMAP_ABS_CB(HUP_DIGITIZERS, HUD_##usage, &cb)
+	HIDMAP_ABS_CB(HUP_DIGITIZERS, HUD_##usage, &cb)
 
 /* Generic map digitizer page map according to hut1_12v2.pdf */
-static const struct hmap_item hpen_map_digi[] = {
+static const struct hidmap_item hpen_map_digi[] = {
     { HPEN_MAP_ABS_GD(X,		ABS_X),		  .required = true },
     { HPEN_MAP_ABS_GD(Y,		ABS_Y),		  .required = true },
     { HPEN_MAP_ABS(   TIP_PRESSURE,	ABS_PRESSURE) },
@@ -99,11 +99,11 @@ static const struct hmap_item hpen_map_digi[] = {
     { HPEN_MAP_BUT(   ERASER,		BTN_TOUCH) },
     { HPEN_MAP_BUT(   TABLET_PICK,	BTN_STYLUS2) },
     { HPEN_MAP_BUT(   SEC_BARREL_SWITCH,BTN_STYLUS2) },
-    { HMAP_COMPL_CB(			&hpen_compl_digi_cb) },
+    { HIDMAP_COMPL_CB(			&hpen_compl_digi_cb) },
 };
 
 /* Microsoft-standardized pen support */
-static const struct hmap_item hpen_map_pen[] = {
+static const struct hidmap_item hpen_map_pen[] = {
     { HPEN_MAP_ABS_GD(X,		ABS_X),		  .required = true },
     { HPEN_MAP_ABS_GD(Y,		ABS_Y),		  .required = true },
     { HPEN_MAP_ABS(   TIP_PRESSURE,	ABS_PRESSURE),	  .required = true },
@@ -115,7 +115,7 @@ static const struct hmap_item hpen_map_pen[] = {
     { HPEN_MAP_BUT(   BARREL_SWITCH,	BTN_STYLUS) },
     { HPEN_MAP_BUT(   INVERT,		BTN_TOOL_RUBBER), .required = true },
     { HPEN_MAP_BUT(   ERASER,		BTN_TOUCH),	  .required = true },
-    { HMAP_COMPL_CB(			&hpen_compl_pen_cb) },
+    { HIDMAP_COMPL_CB(			&hpen_compl_pen_cb) },
 };
 
 static const struct hid_device_id hpen_devs[] = {
@@ -124,17 +124,17 @@ static const struct hid_device_id hpen_devs[] = {
 };
 
 static int
-hpen_battery_strenght_cb(HMAP_CB_ARGS)
+hpen_battery_strenght_cb(HIDMAP_CB_ARGS)
 {
-	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV();
+	struct evdev_dev *evdev = HIDMAP_CB_GET_EVDEV();
 	int32_t data;
 
-	switch (HMAP_CB_GET_STATE()) {
-	case HMAP_CB_IS_ATTACHING:
+	switch (HIDMAP_CB_GET_STATE()) {
+	case HIDMAP_CB_IS_ATTACHING:
 		evdev_support_event(evdev, EV_PWR);
 		/* TODO */
 		break;
-	case HMAP_CB_IS_RUNNING:
+	case HIDMAP_CB_IS_RUNNING:
 		data = ctx;
 		/* TODO */
 	}
@@ -143,11 +143,11 @@ hpen_battery_strenght_cb(HMAP_CB_ARGS)
 }
 
 static int
-hpen_compl_digi_cb(HMAP_CB_ARGS)
+hpen_compl_digi_cb(HIDMAP_CB_ARGS)
 {
-	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV();
+	struct evdev_dev *evdev = HIDMAP_CB_GET_EVDEV();
 
-	if (HMAP_CB_GET_STATE() == HMAP_CB_IS_ATTACHING)
+	if (HIDMAP_CB_GET_STATE() == HIDMAP_CB_IS_ATTACHING)
 		evdev_support_prop(evdev, INPUT_PROP_POINTER);
 
 	/* Do not execute callback at interrupt handler and detach */
@@ -155,11 +155,11 @@ hpen_compl_digi_cb(HMAP_CB_ARGS)
 }
 
 static int
-hpen_compl_pen_cb(HMAP_CB_ARGS)
+hpen_compl_pen_cb(HIDMAP_CB_ARGS)
 {
-	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV();
+	struct evdev_dev *evdev = HIDMAP_CB_GET_EVDEV();
 
-	if (HMAP_CB_GET_STATE() == HMAP_CB_IS_ATTACHING)
+	if (HIDMAP_CB_GET_STATE() == HIDMAP_CB_IS_ATTACHING)
 		evdev_support_prop(evdev, INPUT_PROP_DIRECT);
 
 	/* Do not execute callback at interrupt handler and detach */
@@ -192,7 +192,7 @@ hpen_identify(driver_t *driver, device_t parent)
 static int
 hpen_probe(device_t dev)
 {
-	struct hmap *hm = device_get_softc(dev);
+	struct hidmap *hm = device_get_softc(dev);
 	int error;
 	bool is_pen;
 
@@ -200,14 +200,14 @@ hpen_probe(device_t dev)
 	if (error != 0)
 		return (error);
 
-	hmap_set_dev(hm, dev);
-	hmap_set_debug_var(hm, &HID_DEBUG_VAR);
+	hidmap_set_dev(hm, dev);
+	hidmap_set_debug_var(hm, &HID_DEBUG_VAR);
 
 	/* Check if report descriptor belongs to a HID tablet device */
 	is_pen = hidbus_get_usage(dev) == HID_USAGE2(HUP_DIGITIZERS, HUD_PEN);
 	error = is_pen
-	    ? hmap_add_map(hm, hpen_map_pen, nitems(hpen_map_pen), NULL)
-	    : hmap_add_map(hm, hpen_map_digi, nitems(hpen_map_digi), NULL);
+	    ? hidmap_add_map(hm, hpen_map_pen, nitems(hpen_map_pen), NULL)
+	    : hidmap_add_map(hm, hpen_map_digi, nitems(hpen_map_digi), NULL);
 	if (error != 0)
 		return (error);
 
@@ -220,7 +220,7 @@ static int
 hpen_attach(device_t dev)
 {
 	const struct hid_device_info *hw = hid_get_device_info(dev);
-	struct hmap *hm = device_get_softc(dev);
+	struct hidmap *hm = device_get_softc(dev);
 	int error;
 
 	if (hw->idBus == BUS_USB && hw->idVendor == USB_VENDOR_WACOM &&
@@ -238,13 +238,13 @@ hpen_attach(device_t dev)
 			    "(ignored)\n", error);
 	}
 
-	return (hmap_attach(hm));
+	return (hidmap_attach(hm));
 }
 
 static int
 hpen_detach(device_t dev)
 {
-	return (hmap_detach(device_get_softc(dev)));
+	return (hidmap_detach(device_get_softc(dev)));
 }
 
 
@@ -258,9 +258,9 @@ static device_method_t hpen_methods[] = {
 	DEVMETHOD_END
 };
 
-DEFINE_CLASS_0(hpen, hpen_driver, hpen_methods, sizeof(struct hmap));
+DEFINE_CLASS_0(hpen, hpen_driver, hpen_methods, sizeof(struct hidmap));
 DRIVER_MODULE(hpen, hidbus, hpen_driver, hpen_devclass, NULL, 0);
 MODULE_DEPEND(hpen, hid, 1, 1, 1);
-MODULE_DEPEND(hpen, hmap, 1, 1, 1);
+MODULE_DEPEND(hpen, hidmap, 1, 1, 1);
 MODULE_DEPEND(hpen, evdev, 1, 1, 1);
 MODULE_VERSION(hpen, 1);

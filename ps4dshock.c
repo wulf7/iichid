@@ -49,7 +49,7 @@ __FBSDID("$FreeBSD$");
 #include "hid.h"
 #include "hidbus.h"
 #include "hid_quirk.h"
-#include "hmap.h"
+#include "hidmap.h"
 #include "usbdevs.h"
 
 #define	HID_DEBUG_VAR	ps4dshock_debug
@@ -598,14 +598,14 @@ static const uint8_t	ps4dshock_rdesc[] = {
 #define	PS4DS_OUTPUT_REPORT5_SIZE	32
 #define	PS4DS_OUTPUT_REPORT11_SIZE	78
 
-static hmap_cb_t	ps4dshock_hat_switch_cb;
-static hmap_cb_t	ps4dshock_compl_cb;
-static hmap_cb_t	ps4dsacc_data_cb;
-static hmap_cb_t	ps4dsacc_tstamp_cb;
-static hmap_cb_t	ps4dsacc_compl_cb;
-static hmap_cb_t	ps4dsmtp_data_cb;
-static hmap_cb_t	ps4dsmtp_npackets_cb;
-static hmap_cb_t	ps4dsmtp_compl_cb;
+static hidmap_cb_t	ps4dshock_hat_switch_cb;
+static hidmap_cb_t	ps4dshock_compl_cb;
+static hidmap_cb_t	ps4dsacc_data_cb;
+static hidmap_cb_t	ps4dsacc_tstamp_cb;
+static hidmap_cb_t	ps4dsacc_compl_cb;
+static hidmap_cb_t	ps4dsmtp_data_cb;
+static hidmap_cb_t	ps4dsmtp_npackets_cb;
+static hidmap_cb_t	ps4dsmtp_compl_cb;
 
 struct ps4ds_out5 {
 	uint8_t features;
@@ -668,7 +668,7 @@ enum {
 };
 
 struct ps4dshock_softc {
-	struct hmap		hm;
+	struct hidmap		hm;
 
 	bool			is_bluetooth;
 
@@ -683,7 +683,7 @@ struct ps4dshock_softc {
 };
 
 struct ps4dsacc_softc {
-	struct hmap		hm;
+	struct hidmap		hm;
 
 	uint16_t		hw_tstamp;
 	int32_t			ev_tstamp;
@@ -692,7 +692,7 @@ struct ps4dsacc_softc {
 };
 
 struct ps4dsmtp_softc {
-	struct hmap		hm;
+	struct hidmap		hm;
 
 	struct hid_location	btn_loc;
 	u_int		npackets;
@@ -717,19 +717,19 @@ enum {
 };
 
 #define PS4DS_MAP_BTN(number, code)		\
-	{ HMAP_KEY(HUP_BUTTON, number, code) }
+	{ HIDMAP_KEY(HUP_BUTTON, number, code) }
 #define PS4DS_MAP_ABS(usage, code)		\
-	{ HMAP_ABS(HUP_GENERIC_DESKTOP, HUG_##usage, code) }
+	{ HIDMAP_ABS(HUP_GENERIC_DESKTOP, HUG_##usage, code) }
 #define PS4DS_MAP_VSW(usage, code)	\
-	{ HMAP_SW(HUP_MICROSOFT, usage, code) }
+	{ HIDMAP_SW(HUP_MICROSOFT, usage, code) }
 #define PS4DS_MAP_GCB(usage, callback)	\
-	{ HMAP_ANY_CB(HUP_GENERIC_DESKTOP, HUG_##usage, callback) }
+	{ HIDMAP_ANY_CB(HUP_GENERIC_DESKTOP, HUG_##usage, callback) }
 #define PS4DS_MAP_VCB(usage, callback)	\
-	{ HMAP_ANY_CB(HUP_MICROSOFT, usage, callback) }
+	{ HIDMAP_ANY_CB(HUP_MICROSOFT, usage, callback) }
 #define PS4DS_COMPLCB(cb)			\
-	{ HMAP_COMPL_CB(&cb) }
+	{ HIDMAP_COMPL_CB(&cb) }
 
-static const struct hmap_item ps4dshock_map[] = {
+static const struct hidmap_item ps4dshock_map[] = {
 	PS4DS_MAP_ABS(X,		ABS_X),
 	PS4DS_MAP_ABS(Y,		ABS_Y),
 	PS4DS_MAP_ABS(Z,		ABS_Z),
@@ -754,7 +754,7 @@ static const struct hmap_item ps4dshock_map[] = {
 	PS4DS_MAP_GCB(HAT_SWITCH,	ps4dshock_hat_switch_cb),
 	PS4DS_COMPLCB(			ps4dshock_compl_cb),
 };
-static const struct hmap_item ps4dsacc_map[] = {
+static const struct hidmap_item ps4dsacc_map[] = {
 	PS4DS_MAP_GCB(X,		ps4dsacc_data_cb),
 	PS4DS_MAP_GCB(Y,		ps4dsacc_data_cb),
 	PS4DS_MAP_GCB(Z,		ps4dsacc_data_cb),
@@ -764,18 +764,18 @@ static const struct hmap_item ps4dsacc_map[] = {
 	PS4DS_MAP_VCB(0x0021,		ps4dsacc_tstamp_cb),
 	PS4DS_COMPLCB(			ps4dsacc_compl_cb),
 };
-static const struct hmap_item ps4dshead_map[] = {
+static const struct hidmap_item ps4dshead_map[] = {
 	PS4DS_MAP_VSW(0x0020,		SW_MICROPHONE_INSERT),
 	PS4DS_MAP_VSW(0x0021,		SW_HEADPHONE_INSERT),
 };
-static const struct hmap_item ps4dsmtp_map[] = {
-	{ HMAP_ABS_CB(HUP_MICROSOFT, 0x0021, 		ps4dsmtp_npackets_cb)},
-	{ HMAP_ABS_CB(HUP_DIGITIZERS, HUD_SCAN_TIME,	ps4dsmtp_data_cb) },
-	{ HMAP_ABS_CB(HUP_DIGITIZERS, HUD_CONTACTID,	ps4dsmtp_data_cb) },
-	{ HMAP_ABS_CB(HUP_DIGITIZERS, HUD_TIP_SWITCH,	ps4dsmtp_data_cb) },
-	{ HMAP_ABS_CB(HUP_GENERIC_DESKTOP, HUG_X,	ps4dsmtp_data_cb) },
-	{ HMAP_ABS_CB(HUP_GENERIC_DESKTOP, HUG_Y,	ps4dsmtp_data_cb) },
-	{ HMAP_COMPL_CB(				ps4dsmtp_compl_cb) },
+static const struct hidmap_item ps4dsmtp_map[] = {
+	{ HIDMAP_ABS_CB(HUP_MICROSOFT, 0x0021, 		ps4dsmtp_npackets_cb)},
+	{ HIDMAP_ABS_CB(HUP_DIGITIZERS, HUD_SCAN_TIME,	ps4dsmtp_data_cb) },
+	{ HIDMAP_ABS_CB(HUP_DIGITIZERS, HUD_CONTACTID,	ps4dsmtp_data_cb) },
+	{ HIDMAP_ABS_CB(HUP_DIGITIZERS, HUD_TIP_SWITCH,	ps4dsmtp_data_cb) },
+	{ HIDMAP_ABS_CB(HUP_GENERIC_DESKTOP, HUG_X,	ps4dsmtp_data_cb) },
+	{ HIDMAP_ABS_CB(HUP_GENERIC_DESKTOP, HUG_Y,	ps4dsmtp_data_cb) },
+	{ HIDMAP_COMPL_CB(				ps4dsmtp_compl_cb) },
 };
 
 static const struct hid_device_id ps4dshock_devs[] = {
@@ -796,23 +796,23 @@ static const struct hid_device_id ps4dsmtp_devs[] = {
 };
 
 static int
-ps4dshock_hat_switch_cb(HMAP_CB_ARGS)
+ps4dshock_hat_switch_cb(HIDMAP_CB_ARGS)
 {
 	static const struct { int32_t x; int32_t y; } hat_switch_map[] = {
 	    {0, -1}, {1, -1}, {1, 0}, {1, 1}, {0, 1}, {-1, 1}, {-1, 0},
 	    {-1, -1},{0, 0}
 	};
-	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV();
+	struct evdev_dev *evdev = HIDMAP_CB_GET_EVDEV();
 	u_int idx;
 
-	switch (HMAP_CB_GET_STATE()) {
-	case HMAP_CB_IS_ATTACHING:
+	switch (HIDMAP_CB_GET_STATE()) {
+	case HIDMAP_CB_IS_ATTACHING:
 		evdev_support_event(evdev, EV_ABS);
 		evdev_support_abs(evdev, ABS_HAT0X, 0, -1, 1, 0, 0, 0);
 		evdev_support_abs(evdev, ABS_HAT0Y, 0, -1, 1, 0, 0, 0);
 		break;
 
-	case HMAP_CB_IS_RUNNING:
+	case HIDMAP_CB_IS_RUNNING:
 		idx = MIN(nitems(hat_switch_map) - 1, (u_int)ctx);
 		evdev_push_abs(evdev, ABS_HAT0X, hat_switch_map[idx].x);
 		evdev_push_abs(evdev, ABS_HAT0Y, hat_switch_map[idx].y);
@@ -822,11 +822,11 @@ ps4dshock_hat_switch_cb(HMAP_CB_ARGS)
 }
 
 static int
-ps4dshock_compl_cb(HMAP_CB_ARGS)
+ps4dshock_compl_cb(HIDMAP_CB_ARGS)
 {
-	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV();
+	struct evdev_dev *evdev = HIDMAP_CB_GET_EVDEV();
 
-	if (HMAP_CB_GET_STATE() == HMAP_CB_IS_ATTACHING)
+	if (HIDMAP_CB_GET_STATE() == HIDMAP_CB_IS_ATTACHING)
 		evdev_support_prop(evdev, INPUT_PROP_DIRECT);
 
         /* Do not execute callback at interrupt handler and detach */
@@ -834,16 +834,16 @@ ps4dshock_compl_cb(HMAP_CB_ARGS)
 }
 
 static int
-ps4dsacc_data_cb(HMAP_CB_ARGS)
+ps4dsacc_data_cb(HIDMAP_CB_ARGS)
 {
-	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV();
-	struct ps4dsacc_softc *sc = HMAP_CB_GET_SOFTC();
+	struct evdev_dev *evdev = HIDMAP_CB_GET_EVDEV();
+	struct ps4dsacc_softc *sc = HIDMAP_CB_GET_SOFTC();
 	struct hid_item *hid_item;
 	struct ps4ds_calib_data *calib;
 	u_int i;
 
-	switch (HMAP_CB_GET_STATE()) {
-	case HMAP_CB_IS_ATTACHING:
+	switch (HIDMAP_CB_GET_STATE()) {
+	case HIDMAP_CB_IS_ATTACHING:
 		hid_item = (struct hid_item *)ctx;
 		for (i = 0; i < nitems(sc->calib_data); i++) {
 			if (sc->calib_data[i].usage == hid_item->usage) {
@@ -852,14 +852,14 @@ ps4dsacc_data_cb(HMAP_CB_ARGS)
 				    -sc->calib_data[i].range,
 				     sc->calib_data[i].range, 16, 0,
 				     sc->calib_data[i].res);
-				HMAP_CB_UDATA = &sc->calib_data[i];
+				HIDMAP_CB_UDATA = &sc->calib_data[i];
 				break;
 			}
 		}
 		break;
 
-	case HMAP_CB_IS_RUNNING:
-		calib = HMAP_CB_UDATA;
+	case HIDMAP_CB_IS_RUNNING:
+		calib = HIDMAP_CB_UDATA;
 		evdev_push_abs(evdev, calib->code,
 		    ((int64_t)ctx - calib->bias) * calib->sens_numer / calib->sens_denom);
 		break;
@@ -869,19 +869,19 @@ ps4dsacc_data_cb(HMAP_CB_ARGS)
 }
 
 static int
-ps4dsacc_tstamp_cb(HMAP_CB_ARGS)
+ps4dsacc_tstamp_cb(HIDMAP_CB_ARGS)
 {
-	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV();
-	struct ps4dsacc_softc *sc = HMAP_CB_GET_SOFTC();
+	struct evdev_dev *evdev = HIDMAP_CB_GET_EVDEV();
+	struct ps4dsacc_softc *sc = HIDMAP_CB_GET_SOFTC();
 	uint16_t tstamp;
 
-	switch (HMAP_CB_GET_STATE()) {
-	case HMAP_CB_IS_ATTACHING:
+	switch (HIDMAP_CB_GET_STATE()) {
+	case HIDMAP_CB_IS_ATTACHING:
 		evdev_support_event(evdev, EV_MSC);
 		evdev_support_msc(evdev, MSC_TIMESTAMP);
 		break;
 
-	case HMAP_CB_IS_RUNNING:
+	case HIDMAP_CB_IS_RUNNING:
 		/* Convert timestamp (in 5.33us unit) to timestamp_us */
 		tstamp = (uint16_t)ctx;
 		sc->ev_tstamp += (uint16_t)(tstamp - sc->hw_tstamp) * 16 / 3;
@@ -894,11 +894,11 @@ ps4dsacc_tstamp_cb(HMAP_CB_ARGS)
 }
 
 static int
-ps4dsacc_compl_cb(HMAP_CB_ARGS)
+ps4dsacc_compl_cb(HIDMAP_CB_ARGS)
 {
-	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV();
+	struct evdev_dev *evdev = HIDMAP_CB_GET_EVDEV();
 
-	if (HMAP_CB_GET_STATE() == HMAP_CB_IS_ATTACHING) {
+	if (HIDMAP_CB_GET_STATE() == HIDMAP_CB_IS_ATTACHING) {
 		evdev_support_event(evdev, EV_ABS);
 		evdev_support_prop(evdev, INPUT_PROP_ACCELEROMETER);
 	}
@@ -907,11 +907,11 @@ ps4dsacc_compl_cb(HMAP_CB_ARGS)
 }
 
 static int
-ps4dsmtp_npackets_cb(HMAP_CB_ARGS)
+ps4dsmtp_npackets_cb(HIDMAP_CB_ARGS)
 {
-	struct ps4dsmtp_softc *sc = HMAP_CB_GET_SOFTC();
+	struct ps4dsmtp_softc *sc = HIDMAP_CB_GET_SOFTC();
 
-	if (HMAP_CB_GET_STATE() == HMAP_CB_IS_RUNNING) {
+	if (HIDMAP_CB_GET_STATE() == HIDMAP_CB_IS_RUNNING) {
 		sc->npackets = MIN(PS4DS_MAX_TOUCHPAD_PACKETS, (u_int)ctx);
 		/* Reset pointer here as it is first usage in touchpad TLC */
 		sc->data_ptr = sc->data;
@@ -921,11 +921,11 @@ ps4dsmtp_npackets_cb(HMAP_CB_ARGS)
 }
 
 static int
-ps4dsmtp_data_cb(HMAP_CB_ARGS)
+ps4dsmtp_data_cb(HIDMAP_CB_ARGS)
 {
-	struct ps4dsmtp_softc *sc = HMAP_CB_GET_SOFTC();
+	struct ps4dsmtp_softc *sc = HIDMAP_CB_GET_SOFTC();
 
-	if (HMAP_CB_GET_STATE() == HMAP_CB_IS_RUNNING) {
+	if (HIDMAP_CB_GET_STATE() == HIDMAP_CB_IS_RUNNING) {
 		*sc->data_ptr = (int32_t)ctx;
 		++sc->data_ptr;
 	}
@@ -979,14 +979,14 @@ ps4dsmtp_push_packet(struct ps4dsmtp_softc *sc, struct evdev_dev *evdev,
 }
 
 static int
-ps4dsmtp_compl_cb(HMAP_CB_ARGS)
+ps4dsmtp_compl_cb(HIDMAP_CB_ARGS)
 {
-	struct ps4dsmtp_softc *sc = HMAP_CB_GET_SOFTC();
-	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV();
+	struct ps4dsmtp_softc *sc = HIDMAP_CB_GET_SOFTC();
+	struct evdev_dev *evdev = HIDMAP_CB_GET_EVDEV();
 	int32_t *data;
 
-	switch (HMAP_CB_GET_STATE()) {
-	case HMAP_CB_IS_ATTACHING:
+	switch (HIDMAP_CB_GET_STATE()) {
+	case HIDMAP_CB_IS_ATTACHING:
 		if (hid_test_quirk(hid_get_device_info(sc->hm.dev),
 		    HQ_MT_TIMESTAMP))
 			sc->do_tstamps = true;
@@ -1016,12 +1016,12 @@ ps4dsmtp_compl_cb(HMAP_CB_ARGS)
 		evdev_set_flag(evdev, EVDEV_FLAG_MT_STCOMPAT);
 		break;
 
-	case HMAP_CB_IS_RUNNING:
+	case HIDMAP_CB_IS_RUNNING:
 		/* Only packets with ReportID=1 are accepted */
 		if (ctx != 1)
 			return (ENOTSUP);
 		evdev_push_key(evdev, BTN_LEFT,
-		    HMAP_CB_GET_UDATA(&sc->btn_loc));
+		    HIDMAP_CB_GET_UDATA(&sc->btn_loc));
 		for (data = sc->data;
 		     data < sc->data + PS4DS_NTPUSAGES * sc->npackets;
 		     data += PS4DS_NTPUSAGES) {
@@ -1163,10 +1163,10 @@ ps4dshock_probe(device_t dev)
 	if (error != 0)
 		return (error);
 
-	hmap_set_dev(&sc->hm, dev);
-	hmap_set_debug_var(&sc->hm, &HID_DEBUG_VAR);
+	hidmap_set_dev(&sc->hm, dev);
+	hidmap_set_debug_var(&sc->hm, &HID_DEBUG_VAR);
 
-	error = hmap_add_map(&sc->hm, ps4dshock_map, nitems(ps4dshock_map),
+	error = hidmap_add_map(&sc->hm, ps4dshock_map, nitems(ps4dshock_map),
 	    NULL);
 	if (error != 0)
 		return (error);
@@ -1186,10 +1186,10 @@ ps4dsacc_probe(device_t dev)
 	if (error != 0)
 		return (error);
 
-	hmap_set_dev(&sc->hm, dev);
-	hmap_set_debug_var(&sc->hm, &HID_DEBUG_VAR);
+	hidmap_set_dev(&sc->hm, dev);
+	hidmap_set_debug_var(&sc->hm, &HID_DEBUG_VAR);
 
-	error = hmap_add_map(&sc->hm, ps4dsacc_map, nitems(ps4dsacc_map),NULL);
+	error = hidmap_add_map(&sc->hm, ps4dsacc_map, nitems(ps4dsacc_map),NULL);
 	if (error != 0)
 		return (error);
 
@@ -1201,17 +1201,17 @@ ps4dsacc_probe(device_t dev)
 static int
 ps4dshead_probe(device_t dev)
 {
-	struct hmap *hm = device_get_softc(dev);
+	struct hidmap *hm = device_get_softc(dev);
 	int error;
 
 	error = HIDBUS_LOOKUP_DRIVER_INFO(dev, ps4dshead_devs);
 	if (error != 0)
 		return (error);
 
-	hmap_set_dev(hm, dev);
-	hmap_set_debug_var(hm, &HID_DEBUG_VAR);
+	hidmap_set_dev(hm, dev);
+	hidmap_set_debug_var(hm, &HID_DEBUG_VAR);
 
-	error = hmap_add_map(hm, ps4dshead_map, nitems(ps4dshead_map), NULL);
+	error = hidmap_add_map(hm, ps4dshead_map, nitems(ps4dshead_map), NULL);
 	if (error != 0)
 		return (error);
 
@@ -1230,10 +1230,10 @@ ps4dsmtp_probe(device_t dev)
 	if (error != 0)
 		return (error);
 
-	hmap_set_dev(&sc->hm, dev);
-	hmap_set_debug_var(&sc->hm, &HID_DEBUG_VAR);
+	hidmap_set_dev(&sc->hm, dev);
+	hidmap_set_debug_var(&sc->hm, &HID_DEBUG_VAR);
 
-	error = hmap_add_map(&sc->hm, ps4dsmtp_map, nitems(ps4dsmtp_map),NULL);
+	error = hidmap_add_map(&sc->hm, ps4dsmtp_map, nitems(ps4dsmtp_map),NULL);
 	if (error != 0)
 		return (error);
 
@@ -1287,7 +1287,7 @@ ps4dshock_attach(device_t dev)
 	    PD4DSHOCK_SYSCTL_LED_DELAY_OFF, ps4dshock_sysctl, "I",
 	    "LED blink. Off delay, msecs.");
 
-	return (hmap_attach(&sc->hm));
+	return (hidmap_attach(&sc->hm));
 }
 
 static int
@@ -1374,13 +1374,13 @@ ps4dsacc_attach(device_t dev)
 	sc->calib_data[5].sens_numer = 2 * PS4DS_ACC_RES_PER_G;
 	sc->calib_data[5].sens_denom = range_2g;
 
-	return (hmap_attach(&sc->hm));
+	return (hidmap_attach(&sc->hm));
 }
 
 static int
 ps4dshead_attach(device_t dev)
 {
-	return (hmap_attach(device_get_softc(dev)));
+	return (hidmap_attach(device_get_softc(dev)));
 }
 
 static int
@@ -1388,7 +1388,7 @@ ps4dsmtp_attach(device_t dev)
 {
 	struct ps4dsmtp_softc *sc = device_get_softc(dev);
 
-	return (hmap_attach(&sc->hm));
+	return (hidmap_attach(&sc->hm));
 }
 
 static int
@@ -1396,7 +1396,7 @@ ps4dshock_detach(device_t dev)
 {
 	struct ps4dshock_softc *sc = device_get_softc(dev);
 
-	hmap_detach(&sc->hm);
+	hidmap_detach(&sc->hm);
 	sc->led_state = PS4DS_LED_OFF;
 	ps4dshock_write(sc);
 	sx_destroy(&sc->lock);
@@ -1409,13 +1409,13 @@ ps4dsacc_detach(device_t dev)
 {
 	struct ps4dsacc_softc *sc = device_get_softc(dev);
 
-	return (hmap_detach(&sc->hm));
+	return (hidmap_detach(&sc->hm));
 }
 
 static int
 ps4dshead_detach(device_t dev)
 {
-	return (hmap_detach(device_get_softc(dev)));
+	return (hidmap_detach(device_get_softc(dev)));
 }
 
 static int
@@ -1423,7 +1423,7 @@ ps4dsmtp_detach(device_t dev)
 {
 	struct ps4dsmtp_softc *sc = device_get_softc(dev);
 
-	return (hmap_detach(&sc->hm));
+	return (hidmap_detach(&sc->hm));
 }
 
 static devclass_t ps4dshock_devclass;
@@ -1465,7 +1465,7 @@ DEFINE_CLASS_0(ps4dsacc, ps4dsacc_driver, ps4dsacc_methods,
     sizeof(struct ps4dsacc_softc));
 DRIVER_MODULE(ps4dsacc, hidbus, ps4dsacc_driver, ps4dsacc_devclass, NULL, 0);
 DEFINE_CLASS_0(ps4dshead, ps4dshead_driver, ps4dshead_methods,
-    sizeof(struct hmap));
+    sizeof(struct hidmap));
 DRIVER_MODULE(ps4dshead, hidbus, ps4dshead_driver, ps4dshead_devclass, NULL, 0);
 DEFINE_CLASS_0(ps4dsmtp, ps4dsmtp_driver, ps4dsmtp_methods,
     sizeof(struct ps4dsmtp_softc));
@@ -1475,6 +1475,6 @@ DEFINE_CLASS_0(ps4dshock, ps4dshock_driver, ps4dshock_methods,
 DRIVER_MODULE(ps4dshock, hidbus, ps4dshock_driver, ps4dshock_devclass, NULL, 0);
 
 MODULE_DEPEND(ps4dshock, hid, 1, 1, 1);
-MODULE_DEPEND(ps4dshock, hmap, 1, 1, 1);
+MODULE_DEPEND(ps4dshock, hidmap, 1, 1, 1);
 MODULE_DEPEND(ps4dshock, evdev, 1, 1, 1);
 MODULE_VERSION(ps4dshock, 1);

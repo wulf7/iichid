@@ -45,7 +45,7 @@ __FBSDID("$FreeBSD$");
 
 #include "hid.h"
 #include "hidbus.h"
-#include "hmap.h"
+#include "hidmap.h"
 
 #define	HID_DEBUG_VAR	hcons_debug
 #include "hid_debug.h"
@@ -71,18 +71,18 @@ SYSCTL_INT(_hw_hid_hcons, OID_AUTO, debug, CTLFLAG_RWTUN,
 #define KEY_KBD_LAYOUT_NEXT	0x248
 #endif
 
-static hmap_cb_t	hcons_rel_volume_cb;
+static hidmap_cb_t	hcons_rel_volume_cb;
 
 #define	HCONS_MAP_KEY(usage, code)	\
-	{ HMAP_KEY(HUP_CONSUMER, usage, code) }
+	{ HIDMAP_KEY(HUP_CONSUMER, usage, code) }
 #define	HCONS_MAP_ABS(usage, code)	\
-	{ HMAP_ABS(HUP_CONSUMER, usage, code) }
+	{ HIDMAP_ABS(HUP_CONSUMER, usage, code) }
 #define	HCONS_MAP_REL(usage, code)	\
-	{ HMAP_REL(HUP_CONSUMER, usage, code) }
+	{ HIDMAP_REL(HUP_CONSUMER, usage, code) }
 #define HCONS_MAP_REL_CB(usage, callback)	\
-	{ HMAP_REL_CB(HUP_CONSUMER, usage, &callback) }
+	{ HIDMAP_REL_CB(HUP_CONSUMER, usage, &callback) }
 
-static const struct hmap_item hcons_map[] = {
+static const struct hidmap_item hcons_map[] = {
 	HCONS_MAP_KEY(0x030,	KEY_POWER),
 	HCONS_MAP_KEY(0x031,	KEY_RESTART),
 	HCONS_MAP_KEY(0x032,	KEY_SLEEP),
@@ -255,20 +255,20 @@ static const struct hid_device_id hcons_devs[] = {
  * VOLUMEUP and VOLUMEDOWN keys appropriate number of times
  */
 static int
-hcons_rel_volume_cb(HMAP_CB_ARGS)
+hcons_rel_volume_cb(HIDMAP_CB_ARGS)
 {
-	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV();
+	struct evdev_dev *evdev = HIDMAP_CB_GET_EVDEV();
 	int32_t data;
 	int32_t code;
 	int nrepeats;
 
-	switch (HMAP_CB_GET_STATE()) {
-	case HMAP_CB_IS_ATTACHING:
+	switch (HIDMAP_CB_GET_STATE()) {
+	case HIDMAP_CB_IS_ATTACHING:
 		evdev_support_event(evdev, EV_KEY);
 		evdev_support_key(evdev, KEY_VOLUMEUP);
 		evdev_support_key(evdev, KEY_VOLUMEDOWN);
 		break;
-	case HMAP_CB_IS_RUNNING:
+	case HIDMAP_CB_IS_RUNNING:
 		data = ctx;
 		/* Nothing to report. */
 		if (data == 0)
@@ -286,18 +286,18 @@ hcons_rel_volume_cb(HMAP_CB_ARGS)
 static int
 hcons_probe(device_t dev)
 {
-	struct hmap *hm = device_get_softc(dev);
+	struct hidmap *hm = device_get_softc(dev);
 	int error;
 
 	error = HIDBUS_LOOKUP_DRIVER_INFO(dev, hcons_devs);
 	if (error != 0)
 		return (error);
 
-	hmap_set_dev(hm, dev);
-	hmap_set_debug_var(hm, &HID_DEBUG_VAR);
+	hidmap_set_dev(hm, dev);
+	hidmap_set_debug_var(hm, &HID_DEBUG_VAR);
 
 	/* Check if report descriptor belongs to a Consumer controls page */
-	error = hmap_add_map(hm, hcons_map, nitems(hcons_map), NULL);
+	error = hidmap_add_map(hm, hcons_map, nitems(hcons_map), NULL);
 	if (error != 0)
 		return (error);
 
@@ -309,13 +309,13 @@ hcons_probe(device_t dev)
 static int
 hcons_attach(device_t dev)
 {
-	return (hmap_attach(device_get_softc(dev)));
+	return (hidmap_attach(device_get_softc(dev)));
 }
 
 static int
 hcons_detach(device_t dev)
 {
-	return (hmap_detach(device_get_softc(dev)));
+	return (hidmap_detach(device_get_softc(dev)));
 }
 
 static devclass_t hcons_devclass;
@@ -327,9 +327,9 @@ static device_method_t hcons_methods[] = {
 	DEVMETHOD_END
 };
 
-DEFINE_CLASS_0(hcons, hcons_driver, hcons_methods, sizeof(struct hmap));
+DEFINE_CLASS_0(hcons, hcons_driver, hcons_methods, sizeof(struct hidmap));
 DRIVER_MODULE(hcons, hidbus, hcons_driver, hcons_devclass, NULL, 0);
 MODULE_DEPEND(hcons, hid, 1, 1, 1);
-MODULE_DEPEND(hcons, hmap, 1, 1, 1);
+MODULE_DEPEND(hcons, hidmap, 1, 1, 1);
 MODULE_DEPEND(hcons, evdev, 1, 1, 1);
 MODULE_VERSION(hcons, 1);

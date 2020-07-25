@@ -47,7 +47,7 @@ __FBSDID("$FreeBSD$");
 #include "hid.h"
 #include "hidbus.h"
 #include "hid_quirk.h"
-#include "hmap.h"
+#include "hidmap.h"
 
 #define	HID_DEBUG_VAR	hskbd_debug
 #include "hid_debug.h"
@@ -99,15 +99,15 @@ static const uint8_t hskbd_boot_desc[] = {
 #define	HSKBD_BUFFER_SIZE	8	/* bytes */
 
 static evdev_event_t	hskbd_ev_event;
-static hmap_cb_t	hskbd_compl_cb;
+static hidmap_cb_t	hskbd_compl_cb;
 
-#define HSKBD_KEY(usage, code)	{ HMAP_KEY(HUP_KEYBOARD, usage, code) }
-#define	HSKBD_COMPL_CB(cb)	{ HMAP_COMPL_CB(&cb) }
+#define HSKBD_KEY(usage, code)	{ HIDMAP_KEY(HUP_KEYBOARD, usage, code) }
+#define	HSKBD_COMPL_CB(cb)	{ HIDMAP_COMPL_CB(&cb) }
 
-static struct hmap_item hskbd_map[256] = {
+static struct hidmap_item hskbd_map[256] = {
 	HSKBD_KEY(0x00,	KEY_RESERVED),	/* No event indicated */
-	HSKBD_KEY(0x01, HMAP_KEY_NULL),	/* Error RollOver */
-	HSKBD_KEY(0x02, HMAP_KEY_NULL),	/* POSTFail */
+	HSKBD_KEY(0x01, HIDMAP_KEY_NULL),	/* Error RollOver */
+	HSKBD_KEY(0x02, HIDMAP_KEY_NULL),	/* POSTFail */
 	HSKBD_KEY(0x03, KEY_RESERVED),	/* Error Undefined */
 	HSKBD_COMPL_CB(hskbd_compl_cb),
 };
@@ -121,7 +121,7 @@ hskbd_init(void)
 	for (i = 4; i < 0x100; i++)
 		if ((code = evdev_hid2key(i)) != KEY_RESERVED)
 			hskbd_map[hskbd_nmap_items++] =
-			    (struct hmap_item) HSKBD_KEY(i, code);
+			    (struct hidmap_item) HSKBD_KEY(i, code);
 }
 
 static const struct hid_device_id hskbd_devs[] = {
@@ -129,7 +129,7 @@ static const struct hid_device_id hskbd_devs[] = {
 };
 
 struct hskbd_softc {
-	struct hmap		hm;
+	struct hidmap		hm;
 
 	/* LED report parameters */
 	struct hid_location	sc_loc_numlock;
@@ -219,12 +219,12 @@ hskbd_ev_event(struct evdev_dev *evdev, uint16_t type, uint16_t code,
 }
 
 static int
-hskbd_compl_cb(HMAP_CB_ARGS)
+hskbd_compl_cb(HIDMAP_CB_ARGS)
 {
-	struct hskbd_softc *sc = HMAP_CB_GET_SOFTC();
-	struct evdev_dev *evdev = HMAP_CB_GET_EVDEV();
+	struct hskbd_softc *sc = HIDMAP_CB_GET_SOFTC();
+	struct evdev_dev *evdev = HIDMAP_CB_GET_EVDEV();
 
-	if (HMAP_CB_GET_STATE() == HMAP_CB_IS_ATTACHING) {
+	if (HIDMAP_CB_GET_STATE() == HIDMAP_CB_IS_ATTACHING) {
 		if (sc->sc_numlock_exists || sc->sc_capslock_exists ||
 		    sc->sc_scrolllock_exists)
 			evdev_support_event(evdev, EV_LED);
@@ -273,11 +273,11 @@ hskbd_probe(device_t dev)
 	if (error != 0)
 		return (error);
 
-	hmap_set_dev(&sc->hm, dev);
-	hmap_set_debug_var(&sc->hm, &HID_DEBUG_VAR);
+	hidmap_set_dev(&sc->hm, dev);
+	hidmap_set_debug_var(&sc->hm, &HID_DEBUG_VAR);
 
 	/* Check if report descriptor belongs to keyboard */
-	error = hmap_add_map(&sc->hm, hskbd_map, hskbd_nmap_items, NULL);
+	error = hidmap_add_map(&sc->hm, hskbd_map, hskbd_nmap_items, NULL);
 	if (error != 0)
 		return (error);
 
@@ -342,7 +342,7 @@ hskbd_attach(device_t dev)
 		sc->sc_led_size = hid_report_size_1(d_ptr, d_len,
 		    hid_output, sc->sc_id_leds);
 
-	return (hmap_attach(&sc->hm));
+	return (hidmap_attach(&sc->hm));
 }
 
 static int
@@ -350,7 +350,7 @@ hskbd_detach(device_t dev)
 {
 	struct hskbd_softc *sc = device_get_softc(dev);
 
-	return (hmap_detach(&sc->hm));
+	return (hidmap_detach(&sc->hm));
 }
 
 static devclass_t hskbd_devclass;
@@ -368,6 +368,6 @@ SYSINIT(hskbd_init, SI_SUB_DRIVERS, SI_ORDER_ANY, hskbd_init, NULL);
 DEFINE_CLASS_0(hskbd, hskbd_driver, hskbd_methods, sizeof(struct hskbd_softc));
 DRIVER_MODULE(hskbd, hidbus, hskbd_driver, hskbd_devclass, NULL, 0);
 MODULE_DEPEND(hskbd, hid, 1, 1, 1);
-MODULE_DEPEND(hskbd, hmap, 1, 1, 1);
+MODULE_DEPEND(hskbd, hidmap, 1, 1, 1);
 MODULE_DEPEND(hskbd, evdev, 1, 1, 1);
 MODULE_VERSION(hskbd, 1);
