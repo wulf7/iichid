@@ -447,8 +447,8 @@ hidmap_probe_hid_descr(void *d_ptr, hid_size_t d_len, uint8_t tlc_index,
 }
 
 uint32_t
-hidmap_add_map(struct hidmap *hm, const struct hidmap_item *map, int nmap_items,
-    bitstr_t *caps)
+hidmap_add_map(struct hidmap *hm, const struct hidmap_item *map,
+    int nmap_items, bitstr_t *caps)
 {
 	uint8_t tlc_index = hidbus_get_index(hm->dev);
 	uint32_t items;
@@ -469,8 +469,8 @@ hidmap_add_map(struct hidmap *hm, const struct hidmap_item *map, int nmap_items,
 	}
 
 	hm->cb_state = HIDMAP_CB_IS_PROBING;
-	items = hidmap_probe_hid_descr(d_ptr, d_len, tlc_index, map, nmap_items,
-	    caps);
+	items = hidmap_probe_hid_descr(d_ptr, d_len, tlc_index, map,
+	    nmap_items, caps);
 	if (items == 0)
 		return (ENXIO);
 
@@ -516,28 +516,33 @@ hidmap_parse_hid_item(struct hidmap *hm, struct hid_item *hi,
 			if (can_map_variable(hi, mi, uoff)) {
 				item->evtype = mi->type;
 				item->code = mi->code + uoff;
-				item->type = hi->flags & HIO_NULLSTATE ?
-				    HIDMAP_TYPE_VAR_NULLST : HIDMAP_TYPE_VARIABLE;
+				item->type = hi->flags & HIO_NULLSTATE
+				    ? HIDMAP_TYPE_VAR_NULLST
+				    : HIDMAP_TYPE_VARIABLE;
 				item->last_val = 0;
 				switch (mi->type) {
 				case EV_KEY:
 					evdev_support_event(hm->evdev, EV_KEY);
-					evdev_support_key(hm->evdev, item->code);
+					evdev_support_key(hm->evdev,
+					    item->code);
 					break;
 				case EV_REL:
 					evdev_support_event(hm->evdev, EV_REL);
-					evdev_support_rel(hm->evdev, item->code);
+					evdev_support_rel(hm->evdev,
+					    item->code);
 					break;
 				case EV_ABS:
 					evdev_support_event(hm->evdev, EV_ABS);
-					evdev_support_abs(hm->evdev, item->code,
-					    0, hi->logical_minimum,
+					evdev_support_abs(hm->evdev,
+					    item->code, 0,
+					    hi->logical_minimum,
 					    hi->logical_maximum, 0, 0,
 					    hid_item_resolution(hi));
 					break;
 				case EV_SW:
 					evdev_support_event(hm->evdev, EV_SW);
-					evdev_support_sw(hm->evdev, item->code);
+					evdev_support_sw(hm->evdev,
+					    item->code);
 					break;
 				default:
 					KASSERT(0, ("Unsupported event type"));
@@ -713,8 +718,9 @@ hidmap_detach(struct hidmap* hm)
 
 	evdev_free(hm->evdev);
 	if (hm->hid_items != NULL) {
-		for (hi = hm->hid_items; hi < hm->hid_items + hm->nhid_items;
-		    hi++)
+		for (hi = hm->hid_items;
+		     hi < hm->hid_items + hm->nhid_items;
+		     hi++)
 			if (hi->type == HIDMAP_TYPE_CALLBACK)
 				hi->cb(hm, hi, 0);
 			else if (hi->type == HIDMAP_TYPE_ARR_LIST)
