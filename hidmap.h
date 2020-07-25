@@ -154,7 +154,6 @@ enum hidmap_type {
 };
 
 struct hidmap_hid_item {
-	enum hidmap_type		type;
 	union {
 		hidmap_cb_t	*cb;		/* Callback */
 		struct {			/* Variable */
@@ -164,16 +163,17 @@ struct hidmap_hid_item {
 		uint16_t	*codes;		/* Array list map type */
 		int32_t		umin;		/* Array range map type */
 	};
-	uint8_t			id;		/* Report ID */
-	struct hid_location	loc;		/* HID item location */
-	int32_t			lmin;		/* HID item logical minimum */
-	int32_t			lmax;		/* HID item logical maximum */
 	union {
 		void		*udata;		/* Callback private context */
 		uint64_t	udata64;
 		int32_t		last_val;	/* Last reported value (var) */
 		uint16_t	last_key;	/* Last reported key (array) */
 	};
+	struct hid_location	loc;		/* HID item location */
+	int32_t			lmin;		/* HID item logical minimum */
+	int32_t			lmax;		/* HID item logical maximum */
+	enum hidmap_type	type:8;
+	uint8_t			id;		/* Report ID */
 };
 
 struct hidmap {
