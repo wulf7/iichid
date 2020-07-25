@@ -244,7 +244,7 @@ hconf_probe(device_t dev)
 {
 	int error;
 
-	error = hidbus_lookup_driver_info(dev, hconf_devs, sizeof(hconf_devs));
+	error = HIDBUS_LOOKUP_DRIVER_INFO(dev, hconf_devs);
 	if (error != 0)
 		return (error);
 

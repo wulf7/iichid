@@ -747,7 +747,7 @@ hkbd_probe(device_t dev)
 		return (ENXIO);
 	}
 
-	error = hidbus_lookup_driver_info(dev, hkbd_devs, sizeof(hkbd_devs));
+	error = HIDBUS_LOOKUP_DRIVER_INFO(dev, hkbd_devs);
 	if (error != 0)
                 return (error);
 

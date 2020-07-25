@@ -196,7 +196,7 @@ hpen_probe(device_t dev)
 	int error;
 	bool is_pen;
 
-	error = hidbus_lookup_driver_info(dev, hpen_devs, sizeof(hpen_devs));
+	error = HIDBUS_LOOKUP_DRIVER_INFO(dev, hpen_devs);
 	if (error != 0)
 		return (error);
 

@@ -292,7 +292,7 @@ hmt_probe(device_t dev)
 	hid_size_t d_len;
 	int error;
 
-	error = hidbus_lookup_driver_info(dev, hmt_devs, sizeof(hmt_devs));
+	error = HIDBUS_LOOKUP_DRIVER_INFO(dev, hmt_devs);
 	if (error != 0)
 		return (error);
 

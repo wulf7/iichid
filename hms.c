@@ -215,7 +215,7 @@ hms_probe(device_t dev)
 	struct hms_softc *sc = device_get_softc(dev);
 	int error;
 
-	error = hidbus_lookup_driver_info(dev, hms_devs, sizeof(hms_devs));
+	error = HIDBUS_LOOKUP_DRIVER_INFO(dev, hms_devs);
 	if (error != 0)
 		return (error);
 

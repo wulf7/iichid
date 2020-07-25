@@ -168,7 +168,7 @@ hgame_probe(device_t dev)
 	if (hid_test_quirk(hw, HQ_IS_XBOX360GP))
 		return(ENXIO);
 
-	error = hidbus_lookup_driver_info(dev, hgame_devs, sizeof(hgame_devs));
+	error = HIDBUS_LOOKUP_DRIVER_INFO(dev, hgame_devs);
 	if (error != 0)
 		return (error);
 

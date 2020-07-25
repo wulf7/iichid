@@ -93,7 +93,7 @@ hsctrl_probe(device_t dev)
 	struct hmap *hm = device_get_softc(dev);
 	int error;
 
-	error = hidbus_lookup_driver_info(dev, hsctrl_devs, sizeof(hsctrl_devs));
+	error = HIDBUS_LOOKUP_DRIVER_INFO(dev, hsctrl_devs);
 	if (error != 0)
 		return (error);
 

@@ -269,7 +269,7 @@ hskbd_probe(device_t dev)
 	struct hskbd_softc *sc = device_get_softc(dev);
 	int error;
 
-	error = hidbus_lookup_driver_info(dev, hskbd_devs, sizeof(hskbd_devs));
+	error = HIDBUS_LOOKUP_DRIVER_INFO(dev, hskbd_devs);
 	if (error != 0)
 		return (error);
 

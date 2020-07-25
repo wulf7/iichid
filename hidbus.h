@@ -155,6 +155,10 @@ struct hid_device_id {
 		mtx_unlock(_m);			\
 } while (0)
 
+#define	HIDBUS_LOOKUP_ID(d, h)	hidbus_lookup_id((d), (h), sizeof(h))
+#define	HIDBUS_LOOKUP_DRIVER_INFO(d, h)		\
+	hidbus_lookup_driver_info((d), (h), sizeof(h))
+
 const struct hid_device_id *hidbus_lookup_id(device_t,
 		    const struct hid_device_id *, size_t);
 struct hidbus_report_descr *hidbus_get_report_descr(device_t);

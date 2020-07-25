@@ -1148,8 +1148,7 @@ ps4dshock_identify(driver_t *driver, device_t parent)
 {
 
 	/* Overload PS4 DualShock gamepad rudimentary report descriptor */
-	if (hidbus_lookup_id(parent, ps4dshock_devs, sizeof(ps4dshock_devs))
-	    != NULL)
+	if (HIDBUS_LOOKUP_ID(parent, ps4dshock_devs) != NULL)
 		hid_set_report_descr(parent, ps4dshock_rdesc,
 		    sizeof(ps4dshock_rdesc));
 }
@@ -1160,7 +1159,7 @@ ps4dshock_probe(device_t dev)
 	struct ps4dshock_softc *sc = device_get_softc(dev);
 	int error;
 
-	error = hidbus_lookup_driver_info(dev, ps4dshock_devs, sizeof(ps4dshock_devs));
+	error = HIDBUS_LOOKUP_DRIVER_INFO(dev, ps4dshock_devs);
 	if (error != 0)
 		return (error);
 
@@ -1183,7 +1182,7 @@ ps4dsacc_probe(device_t dev)
 	struct ps4dsacc_softc *sc = device_get_softc(dev);
 	int error;
 
-	error = hidbus_lookup_driver_info(dev, ps4dsacc_devs, sizeof(ps4dsacc_devs));
+	error = HIDBUS_LOOKUP_DRIVER_INFO(dev, ps4dsacc_devs);
 	if (error != 0)
 		return (error);
 
@@ -1205,7 +1204,7 @@ ps4dshead_probe(device_t dev)
 	struct hmap *hm = device_get_softc(dev);
 	int error;
 
-	error = hidbus_lookup_driver_info(dev, ps4dshead_devs, sizeof(ps4dshead_devs));
+	error = HIDBUS_LOOKUP_DRIVER_INFO(dev, ps4dshead_devs);
 	if (error != 0)
 		return (error);
 
@@ -1227,8 +1226,7 @@ ps4dsmtp_probe(device_t dev)
 	struct ps4dshock_softc *sc = device_get_softc(dev);
 	int error;
 
-	error = hidbus_lookup_driver_info(dev, ps4dsmtp_devs,
-	    sizeof(ps4dsmtp_devs));
+	error = HIDBUS_LOOKUP_DRIVER_INFO(dev, ps4dsmtp_devs);
 	if (error != 0)
 		return (error);
 

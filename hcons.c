@@ -289,7 +289,7 @@ hcons_probe(device_t dev)
 	struct hmap *hm = device_get_softc(dev);
 	int error;
 
-	error = hidbus_lookup_driver_info(dev, hcons_devs, sizeof(hcons_devs));
+	error = HIDBUS_LOOKUP_DRIVER_INFO(dev, hcons_devs);
 	if (error != 0)
 		return (error);
 
