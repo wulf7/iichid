@@ -399,8 +399,8 @@ static uint32_t
 hidmap_probe_hid_descr(void *d_ptr, hid_size_t d_len, uint8_t tlc_index,
     const struct hidmap_item *map, int nmap_items, bitstr_t *caps)
 {
-	struct hid_item hi;
 	struct hid_data *hd;
+	struct hid_item hi;
 	uint32_t i, items = 0;
 	bool do_free = false;
 
@@ -453,11 +453,11 @@ uint32_t
 hidmap_add_map(struct hidmap *hm, const struct hidmap_item *map,
     int nmap_items, bitstr_t *caps)
 {
-	uint8_t tlc_index = hidbus_get_index(hm->dev);
-	uint32_t items;
 	void *d_ptr;
-	hid_size_t d_len;
+	uint32_t items;
 	int i, error;
+	hid_size_t d_len;
+	uint8_t tlc_index = hidbus_get_index(hm->dev);
 
 	/* Avoid double-adding of map in probe() handler */
 	for (i = 0; i < hm->nmaps; i++)
@@ -616,13 +616,13 @@ mapped:
 static int
 hidmap_parse_hid_descr(struct hidmap *hm, uint8_t tlc_index)
 {
-	struct hid_item hi;
-	struct hid_data *hd;
 	const struct hidmap_item *map;
 	struct hidmap_hid_item *item = hm->hid_items;
 	void *d_ptr;
-	hid_size_t d_len;
+	struct hid_data *hd;
+	struct hid_item hi;
 	int i, error;
+	hid_size_t d_len;
 
 	error = hid_get_report_descr(hm->dev, &d_ptr, &d_len);
 	if (error != 0) {
