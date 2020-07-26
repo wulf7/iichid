@@ -199,7 +199,7 @@ hidmap_intr(void *context, void *buf, hid_size_t len)
 			 */
 			if (data < hi->lmin || data > hi->lmax)
 				continue;
-			/* FALLTROUGH */
+			/* FALLTHROUGH */
 		case HIDMAP_TYPE_VARIABLE:
 			/*
 			 * Ignore reports for absolute data if the data did not
