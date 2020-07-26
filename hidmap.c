@@ -725,7 +725,8 @@ hidmap_detach(struct hidmap* hm)
 		for (hi = hm->hid_items;
 		     hi < hm->hid_items + hm->nhid_items;
 		     hi++)
-			if (hi->type == HIDMAP_TYPE_CALLBACK)
+			if (hi->type == HIDMAP_TYPE_COMPLCB ||
+			    hi->type == HIDMAP_TYPE_CALLBACK)
 				hi->cb(hm, hi, (union hidmap_cb_ctx){});
 			else if (hi->type == HIDMAP_TYPE_ARR_LIST)
 				free(hi->codes, M_DEVBUF);
