@@ -92,12 +92,16 @@ static const struct hidmap_item hgame_gamepad_map[] = {
 };
 
 static const struct hid_device_id hgame_devs[] = {
-	{ HID_TLC(HUP_GENERIC_DESKTOP, HUG_JOYSTICK), HID_DRIVER_INFO(HUG_JOYSTICK) },
-	{ HID_TLC(HUP_GENERIC_DESKTOP, HUG_GAME_PAD), HID_DRIVER_INFO(HUG_GAME_PAD) },
+	{ HID_TLC(HUP_GENERIC_DESKTOP, HUG_JOYSTICK),
+	  HID_DRIVER_INFO(HUG_JOYSTICK) },
+	{ HID_TLC(HUP_GENERIC_DESKTOP, HUG_GAME_PAD),
+	  HID_DRIVER_INFO(HUG_GAME_PAD) },
 };
 
-/* Emulate the hat switch report via the D-pad usages
- * found on XInput/XBox style devices */
+/*
+ * Emulate the hat switch report via the D-pad usages
+ * found on XInput/XBox style devices
+ */
 int
 hgame_dpad_cb(HIDMAP_CB_ARGS)
 {
@@ -118,25 +122,25 @@ hgame_dpad_cb(HIDMAP_CB_ARGS)
 		switch (HIDMAP_CB_UDATA64) {
 		case HUG_D_PAD_UP:
 			if (sc->dpad_down)
-				break;
+				return (ENOMSG);
 			evdev_push_abs(evdev, ABS_HAT0Y, (data == 0) ? 0 : -1);
 			sc->dpad_up = (data != 0);
 			break;
 		case HUG_D_PAD_DOWN:
 			if (sc->dpad_up)
-				break;
+				return (ENOMSG);
 			evdev_push_abs(evdev, ABS_HAT0Y, (data == 0) ? 0 : 1);
 			sc->dpad_down = (data != 0);
 			break;
 		case HUG_D_PAD_RIGHT:
 			if (sc->dpad_left)
-				break;
+				return (ENOMSG);
 			evdev_push_abs(evdev, ABS_HAT0X, (data == 0) ? 0 : 1);
 			sc->dpad_right = (data != 0);
 			break;
 		case HUG_D_PAD_LEFT:
 			if (sc->dpad_right)
-				break;
+				return (ENOMSG);
 			evdev_push_abs(evdev, ABS_HAT0X, (data == 0) ? 0 : -1);
 			sc->dpad_left = (data != 0);
 			break;
