@@ -50,9 +50,9 @@ enum hidmap_cb_state {
 
 /* Third parameter of hidmap callback has different type depending on state */
 union hidmap_cb_ctx {
-	struct hid_item	*hi;	/* Probe and attach stage callbacks */
-	int32_t		data;	/* Run stage callbacks */
-	uint8_t		rid;	/* Run stage completion callbacks */
+	struct hid_item	*hi;	/* Probe- and attach-stage callbacks */
+	int32_t		data;	/* Run-stage callbacks */
+	uint8_t		rid;	/* Run-stage finalizing callbacks */
 };
 
 #define	HIDMAP_CB_ARGS							\
@@ -90,7 +90,7 @@ struct hidmap_item {
 	bool			required:1;	/* Required by driver */
 	enum hidmap_relabs	relabs:2;
 	bool			has_cb:1;
-	bool			compl_cb:1;
+	bool			final_cb:1;
 	u_int			reserved:11;
 };
 
@@ -140,11 +140,11 @@ struct hidmap_item {
  * but called at the end evdev properties setting or interrupt handler
  * just before evdev_register() or evdev_sync() calls.
  */
-#define	HIDMAP_COMPL_CB(_callback)					\
-	HIDMAP_ANY_CB(0, 0, (_callback)), .compl_cb = true
+#define	HIDMAP_FINAL_CB(_callback)					\
+	HIDMAP_ANY_CB(0, 0, (_callback)), .final_cb = true
 
 enum hidmap_type {
-	HIDMAP_TYPE_COMPLCB = 0,/* No HID item associated. Runs unconditionally
+	HIDMAP_TYPE_FINALCB = 0,/* No HID item associated. Runs unconditionally
 				 * at the end of other items processing */
 	HIDMAP_TYPE_CALLBACK,	/* HID item is reported with user callback */
 	HIDMAP_TYPE_VARIABLE,	/* HID item is variable (single usage) */

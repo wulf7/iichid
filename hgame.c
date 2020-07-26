@@ -67,8 +67,8 @@ SYSCTL_INT(_hw_hid_hgame, OID_AUTO, debug, CTLFLAG_RWTUN,
 #define HGAME_MAP_CRG(usage_from, usage_to, callback)	\
 	{ HIDMAP_ANY_CB_RANGE(HUP_GENERIC_DESKTOP,	\
 	    HUG_##usage_from, HUG_##usage_to, callback) }
-#define HGAME_COMPLCB(cb)	\
-	{ HIDMAP_COMPL_CB(&cb) }
+#define HGAME_FINALCB(cb)	\
+	{ HIDMAP_FINAL_CB(&cb) }
 
 static const struct hidmap_item hgame_common_map[] = {
 	HGAME_MAP_ABS(X,		ABS_X),
@@ -80,7 +80,7 @@ static const struct hidmap_item hgame_common_map[] = {
 	HGAME_MAP_ABS(HAT_SWITCH,	ABS_HAT0X),
 	HGAME_MAP_CRG(D_PAD_UP, D_PAD_LEFT, hgame_dpad_cb),
 	HGAME_MAP_BRG(17, 57,		BTN_TRIGGER_HAPPY),
-	HGAME_COMPLCB(			hgame_compl_cb),
+	HGAME_FINALCB(			hgame_final_cb),
 };
 
 static const struct hidmap_item hgame_joystick_map[] = {
@@ -151,7 +151,7 @@ hgame_dpad_cb(HIDMAP_CB_ARGS)
 }
 
 int
-hgame_compl_cb(HIDMAP_CB_ARGS)
+hgame_final_cb(HIDMAP_CB_ARGS)
 {
 	struct evdev_dev *evdev = HIDMAP_CB_GET_EVDEV();
 

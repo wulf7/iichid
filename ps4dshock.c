@@ -599,13 +599,13 @@ static const uint8_t	ps4dshock_rdesc[] = {
 #define	PS4DS_OUTPUT_REPORT11_SIZE	78
 
 static hidmap_cb_t	ps4dshock_hat_switch_cb;
-static hidmap_cb_t	ps4dshock_compl_cb;
+static hidmap_cb_t	ps4dshock_final_cb;
 static hidmap_cb_t	ps4dsacc_data_cb;
 static hidmap_cb_t	ps4dsacc_tstamp_cb;
-static hidmap_cb_t	ps4dsacc_compl_cb;
+static hidmap_cb_t	ps4dsacc_final_cb;
 static hidmap_cb_t	ps4dsmtp_data_cb;
 static hidmap_cb_t	ps4dsmtp_npackets_cb;
-static hidmap_cb_t	ps4dsmtp_compl_cb;
+static hidmap_cb_t	ps4dsmtp_final_cb;
 
 struct ps4ds_out5 {
 	uint8_t features;
@@ -726,8 +726,8 @@ enum {
 	{ HIDMAP_ANY_CB(HUP_GENERIC_DESKTOP, HUG_##usage, callback) }
 #define PS4DS_MAP_VCB(usage, callback)	\
 	{ HIDMAP_ANY_CB(HUP_MICROSOFT, usage, callback) }
-#define PS4DS_COMPLCB(cb)			\
-	{ HIDMAP_COMPL_CB(&cb) }
+#define PS4DS_FINALCB(cb)			\
+	{ HIDMAP_FINAL_CB(&cb) }
 
 static const struct hidmap_item ps4dshock_map[] = {
 	PS4DS_MAP_ABS(X,		ABS_X),
@@ -752,7 +752,7 @@ static const struct hidmap_item ps4dshock_map[] = {
 	/* Click button is handled by touchpad driver */
 	/* PS4DS_MAP_BTN(14,	BTN_LEFT), */
 	PS4DS_MAP_GCB(HAT_SWITCH,	ps4dshock_hat_switch_cb),
-	PS4DS_COMPLCB(			ps4dshock_compl_cb),
+	PS4DS_FINALCB(			ps4dshock_final_cb),
 };
 static const struct hidmap_item ps4dsacc_map[] = {
 	PS4DS_MAP_GCB(X,		ps4dsacc_data_cb),
@@ -762,7 +762,7 @@ static const struct hidmap_item ps4dsacc_map[] = {
 	PS4DS_MAP_GCB(RY,		ps4dsacc_data_cb),
 	PS4DS_MAP_GCB(RZ,		ps4dsacc_data_cb),
 	PS4DS_MAP_VCB(0x0021,		ps4dsacc_tstamp_cb),
-	PS4DS_COMPLCB(			ps4dsacc_compl_cb),
+	PS4DS_FINALCB(			ps4dsacc_final_cb),
 };
 static const struct hidmap_item ps4dshead_map[] = {
 	PS4DS_MAP_VSW(0x0020,		SW_MICROPHONE_INSERT),
@@ -775,7 +775,7 @@ static const struct hidmap_item ps4dsmtp_map[] = {
 	{ HIDMAP_ABS_CB(HUP_DIGITIZERS, HUD_TIP_SWITCH,	ps4dsmtp_data_cb) },
 	{ HIDMAP_ABS_CB(HUP_GENERIC_DESKTOP, HUG_X,	ps4dsmtp_data_cb) },
 	{ HIDMAP_ABS_CB(HUP_GENERIC_DESKTOP, HUG_Y,	ps4dsmtp_data_cb) },
-	{ HIDMAP_COMPL_CB(				ps4dsmtp_compl_cb) },
+	{ HIDMAP_FINAL_CB(				ps4dsmtp_final_cb) },
 };
 
 static const struct hid_device_id ps4dshock_devs[] = {
@@ -822,7 +822,7 @@ ps4dshock_hat_switch_cb(HIDMAP_CB_ARGS)
 }
 
 static int
-ps4dshock_compl_cb(HIDMAP_CB_ARGS)
+ps4dshock_final_cb(HIDMAP_CB_ARGS)
 {
 	struct evdev_dev *evdev = HIDMAP_CB_GET_EVDEV();
 
@@ -893,7 +893,7 @@ ps4dsacc_tstamp_cb(HIDMAP_CB_ARGS)
 }
 
 static int
-ps4dsacc_compl_cb(HIDMAP_CB_ARGS)
+ps4dsacc_final_cb(HIDMAP_CB_ARGS)
 {
 	struct evdev_dev *evdev = HIDMAP_CB_GET_EVDEV();
 
@@ -978,7 +978,7 @@ ps4dsmtp_push_packet(struct ps4dsmtp_softc *sc, struct evdev_dev *evdev,
 }
 
 static int
-ps4dsmtp_compl_cb(HIDMAP_CB_ARGS)
+ps4dsmtp_final_cb(HIDMAP_CB_ARGS)
 {
 	struct ps4dsmtp_softc *sc = HIDMAP_CB_GET_SOFTC();
 	struct evdev_dev *evdev = HIDMAP_CB_GET_EVDEV();

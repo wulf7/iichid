@@ -163,7 +163,7 @@ hidmap_intr(void *context, void *buf, hid_size_t len)
 
 	for (hi = hm->hid_items; hi < hm->hid_items + hm->nhid_items; hi++) {
 		/* At first run callbacks that not tied to HID items */
-		if (hi->type == HIDMAP_TYPE_COMPLCB) {
+		if (hi->type == HIDMAP_TYPE_FINALCB) {
 			if (hi->cb(hm, hi, (union hidmap_cb_ctx){.rid = id})
 			    == 0)
 				do_sync = true;
@@ -284,7 +284,7 @@ can_map_callback(struct hid_item *hi, const struct hidmap_item *mi,
     uint16_t usage_offset)
 {
 
-	return (mi->has_cb && !mi->compl_cb &&
+	return (mi->has_cb && !mi->final_cb &&
 	    hi->usage == mi->usage + usage_offset &&
 	    (mi->relabs == HIDMAP_RELABS_ANY ||
 	    !(hi->flags & HIO_RELATIVE) == !(mi->relabs == HIDMAP_RELATIVE)));
@@ -422,9 +422,9 @@ hidmap_probe_hid_descr(void *d_ptr, hid_size_t d_len, uint8_t tlc_index,
 	}
 	hid_end_parse(hd);
 
-	/* Take completion callbacks in to account */
+	/* Take finalizing callbacks in to account */
 	for (i = 0; i < nmap_items; i++) {
-		if (map[i].has_cb && map[i].compl_cb &&
+		if (map[i].has_cb && map[i].final_cb &&
 		    map[i].cb(NULL, NULL, (union hidmap_cb_ctx){}) == 0) {
 			bit_set(caps, i);
 			items++;
@@ -645,15 +645,15 @@ hidmap_parse_hid_descr(struct hidmap *hm, uint8_t tlc_index)
 	}
 	hid_end_parse(hd);
 
-	/* Add completion callbacks to the end of list */
+	/* Add finalizing callbacks to the end of list */
 	for (i = 0; i < hm->nmaps; i++) {
 		for (map = hm->map[i];
 		     map < hm->map[i] + hm->nmap_items[i];
 		     map++) {
-			if (map->has_cb && map->compl_cb &&
+			if (map->has_cb && map->final_cb &&
 			    map->cb(hm, item, (union hidmap_cb_ctx){}) == 0) {
 				item->cb = map->cb;
-				item->type = HIDMAP_TYPE_COMPLCB;
+				item->type = HIDMAP_TYPE_FINALCB;
 				item++;
 			}
 		}
@@ -725,7 +725,7 @@ hidmap_detach(struct hidmap* hm)
 		for (hi = hm->hid_items;
 		     hi < hm->hid_items + hm->nhid_items;
 		     hi++)
-			if (hi->type == HIDMAP_TYPE_COMPLCB ||
+			if (hi->type == HIDMAP_TYPE_FINALCB ||
 			    hi->type == HIDMAP_TYPE_CALLBACK)
 				hi->cb(hm, hi, (union hidmap_cb_ctx){});
 			else if (hi->type == HIDMAP_TYPE_ARR_LIST)

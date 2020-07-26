@@ -98,11 +98,11 @@ enum {
 	HMS_BTN,
 	HMS_BTN_MS1,
 	HMS_BTN_MS2,
-	HMS_COMPL_CB,
+	HMS_FINAL_CB,
 };
 
 static hidmap_cb_t	hms_wheel_cb;
-static hidmap_cb_t	hms_compl_cb;
+static hidmap_cb_t	hms_final_cb;
 
 #define HMS_MAP_BUT_RG(usage_from, usage_to, code)	\
 	{ HIDMAP_KEY_RANGE(HUP_BUTTON, usage_from, usage_to, code) }
@@ -116,8 +116,8 @@ static hidmap_cb_t	hms_compl_cb;
 	{ HIDMAP_REL(HUP_CONSUMER, usage, code) }
 #define HMS_MAP_REL_CB(usage, cb)	\
 	{ HIDMAP_REL_CB(HUP_GENERIC_DESKTOP, usage, &cb) }
-#define	HMS_COMPL_CB(cb)		\
-	{ HIDMAP_COMPL_CB(&cb) }
+#define	HMS_FINAL_CB(cb)		\
+	{ HIDMAP_FINAL_CB(&cb) }
 
 static const struct hidmap_item hms_map[] = {
 	[HMS_REL_X]	= HMS_MAP_REL(HUG_X,		REL_X),
@@ -131,7 +131,7 @@ static const struct hidmap_item hms_map[] = {
 	[HMS_BTN]	= HMS_MAP_BUT_RG(1, 16,		BTN_MOUSE),
 	[HMS_BTN_MS1]	= HMS_MAP_BUT_MS(1,		BTN_RIGHT),
 	[HMS_BTN_MS2]	= HMS_MAP_BUT_MS(2,		BTN_MIDDLE),
-	[HMS_COMPL_CB]	= HMS_COMPL_CB(hms_compl_cb),
+	[HMS_FINAL_CB]	= HMS_FINAL_CB(hms_final_cb),
 };
 
 /* A match on these entries will load hms */
@@ -172,7 +172,7 @@ hms_wheel_cb(HIDMAP_CB_ARGS)
 }
 
 static int
-hms_compl_cb(HIDMAP_CB_ARGS)
+hms_final_cb(HIDMAP_CB_ARGS)
 {
 	struct hms_softc *sc = HIDMAP_CB_GET_SOFTC();
 	struct evdev_dev *evdev = HIDMAP_CB_GET_EVDEV();

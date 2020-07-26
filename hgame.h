@@ -32,7 +32,7 @@
 #include "hidmap.h"
 
 hidmap_cb_t	hgame_dpad_cb;
-hidmap_cb_t	hgame_compl_cb;
+hidmap_cb_t	hgame_final_cb;
 
 struct hgame_softc {
 	struct hidmap	hm;

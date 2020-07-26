@@ -70,8 +70,8 @@ static const uint8_t	hpen_graphire3_4x5_report_descr[] =
 			   { UHID_GRAPHIRE3_4X5_REPORT_DESCR() };
 
 static hidmap_cb_t	hpen_battery_strenght_cb;
-static hidmap_cb_t	hpen_compl_digi_cb;
-static hidmap_cb_t	hpen_compl_pen_cb;
+static hidmap_cb_t	hpen_final_digi_cb;
+static hidmap_cb_t	hpen_final_pen_cb;
 
 #define HPEN_MAP_BUT(usage, code)	\
 	HIDMAP_KEY(HUP_DIGITIZERS, HUD_##usage, code)
@@ -99,7 +99,7 @@ static const struct hidmap_item hpen_map_digi[] = {
     { HPEN_MAP_BUT(   ERASER,		BTN_TOUCH) },
     { HPEN_MAP_BUT(   TABLET_PICK,	BTN_STYLUS2) },
     { HPEN_MAP_BUT(   SEC_BARREL_SWITCH,BTN_STYLUS2) },
-    { HIDMAP_COMPL_CB(			&hpen_compl_digi_cb) },
+    { HIDMAP_FINAL_CB(			&hpen_final_digi_cb) },
 };
 
 /* Microsoft-standardized pen support */
@@ -115,7 +115,7 @@ static const struct hidmap_item hpen_map_pen[] = {
     { HPEN_MAP_BUT(   BARREL_SWITCH,	BTN_STYLUS) },
     { HPEN_MAP_BUT(   INVERT,		BTN_TOOL_RUBBER), .required = true },
     { HPEN_MAP_BUT(   ERASER,		BTN_TOUCH),	  .required = true },
-    { HIDMAP_COMPL_CB(			&hpen_compl_pen_cb) },
+    { HIDMAP_FINAL_CB(			&hpen_final_pen_cb) },
 };
 
 static const struct hid_device_id hpen_devs[] = {
@@ -143,7 +143,7 @@ hpen_battery_strenght_cb(HIDMAP_CB_ARGS)
 }
 
 static int
-hpen_compl_digi_cb(HIDMAP_CB_ARGS)
+hpen_final_digi_cb(HIDMAP_CB_ARGS)
 {
 	struct evdev_dev *evdev = HIDMAP_CB_GET_EVDEV();
 
@@ -155,7 +155,7 @@ hpen_compl_digi_cb(HIDMAP_CB_ARGS)
 }
 
 static int
-hpen_compl_pen_cb(HIDMAP_CB_ARGS)
+hpen_final_pen_cb(HIDMAP_CB_ARGS)
 {
 	struct evdev_dev *evdev = HIDMAP_CB_GET_EVDEV();
 

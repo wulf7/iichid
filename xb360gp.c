@@ -73,8 +73,8 @@ static const uint8_t	xb360gp_rdesc[] = {UHID_XB360GP_REPORT_DESCR()};
 #define XB360GP_MAP_CRG(usage_from, usage_to, callback)	\
 	{ HIDMAP_ANY_CB_RANGE(HUP_GENERIC_DESKTOP,	\
 	    HUG_##usage_from, HUG_##usage_to, callback) }
-#define XB360GP_COMPLCB(cb)		\
-	{ HIDMAP_COMPL_CB(&cb) }
+#define XB360GP_FINALCB(cb)		\
+	{ HIDMAP_FINAL_CB(&cb) }
 
 /* Customized to match usbhid's XBox 360 descriptor */
 static const struct hidmap_item xb360gp_map[] = {
@@ -96,7 +96,7 @@ static const struct hidmap_item xb360gp_map[] = {
 	XB360GP_MAP_ABS(RX,		ABS_RX),
 	XB360GP_MAP_ABS(RY,		ABS_RY),
 	XB360GP_MAP_ABS(RZ,		ABS_RZ),
-	XB360GP_COMPLCB(		hgame_compl_cb),
+	XB360GP_FINALCB(		hgame_final_cb),
 };
 
 static const STRUCT_USB_HOST_ID xb360gp_devs[] = {
