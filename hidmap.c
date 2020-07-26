@@ -71,11 +71,11 @@ static evdev_open_t hidmap_ev_open;
 static evdev_close_t hidmap_ev_close;
 
 #define HIDMAP_FOREACH_ITEM(hm, mi, uoff)				\
-	for (u_int _map = 0, _item = 0, _uoff_int = -1;			\
+	for (u_int _map = 0, _item = 0, _uoff_priv = -1;		\
 	    ((mi) = hidmap_get_next_map_item(				\
-		(hm), &_map, &_item, &_uoff_int, &(uoff))) != NULL;)
+		(hm), &_map, &_item, &_uoff_priv, &(uoff))) != NULL;)
 
-static bool
+static inline bool
 hidmap_get_next_map_index(const struct hidmap_item *map, int nmap_items,
     uint32_t *index, uint16_t *usage_offset)
 {
@@ -90,12 +90,12 @@ hidmap_get_next_map_index(const struct hidmap_item *map, int nmap_items,
 	return (*index < nmap_items);
 }
 
-static const struct hidmap_item *
+static inline const struct hidmap_item *
 hidmap_get_next_map_item(struct hidmap *hm, u_int *map, u_int *item,
-    u_int *uoff_int, uint16_t *uoff)
+    u_int *uoff_priv, uint16_t *uoff)
 {
 
-	*uoff = *uoff_int;
+	*uoff = *uoff_priv;
 	while (!hidmap_get_next_map_index(
 	   hm->map[*map], hm->nmap_items[*map], item, uoff)) {
 		++*map;
@@ -104,7 +104,7 @@ hidmap_get_next_map_item(struct hidmap *hm, u_int *map, u_int *item,
 		if (*map >= hm->nmaps)
 			return (NULL);
 	}
-	*uoff_int = *uoff;
+	*uoff_priv = *uoff;
 
 	return (hm->map[*map] + *item);
 }
