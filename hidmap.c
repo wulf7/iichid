@@ -52,13 +52,13 @@ __FBSDID("$FreeBSD$");
 #include "hidmap.h"
 
 #ifdef HID_DEBUG
-#define DPRINTFN(sc, n, fmt, ...) do {					\
-	if ((sc)->debug_var != NULL && *(sc)->debug_var >= (n)) {	\
-		device_printf((sc)->dev, "%s: " fmt,			\
+#define DPRINTFN(hm, n, fmt, ...) do {					\
+	if ((hm)->debug_var != NULL && *(hm)->debug_var >= (n)) {	\
+		device_printf((hm)->dev, "%s: " fmt,			\
 		    __FUNCTION__ ,##__VA_ARGS__);			\
 	}								\
 } while (0)
-#define DPRINTF(sc, ...)    DPRINTFN(sc, 1, __VA_ARGS__)
+#define DPRINTF(hm, ...)	DPRINTFN(hm, 1, __VA_ARGS__)
 #else
 #define DPRINTF(...) do { } while (0)
 #define DPRINTFN(...) do { } while (0)
@@ -70,10 +70,10 @@ __FBSDID("$FreeBSD$");
 static evdev_open_t hidmap_ev_open;
 static evdev_close_t hidmap_ev_close;
 
-#define HIDMAP_FOREACH_ITEM(sc, mi, uoff)			\
-	for (u_int _map = 0, _item = 0, _uoff_int = -1;	\
-	    ((mi) = hidmap_get_next_map_item(		\
-			(sc), &_map, &_item, &_uoff_int, &(uoff))) != NULL;)
+#define HIDMAP_FOREACH_ITEM(hm, mi, uoff)				\
+	for (u_int _map = 0, _item = 0, _uoff_int = -1;			\
+	    ((mi) = hidmap_get_next_map_item(				\
+		(hm), &_map, &_item, &_uoff_int, &(uoff))) != NULL;)
 
 static bool
 hidmap_get_next_map_index(const struct hidmap_item *map, int nmap_items,
