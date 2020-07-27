@@ -223,7 +223,7 @@ hms_probe(device_t dev)
 	hidmap_set_debug_var(&sc->hm, &HID_DEBUG_VAR);
 
 	/* Check if report descriptor belongs to mouse */
-	error = hidmap_add_map(&sc->hm, hms_map, nitems(hms_map), sc->caps);
+	error = HIDMAP_ADD_MAP(&sc->hm, hms_map, sc->caps);
 	if (error != 0)
 		return (error);
 

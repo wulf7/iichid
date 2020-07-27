@@ -101,7 +101,7 @@ hsctrl_probe(device_t dev)
 	hidmap_set_debug_var(hm, &HID_DEBUG_VAR);
 
 	/* Check if report descriptor belongs to a System control TLC */
-	error = hidmap_add_map(hm, hsctrl_map, nitems(hsctrl_map), NULL);
+	error = HIDMAP_ADD_MAP(hm, hsctrl_map, NULL);
 	if (error != 0)
 		return (error);
 

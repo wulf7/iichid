@@ -180,10 +180,10 @@ hgame_probe(device_t dev)
 	hidmap_set_debug_var(&sc->hm, &HID_DEBUG_VAR);
 
 	if (hidbus_get_driver_info(dev) == HUG_GAME_PAD)
-		error = hidmap_add_map(&sc->hm, hgame_gamepad_map, nitems(hgame_gamepad_map), NULL);
+		error = HIDMAP_ADD_MAP(&sc->hm, hgame_gamepad_map, NULL);
 	else
-		error = hidmap_add_map(&sc->hm, hgame_joystick_map, nitems(hgame_joystick_map), NULL);
-	error2 = hidmap_add_map(&sc->hm, hgame_common_map, nitems(hgame_common_map), NULL);
+		error = HIDMAP_ADD_MAP(&sc->hm, hgame_joystick_map, NULL);
+	error2 = HIDMAP_ADD_MAP(&sc->hm, hgame_common_map, NULL);
 	if (error != 0 && error2 != 0)
 		return (error);
 

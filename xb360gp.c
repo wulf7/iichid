@@ -130,7 +130,7 @@ xb360gp_probe(device_t dev)
 	hidmap_set_dev(&sc->hm, dev);
 	hidmap_set_debug_var(&sc->hm, &HID_DEBUG_VAR);
 
-	error = hidmap_add_map(&sc->hm, xb360gp_map, nitems(xb360gp_map), NULL);
+	error = HIDMAP_ADD_MAP(&sc->hm, xb360gp_map, NULL);
 	if (error != 0)
 		return (error);
 

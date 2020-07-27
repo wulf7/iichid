@@ -206,8 +206,8 @@ hpen_probe(device_t dev)
 	/* Check if report descriptor belongs to a HID tablet device */
 	is_pen = hidbus_get_usage(dev) == HID_USAGE2(HUP_DIGITIZERS, HUD_PEN);
 	error = is_pen
-	    ? hidmap_add_map(hm, hpen_map_pen, nitems(hpen_map_pen), NULL)
-	    : hidmap_add_map(hm, hpen_map_digi, nitems(hpen_map_digi), NULL);
+	    ? HIDMAP_ADD_MAP(hm, hpen_map_pen, NULL)
+	    : HIDMAP_ADD_MAP(hm, hpen_map_digi, NULL);
 	if (error != 0)
 		return (error);
 

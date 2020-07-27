@@ -295,7 +295,7 @@ hcons_probe(device_t dev)
 	hidmap_set_debug_var(hm, &HID_DEBUG_VAR);
 
 	/* Check if report descriptor belongs to a Consumer controls page */
-	error = hidmap_add_map(hm, hcons_map, nitems(hcons_map), NULL);
+	error = HIDMAP_ADD_MAP(hm, hcons_map, NULL);
 	if (error != 0)
 		return (error);
 

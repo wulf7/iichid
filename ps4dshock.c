@@ -1165,8 +1165,7 @@ ps4dshock_probe(device_t dev)
 	hidmap_set_dev(&sc->hm, dev);
 	hidmap_set_debug_var(&sc->hm, &HID_DEBUG_VAR);
 
-	error = hidmap_add_map(&sc->hm, ps4dshock_map, nitems(ps4dshock_map),
-	    NULL);
+	error = HIDMAP_ADD_MAP(&sc->hm, ps4dshock_map, NULL);
 	if (error != 0)
 		return (error);
 
@@ -1188,7 +1187,7 @@ ps4dsacc_probe(device_t dev)
 	hidmap_set_dev(&sc->hm, dev);
 	hidmap_set_debug_var(&sc->hm, &HID_DEBUG_VAR);
 
-	error = hidmap_add_map(&sc->hm, ps4dsacc_map, nitems(ps4dsacc_map),NULL);
+	error = HIDMAP_ADD_MAP(&sc->hm, ps4dsacc_map, NULL);
 	if (error != 0)
 		return (error);
 
@@ -1210,7 +1209,7 @@ ps4dshead_probe(device_t dev)
 	hidmap_set_dev(hm, dev);
 	hidmap_set_debug_var(hm, &HID_DEBUG_VAR);
 
-	error = hidmap_add_map(hm, ps4dshead_map, nitems(ps4dshead_map), NULL);
+	error = HIDMAP_ADD_MAP(hm, ps4dshead_map, NULL);
 	if (error != 0)
 		return (error);
 
@@ -1232,7 +1231,7 @@ ps4dsmtp_probe(device_t dev)
 	hidmap_set_dev(&sc->hm, dev);
 	hidmap_set_debug_var(&sc->hm, &HID_DEBUG_VAR);
 
-	error = hidmap_add_map(&sc->hm, ps4dsmtp_map, nitems(ps4dsmtp_map),NULL);
+	error = HIDMAP_ADD_MAP(&sc->hm, ps4dsmtp_map, NULL);
 	if (error != 0)
 		return (error);
 
