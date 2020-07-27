@@ -1017,7 +1017,7 @@ ps4dsmtp_final_cb(HIDMAP_CB_ARGS)
 
 	case HIDMAP_CB_IS_RUNNING:
 		/* Only packets with ReportID=1 are accepted */
-		if (ctx.rid != 1)
+		if (HIDMAP_CB_GET_RID() != 1)
 			return (ENOTSUP);
 		evdev_push_key(evdev, BTN_LEFT,
 		    HIDMAP_CB_GET_UDATA(&sc->btn_loc));

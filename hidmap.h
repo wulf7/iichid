@@ -57,19 +57,23 @@ union hidmap_cb_ctx {
 
 #define	HIDMAP_CB_ARGS							\
 	struct hidmap *hm, struct hidmap_hid_item *hi, union hidmap_cb_ctx ctx
+typedef int hidmap_cb_t(HIDMAP_CB_ARGS);
+
+/* These helpers can be used at any stage of any callbacks */
 #define	HIDMAP_CB_GET_STATE(...)					\
 	((hm == NULL) ? HIDMAP_CB_IS_PROBING : hm->cb_state)
 #define	HIDMAP_CB_GET_SOFTC(...)					\
 	(hm == NULL ? NULL : device_get_softc(hm->dev))
 #define	HIDMAP_CB_GET_EVDEV(...)					\
 	(hm == NULL ? NULL : hm->evdev)
+#define	HIDMAP_CB_UDATA		(hi->udata)
+#define	HIDMAP_CB_UDATA64	(hi->udata64)
+/* Special helpers for run-stage of finalizing callbacks */
+#define	HIDMAP_CB_GET_RID(...)	(ctx.rid)
 #define	HIDMAP_CB_GET_DATA(loc)						\
 	hid_get_data(hm->intr_buf, hm->intr_len, (loc))
 #define	HIDMAP_CB_GET_UDATA(loc)					\
 	hid_get_udata(hm->intr_buf, hm->intr_len, (loc))
-#define	HIDMAP_CB_UDATA		(hi->udata)
-#define	HIDMAP_CB_UDATA64	(hi->udata64)
-typedef int hidmap_cb_t(HIDMAP_CB_ARGS);
 
 enum hidmap_relabs {
 	HIDMAP_RELABS_ANY = 0,
