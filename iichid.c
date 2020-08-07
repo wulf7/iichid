@@ -1184,6 +1184,7 @@ iichid_attach(device_t dev)
 		OID_AUTO, "sampling_hysteresis", CTLTYPE_INT | CTLFLAG_RWTUN,
 		&sc->sampling_hysteresis, 0,
 		"number of missing samples before enabling of slow mode");
+	hid_add_dynamic_quirk(&sc->hw, HQ_IICHID_SAMPLING);
 #endif /* IICHID_SAMPLING */
 
 	child = device_add_child(dev, "hidbus", -1);

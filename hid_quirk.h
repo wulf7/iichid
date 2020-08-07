@@ -50,6 +50,7 @@
 	HQ(HAS_MS_BOOTPROTO),	/* device supports mouse boot protocol */ \
 	HQ(IS_XBOX360GP), 	/* device is XBox 360 GamePad */	\
 	HQ(NOWRITE),		/* device does not support writes */	\
+	HQ(IICHID_SAMPLING),	/* IIC backend runs in sampling mode */	\
 									\
 	/* Various quirks */						\
 	HQ(HID_IGNORE),		/* device should be ignored by hid class */ \

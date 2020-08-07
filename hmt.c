@@ -215,6 +215,7 @@ struct hmt_softc {
 	bool			has_int_button;
 	bool			is_clickpad;
 	bool			do_timestamps;
+	bool			iichid_sampling;
 
 	struct hid_location     cont_max_loc;
 	uint32_t                cont_max_rlen;
@@ -406,6 +407,8 @@ hmt_attach(device_t dev)
 		    &sc->scan_rate, 0,
 		    "Surface scan rate obtained by hardware timestamps in Hz");
 	}
+	if (hid_test_quirk(hw, HQ_IICHID_SAMPLING))
+		sc->iichid_sampling = true;
 
 	hidbus_set_intr(dev, hmt_intr, sc);
 
@@ -435,6 +438,8 @@ hmt_attach(device_t dev)
 		evdev_support_event(sc->evdev, EV_MSC);
 		evdev_support_msc(sc->evdev, MSC_TIMESTAMP);
 	}
+	if (sc->iichid_sampling)
+		evdev_set_flag(sc->evdev, EVDEV_FLAG_MT_AUTOREL);
 	if (sc->max_button != 0 || sc->has_int_button) {
 		evdev_support_event(sc->evdev, EV_KEY);
 		if (sc->has_int_button)
@@ -510,7 +515,7 @@ hmt_intr(void *context, void *buf, hid_size_t len)
 	 * "stuck touch" problem caused by miss of finger release events.
 	 * This snippet is to be removed after GPIO interrupt support is added.
 	 */
-	if (len == 0) {
+	if (sc->iichid_sampling && len == 0) {
 		if (sc->timestamp != 0)
 			sc->scan_rate = (sc->scan_touches - 1) * 1000000 /
 			    sc->timestamp;
