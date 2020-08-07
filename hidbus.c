@@ -664,6 +664,98 @@ hid_set_protocol(device_t dev, uint16_t protocol)
 	return (HID_SET_PROTOCOL(device_get_parent(dev), protocol));
 }
 
+/*------------------------------------------------------------------------*
+ *	hidbus_lookup_id
+ *
+ * This functions takes an array of "struct hid_device_id" and tries
+ * to match the entries with the information in "struct hid_device_info".
+ *
+ * NOTE: The "sizeof_id" parameter must be a multiple of the
+ * hid_device_id structure size. Else the behaviour of this function
+ * is undefined.
+ *
+ * Return values:
+ * NULL: No match found.
+ * Else: Pointer to matching entry.
+ *------------------------------------------------------------------------*/
+const struct hid_device_id *
+hidbus_lookup_id(device_t dev, const struct hid_device_id *id,
+    size_t sizeof_id)
+{
+	const struct hid_device_id *id_end;
+	const struct hid_device_info *info;
+	int32_t usage;
+	bool is_child;
+
+	if (id == NULL) {
+		goto done;
+	}
+
+	id_end = (const void *)(((const uint8_t *)id) + sizeof_id);
+	info = hid_get_device_info(dev);
+	is_child = device_get_devclass(dev) != hidbus_devclass;
+	if (is_child)
+		usage = hidbus_get_usage(dev);
+
+	/*
+	 * Keep on matching array entries until we find a match or
+	 * until we reach the end of the matching array:
+	 */
+	for (; id != id_end; id++) {
+
+		if (is_child && (id->match_flag_usage) &&
+		    (id->usage != usage)) {
+			continue;
+		}
+		if ((id->match_flag_bus) &&
+		    (id->idBus != info->idBus)) {
+			continue;
+		}
+		if ((id->match_flag_vendor) &&
+		    (id->idVendor != info->idVendor)) {
+			continue;
+		}
+		if ((id->match_flag_product) &&
+		    (id->idProduct != info->idProduct)) {
+			continue;
+		}
+		if ((id->match_flag_ver_lo) &&
+		    (id->idVersion_lo > info->idVersion)) {
+			continue;
+		}
+		if ((id->match_flag_ver_hi) &&
+		    (id->idVersion_hi < info->idVersion)) {
+			continue;
+		}
+		/* We found a match! */
+		return (id);
+	}
+
+done:
+	return (NULL);
+}
+
+/*------------------------------------------------------------------------*
+ *	hidbus_lookup_driver_info - factored out code
+ *
+ * Return values:
+ *    0: Success
+ * Else: Failure
+ *------------------------------------------------------------------------*/
+int
+hidbus_lookup_driver_info(device_t child, const struct hid_device_id *id,
+    size_t sizeof_id)
+{
+
+	id = hidbus_lookup_id(child, id, sizeof_id);
+	if (id) {
+		/* copy driver info */
+		hidbus_set_driver_info(child, id->driver_info);
+		return (0);
+	}
+	return (ENXIO);
+}
+
 const struct hid_device_info *
 hid_get_device_info(device_t dev)
 {
