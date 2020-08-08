@@ -257,6 +257,12 @@ hidraw_intr(void *context, void *buf, hid_size_t len)
 		return;
 
 	bcopy(buf, sc->sc_q + sc->sc_tail * sc->sc_rdesc->rdsize, len);
+
+	/* Make sure we don't process old data */
+	if (len < sc->sc_rdesc->rdsize)
+		bzero(sc->sc_q + sc->sc_tail * sc->sc_rdesc->rdsize + len,
+		    sc->sc_rdesc->isize - len);
+
 	sc->sc_qlen[sc->sc_tail] = len;
 	sc->sc_tail = next;
 
