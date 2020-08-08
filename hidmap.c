@@ -665,7 +665,7 @@ hidmap_parse_hid_descr(struct hidmap *hm, uint8_t tlc_index)
 	 */
 	if (hm->nhid_items != item - hm->hid_items)
 		DPRINTF(hm, "Parsed HID item number mismatch: expected=%u "
-		    "result=%ld\n", hm->nhid_items, item - hm->hid_items);
+		    "result=%td\n", hm->nhid_items, item - hm->hid_items);
 	hm->nhid_items = item - hm->hid_items;
 
 	return (0);
