@@ -115,6 +115,68 @@ command:
 $ make -DDISABLE_USBHID
 ```
 
+## I2C transport backend sampling (polling) mode
+
+Currently **iichid** is unable to utilize GPIO interrupts on i386 and amd64
+platforms due to absence of INTRNG support in PIC drivers and can not use any
+interrupts on 12.1-RELEASE due to inability of **ig4** driver to work in
+ithread context in 12.1. In this case it fallbacks to so called sampling
+mode with periodic polling of hardware by driver. It is possible to check
+mode with following command:
+```
+$ sysctl dev.iichid.0.sampling_rate_slow
+```
+Any positive number returned means that sampling mode is enabled.
+
+Unfortunatelly, using of sampling mode leads to lose of some data and
+often results in glitches. Most known are "drift of inactive mouse pointer"
+and "stuck of single finger touch". **iichid** has some internal hacks to
+workaround them but they are not reliable.
+
+## Choosing of optimal sampling rate for I2C transport.
+
+Sampling rate is set to 60Hz by default. Although mostly it just works, in
+some cases e.g. if device internal scan rate lower than polling frequence
+it results in reading of empty reports, doubling of them or other unwanted
+effects.
+
+Typically driver polling frequency should be set to about 0.9 of device
+internal scan rate. The simplest way to measure it is to run a Linux live
+distro from USB flash than execute evemu-record utility and choose your I2C
+device. Than you should convert inter-report interval duration to Hz and
+set 0.9 of that value as sampling_rate_fast parameter with following command
+```
+$ sudo sysctl dev.iichid.0.sampling_rate_fast=<poll freq>
+```
+
+If your device is supported by **hmt** driver, scan rate can be obtained by
+analyze of hardware timestamps. To enable them HQ_MT_TIMESTAMP quirk should
+be set for HID device. At first get vendor and product IDs with following
+command:
+```
+$ devinfo -rv | grep 'hmt.* bus=0x18'
+```
+It will return something like:
+   hmt0 pnpinfo page=0x000d usage=0x0004 bus=0x18 vendor=0x06cb product=0x1941 ...
+
+Then add following line to **/boot/loader.conf** replacing 0x6cb and 0x1941
+with vendor and product values from previous command output.
+```
+hw.hid.quirk.0="0x18 **0x6cb** **0x1941** 0 0xffff HQ_MT_TIMESTAMP"
+```
+That will enable output of hardware timestamps in hmt driver after reboot.
+Reboot than run any evdev client e.g. libinput XOrg driver, evemu-record and
+so on and touch device surface. Scan rate is available as r/o sysctl now.
+```
+$ sysctl dev.hmt.0.scan_rate
+```
+
+It is possible to use double of scan_rate as sampling rate with increasing
+of dev.iichid.0.sampling_hysteresis to 3 or 4 to filter out missing samples.
+Tuning of this value requires enabling of debug output in I2C transport
+and lies out of scope of this README. Generally, sampling_hysteresis should
+be left as 1 if sampling frequency lower or equal 0.9 of device scan rate.
+
 ## Bug reporting
 
 You can report bugs at 'Project Issues' page
