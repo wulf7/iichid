@@ -165,10 +165,25 @@ with vendor and product values from previous command output.
 hw.hid.quirk.0="0x18 **0x6cb** **0x1941** 0 0xffff HQ_MT_TIMESTAMP"
 ```
 That will enable output of hardware timestamps in hmt driver after reboot.
-Reboot than run any evdev client e.g. libinput XOrg driver, evemu-record and
-so on and touch device surface. Scan rate is available as r/o sysctl now.
+Reboot than attach evemu-record to proper node and touch device surface.
+You willl see something like this on stdout:
 ```
-$ sysctl dev.hmt.0.scan_rate
+E: 33.569577 0004 0005 1152000	# EV_MSC / MSC_TIMESTAMP        1152000
+E: 33.569577 0000 0000 0001	# ------------ SYN_REPORT (1) ---------- +18ms
+E: 33.587771 0004 0005 1161000	# EV_MSC / MSC_TIMESTAMP        1161000
+E: 33.587771 0000 0000 0001	# ------------ SYN_REPORT (1) ---------- +18ms
+E: 33.605326 0004 0005 1170000	# EV_MSC / MSC_TIMESTAMP        1170000
+E: 33.605326 0000 0000 0001	# ------------ SYN_REPORT (1) ---------- +18ms
+```
+Scan rate can be calculated with simple formula:
+```
+scan_rate = 1000000 / (MSC_TIMESTAMP(X) - MSC_TIMESTAMP(X-1))
+```
+where MSC_TIMESTAMP(X) and MSC_TIMESTAMP(X-1) are values taken from two
+consecutive events.
+In aforementioned example, optimal polling frequency is expected to be
+```
+sampling_rate_fast = 0.9 × 1000000 ÷ (1161000 − 1152000) = 100 (Hz)
 ```
 
 It is possible to use double of scan_rate as sampling rate with increasing
