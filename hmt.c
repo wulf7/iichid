@@ -199,8 +199,6 @@ struct hmt_softc {
 	int32_t			timestamp;
 	bool			touch;
 	bool			prev_touch;
-	int			scan_rate;
-	u_int			scan_touches;
 
 	struct evdev_dev        *evdev;
 
@@ -399,14 +397,8 @@ hmt_attach(device_t dev)
 		sc->ai[HMT_SLOT].max = MAX_MT_SLOTS - 1;
 	}
 
-	if (hid_test_quirk(hw, HQ_MT_TIMESTAMP)) {
+	if (hid_test_quirk(hw, HQ_MT_TIMESTAMP))
 		sc->do_timestamps = true;
-		SYSCTL_ADD_INT(device_get_sysctl_ctx(sc->dev),
-		    SYSCTL_CHILDREN(device_get_sysctl_tree(sc->dev)),
-		    OID_AUTO, "scan_rate", CTLTYPE_INT | CTLFLAG_RD,
-		    &sc->scan_rate, 0,
-		    "Surface scan rate obtained by hardware timestamps in Hz");
-	}
 	if (hid_test_quirk(hw, HQ_IICHID_SAMPLING))
 		sc->iichid_sampling = true;
 
@@ -516,10 +508,6 @@ hmt_intr(void *context, void *buf, hid_size_t len)
 	 * This snippet is to be removed after GPIO interrupt support is added.
 	 */
 	if (sc->iichid_sampling && len == 0) {
-		if (sc->timestamp != 0)
-			sc->scan_rate = (sc->scan_touches - 1) * 1000000 /
-			    sc->timestamp;
-		sc->scan_touches = 0;
 		sc->prev_touch = false;
 		sc->timestamp = 0;
 		for (slot = 0; slot <= sc->ai[HMT_SLOT].max; slot++) {
@@ -536,6 +524,10 @@ hmt_intr(void *context, void *buf, hid_size_t len)
 		DPRINTF("Skip report with unexpected ID: %hhu\n", id);
 		return;
 	}
+
+	/* Make sure we don't process old data */
+	if (len < sc->isize)
+		bzero((uint8_t *)buf + len, sc->isize - len);
 
 	/* Strip leading "report ID" byte */
 	if (sc->report_id) {
@@ -653,13 +645,6 @@ hmt_intr(void *context, void *buf, hid_size_t len)
 		sc->timestamp += delta * 100;
 		evdev_push_msc(sc->evdev, MSC_TIMESTAMP, sc->timestamp);
 		sc->prev_touch = sc->touch;
-		if (!sc->touch) {
-			if (sc->timestamp != 0)
-				sc->scan_rate = sc->scan_touches * 1000000 /
-				    sc->timestamp;
-			sc->scan_touches = 0;
-		} else
-			++sc->scan_touches;
 		sc->touch = false;
 		if (!sc->prev_touch)
 			sc->timestamp = 0;
