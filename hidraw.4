@@ -30,34 +30,40 @@
 .\" $FreeBSD$
 .\"
 .Dd July 1, 2018
-.Dt UHID 4
+.Dt HIDRAW 4
 .Os
 .Sh NAME
-.Nm uhid
-.Nd USB generic HID support
+.Nm hidraw
+.Nd Raw Access to HID devices
 .Sh SYNOPSIS
 To compile this driver into the kernel,
 place the following line in your
 kernel configuration file:
 .Bd -ragged -offset indent
-.Cd "device uhid"
+.Cd "device hidraw"
+.Cd "device hid"
+.Cd "device hidbus"
 .Ed
 .Pp
 Alternatively, to load the driver as a
 module at boot time, place the following line in
 .Xr loader.conf 5 :
 .Bd -literal -offset indent
-uhid_load="YES"
+hidraw_load="YES"
 .Ed
 .Sh DESCRIPTION
 The
 .Nm
-driver provides support for all HID (Human Interface Device) interfaces
-in USB devices that do not have a special driver.
+driver provides a raw interface to Human Interface Devices (HIDs).
+The reports are sent to and received from the device unmodified.
 .Pp
-The device handles the following
+The device handles 2 sets of
 .Xr ioctl 2
 calls:
+.Pp
+.Fx
+.Xr uhid 4
+\-compatible calls:
 .Bl -tag -width indent
 .It Dv USB_GET_REPORT_ID Pq Vt int
 Get the report identifier used by this HID report.
@@ -114,6 +120,11 @@ It should be
 .Dv UHID_OUTPUT_REPORT ,
 or
 .Dv UHID_FEATURE_REPORT .
+On a device which uses numbered reports, the first byte of the returned data
+is the report number.
+The report data begins from the second byte.
+For devices which do not use numbered reports, the report data begins at the
+first byte.
 This call may fail if the device does not support this feature.
 .It Dv USB_SET_REPORT Pq Vt "struct usb_gen_descriptor"
 Set a report in the device.
@@ -130,6 +141,92 @@ The value of the report is specified by the
 and the
 .Va ugd_maxlen
 fields.
+On a device which uses numbered reports, the first byte of data to be sent is
+the report number.
+The report data begins from the second byte.
+For devices which do not use numbered reports, the report data begins at the
+first byte.
+This call may fail if the device does not support this feature.
+.El
+.Pp
+Linux
+.Nm
+\-compatible calls:
+.Bl -tag -width indent
+.It Dv HIDIOCGRDESCSIZE Pq Vt int
+Get the HID report descriptor size.
+Returns the size of the device report descriptor to use with
+.Dv HIDIOCGRDESC
+.Xr ioctl 2 .
+.It Dv HIDIOCGRDESC Pq Vt "struct hidraw_report_descriptor"
+Get the HID report descriptor.
+Copies a maximum of
+.Va size
+bytes of the report descriptor data into the memory
+specified by
+.Va value .
+.Bd -literal
+struct hidraw_report_descriptor {
+	uint32_t	size;
+	uint8_t		value[HID_MAX_DESCRIPTOR_SIZE];
+};
+.Ed
+.It Dv HIDIOCGRAWINFO Pq Vt "struct hidraw_devinfo"
+Get structure containing the bus type, the vendor ID (VID), and product ID
+(PID) of the device. The bus type can be one of:
+.Dv BUS_USB
+or
+.Dv BUS_I2C
+which are defined in dev/evdev/input.h.
+.Bd -literal
+struct hidraw_devinfo {
+	uint32_t	bustype;
+	int16_t		vendor;
+	int16_t		product;
+};
+.Ed
+.It Dv HIDIOCGRAWNAME(len) Pq Vt "char[] buf"
+Get device description.
+Copies a maximum of
+.Va len
+bytes of the device description previously set with
+.Xr device_set_desc 9
+procedure into the memory
+specified by
+.Va buf .
+.It Dv HIDIOCGRAWPHYS(len) Pq Vt "char[] buf"
+Get the newbus path to the device.
+.\For Bluetooth devices, it returns the hardware (MAC) address of the device.
+Copies a maximum of
+.Va len
+bytes of the newbus device path
+into the memory
+specified by
+.Va buf .
+.It Dv HIDIOCGFEATURE(len) Pq Vt "void[] buf"
+Get a feature report from the device.
+Copies a maximum of
+.Va len
+bytes of the feature report data into the memory specified by
+.Va buf .
+The first byte of the supplied buffer should be set to the report
+number of the requested report.
+For devices which do not use numbered reports, set the first byte to 0.
+The report will be returned starting at the first byte of the buffer
+(ie: the report number is not returned).
+This call may fail if the device does not support this feature.
+.It Dv HIDIOCSFEATURE(len) Pq Vt "void[] buf"
+Set a feature Report in the device.
+The value of the report is specified by the
+.Va buf
+and the
+.Va len
+parameters.
+Set the first byte of the supplied buffer to the report number.
+For devices which do not use numbered reports, set the first byte to 0.
+The report data begins in the second byte.
+Make sure to set len accordingly, to one more than the length of the report
+(to account for the report number).
 This call may fail if the device does not support this feature.
 .El
 .Pp
@@ -138,12 +235,40 @@ Use
 to get data from the device.
 Data should be read in chunks of the
 size prescribed by the report descriptor.
+On a device which uses numbered reports, the first byte of the returned data
+is the report number.
+The report data begins from the second byte.
+For devices which do not use numbered reports, the report data begins at the
+first byte.
 .Pp
 Use
 .Xr write 2
 to send data to the device.
 Data should be written in chunks of the
 size prescribed by the report descriptor.
+The first byte of the buffer passed to
+.Xr write 2
+should be set to the report number.
+If the device does not use numbered reports, there are 2 operation modes:
+.Nm
+mode and
+.Xr uhid 4
+mode.
+In the
+.Nm
+mode, the first byte should be set to 0 and the report data itself should
+begin at the second byte.
+In the
+.Xr uhid 4
+mode, the report data should begin at the first byte.
+The modes can be switched with issuing one of
+.Dv HIDIOCGRDESC
+or
+.Dv USB_GET_REPORT_DESC
+.Xr ioctl 2
+accordingly.
+Default mode is
+.Nm .
 .Sh SYSCTL VARIABLES
 The following variables are available as both
 .Xr sysctl 8
@@ -151,24 +276,31 @@ variables and
 .Xr loader 8
 tunables:
 .Bl -tag -width indent
-.It Va hw.usb.uhid.debug
+.It Va hw.hid.hidraw.debug
 Debug output level, where 0 is debugging disabled and larger values increase
 debug message verbosity.
 Default is 0.
 .El
 .Sh FILES
-.Bl -tag -width ".Pa /dev/uhid?"
-.It Pa /dev/uhid?
+.Bl -tag -width ".Pa /dev/hidraw?"
+.It Pa /dev/hidraw?
 .El
 .Sh SEE ALSO
 .Xr usbhidctl 1 ,
-.Xr usb 4
+.Xr hid 4 ,
+.Xr hidbus 4 ,
+.Xr uhid 4
 .Sh HISTORY
 The
-.Nm
+.Xr uhid 4
 driver
 appeared in
 .Nx 1.4 .
+.Nm
+protocol support was added in
+.Fx 13
+by
+.An Vladimir Kondratyev Aq Mt wulf@FreeBSD.org .
 This manual page was adopted from
 .Nx
 by

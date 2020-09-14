@@ -27,7 +27,7 @@ SRCS	= iichid.c iichid.h
 .endif
 SRCS	+= hconf.c hconf.h hgame.c hgame.h hms.c hmt.c hpen.c hsctrl.c hcons.c
 SRCS	+= xb360gp.c ps4dshock.c
-MAN	+= hkbd.4 hms.4 hmt.4
+MAN	+= hidraw.4 hkbd.4 hms.4 hmt.4
 SRCS	+= hidbus.c hidbus.h hid_if.c hid_if.h hid.c hid.h
 SRCS	+= hid_debug.h hid_debug.c
 SRCS	+= hidmap.h hidmap.c
