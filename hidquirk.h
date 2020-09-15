@@ -30,7 +30,7 @@
 /*
  * Screening of all content of this file except HID_QUIRK_LIST is a kind of
  * hack that allows multiple HID_QUIRK_LIST inclusion with different HQ()
- * wrappers. That save us splitting hid_quirk.h on two header files.
+ * wrappers. That save us splitting hidquirk.h on two header files.
  */
 #ifndef HQ
 #ifndef _HID_QUIRK_H_
@@ -38,7 +38,7 @@
 #endif
 
 /*
- * Keep in sync with share/man/man4/hid_quirk.4
+ * Keep in sync with share/man/man4/hidquirk.4
  */
 #define	HID_QUIRK_LIST(...)						\
 	HQ(NONE),		/* not a valid quirk */			\

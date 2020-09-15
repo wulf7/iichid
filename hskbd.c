@@ -46,7 +46,7 @@ __FBSDID("$FreeBSD$");
 
 #include "hid.h"
 #include "hidbus.h"
-#include "hid_quirk.h"
+#include "hidquirk.h"
 #include "hidmap.h"
 
 #define	HID_DEBUG_VAR	hskbd_debug

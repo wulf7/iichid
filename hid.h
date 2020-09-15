@@ -125,7 +125,7 @@ int	hid_tlc_locate(const void *desc, hid_size_t size, int32_t u,
 bool	hid_test_quirk(const struct hid_device_info *dev_info, uint16_t quirk);
 int	hid_add_dynamic_quirk(struct hid_device_info *dev_info,
 	    uint16_t quirk);
-void	hid_quirk_unload(void *arg);
+void	hidquirk_unload(void *arg);
 int	hid_in_polling_mode(void);
 
 #endif					/* _HID_H_ */

@@ -39,7 +39,7 @@ __FBSDID("$FreeBSD$");
 
 #include "hid.h"
 #include "hidbus.h"
-#include "hid_quirk.h"
+#include "hidquirk.h"
 #include "hid_if.h"
 
 #include "strcasestr.h"

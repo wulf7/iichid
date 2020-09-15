@@ -49,7 +49,7 @@ __FBSDID("$FreeBSD$");
 #include "hgame.h"
 #include "hid.h"
 #include "hidbus.h"
-#include "hid_quirk.h"
+#include "hidquirk.h"
 #include "hidmap.h"
 
 #define	HID_DEBUG_VAR	xb360gp_debug

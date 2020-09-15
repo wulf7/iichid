@@ -52,21 +52,21 @@
 
 #include "hid.h"
 #include "hidbus.h"
-#include "hid_quirk.h"
+#include "hidquirk.h"
 #include "usbdevs.h"
 
 #define	HID_DEBUG_VAR hid_debug
 #include "hid_debug.h"
 
 
-MODULE_DEPEND(hid_quirk, hid, 1, 1, 1);
-MODULE_VERSION(hid_quirk, 1);
+MODULE_DEPEND(hidquirk, hid, 1, 1, 1);
+MODULE_VERSION(hidquirk, 1);
 
 #define	HID_DEV_QUIRKS_MAX 384
 #define	HID_SUB_QUIRKS_MAX 8
 #define	HID_QUIRK_ENVROOT "hw.hid.quirk."
 
-struct hid_quirk_entry {
+struct hidquirk_entry {
 	uint16_t bus;
 	uint16_t vid;
 	uint16_t pid;
@@ -75,7 +75,7 @@ struct hid_quirk_entry {
 	uint16_t quirks[HID_SUB_QUIRKS_MAX];
 };
 
-static struct mtx hid_quirk_mtx;
+static struct mtx hidquirk_mtx;
 
 #define	HID_QUIRK_VP(b,v,p,l,h,...) \
   { .bus = (b), .vid = (v), .pid = (p), .lo_rev = (l), .hi_rev = (h), \
@@ -83,7 +83,7 @@ static struct mtx hid_quirk_mtx;
 #define	USB_QUIRK(v,p,l,h,...) \
   HID_QUIRK_VP(BUS_USB, USB_VENDOR_##v, USB_PRODUCT_##v##_##p, l, h, __VA_ARGS__)
 
-static struct hid_quirk_entry hid_quirks[HID_DEV_QUIRKS_MAX] = {
+static struct hidquirk_entry hidquirks[HID_DEV_QUIRKS_MAX] = {
 	USB_QUIRK(ASUS, LCM, 0x0000, 0xffff, HQ_HID_IGNORE),
 	USB_QUIRK(QTRONIX, 980N, 0x110, 0x110, HQ_SPUR_BUT_UP),
 	USB_QUIRK(ALCOR2, KBD_HUB, 0x001, 0x001, HQ_SPUR_BUT_UP),
@@ -158,24 +158,24 @@ static struct hid_quirk_entry hid_quirks[HID_DEV_QUIRKS_MAX] = {
 #undef HID_QUIRK_VP
 #undef USB_QUIRK
 
-/* hid_quirk.h exposes only HID_QUIRK_LIST macro when HQ() is defined */
+/* hidquirk.h exposes only HID_QUIRK_LIST macro when HQ() is defined */
 #define	HQ(x)	[HQ_##x] = "HQ_"#x
-#include "hid_quirk.h"
-static const char *hid_quirk_str[HID_QUIRK_MAX] = { HID_QUIRK_LIST() };
+#include "hidquirk.h"
+static const char *hidquirk_str[HID_QUIRK_MAX] = { HID_QUIRK_LIST() };
 #undef HQ
 
 static hid_test_quirk_t hid_test_quirk_by_info;
 
 /*------------------------------------------------------------------------*
- *	hid_quirkstr
+ *	hidquirkstr
  *
  * This function converts an USB quirk code into a string.
  *------------------------------------------------------------------------*/
 static const char *
-hid_quirkstr(uint16_t quirk)
+hidquirkstr(uint16_t quirk)
 {
-	return ((quirk < HID_QUIRK_MAX && hid_quirk_str[quirk] != NULL) ?
-	    hid_quirk_str[quirk] : "HQ_UNKNOWN");
+	return ((quirk < HID_QUIRK_MAX && hidquirk_str[quirk] != NULL) ?
+	    hidquirk_str[quirk] : "HQ_UNKNOWN");
 }
 
 /*------------------------------------------------------------------------*
@@ -194,7 +194,7 @@ hid_strquirk(const char *str, size_t len)
 	uint16_t x;
 
 	for (x = 0; x != HID_QUIRK_MAX; x++) {
-		quirk = hid_quirkstr(x);
+		quirk = hidquirkstr(x);
 		if (strncmp(str, quirk, len) == 0 &&
 		    quirk[len] == 0)
 			break;
@@ -218,23 +218,23 @@ hid_test_quirk_by_info(const struct hid_device_info *info, uint16_t quirk)
 	if (quirk == HQ_NONE)
 		goto done;
 
-	HID_MTX_LOCK(&hid_quirk_mtx);
+	HID_MTX_LOCK(&hidquirk_mtx);
 
 	for (x = 0; x != HID_DEV_QUIRKS_MAX; x++) {
 		/* see if quirk information does not match */
-		if ((hid_quirks[x].bus != info->idBus) ||
-		    (hid_quirks[x].vid != info->idVendor) ||
-		    (hid_quirks[x].lo_rev > info->idVersion) ||
-		    (hid_quirks[x].hi_rev < info->idVersion)) {
+		if ((hidquirks[x].bus != info->idBus) ||
+		    (hidquirks[x].vid != info->idVendor) ||
+		    (hidquirks[x].lo_rev > info->idVersion) ||
+		    (hidquirks[x].hi_rev < info->idVersion)) {
 			continue;
 		}
 		/* see if quirk only should match vendor ID */
-		if (hid_quirks[x].pid != info->idProduct) {
-			if (hid_quirks[x].pid != 0)
+		if (hidquirks[x].pid != info->idProduct) {
+			if (hidquirks[x].pid != 0)
 				continue;
 
 			for (y = 0; y != HID_SUB_QUIRKS_MAX; y++) {
-				if (hid_quirks[x].quirks[y] == HQ_MATCH_VENDOR_ONLY)
+				if (hidquirks[x].quirks[y] == HQ_MATCH_VENDOR_ONLY)
 					break;
 			}
 			if (y == HID_SUB_QUIRKS_MAX)
@@ -242,41 +242,41 @@ hid_test_quirk_by_info(const struct hid_device_info *info, uint16_t quirk)
 		}
 		/* lookup quirk */
 		for (y = 0; y != HID_SUB_QUIRKS_MAX; y++) {
-			if (hid_quirks[x].quirks[y] == quirk) {
-				HID_MTX_UNLOCK(&hid_quirk_mtx);
-				DPRINTF("Found quirk '%s'.\n", hid_quirkstr(quirk));
+			if (hidquirks[x].quirks[y] == quirk) {
+				HID_MTX_UNLOCK(&hidquirk_mtx);
+				DPRINTF("Found quirk '%s'.\n", hidquirkstr(quirk));
 				return (true);
 			}
 		}
 	}
-	HID_MTX_UNLOCK(&hid_quirk_mtx);
+	HID_MTX_UNLOCK(&hidquirk_mtx);
 done:
 	return (false);			/* no quirk match */
 }
 
-static struct hid_quirk_entry *
-hid_quirk_get_entry(uint16_t bus, uint16_t vid, uint16_t pid,
+static struct hidquirk_entry *
+hidquirk_get_entry(uint16_t bus, uint16_t vid, uint16_t pid,
     uint16_t lo_rev, uint16_t hi_rev, uint8_t do_alloc)
 {
 	uint16_t x;
 
-	HID_MTX_ASSERT(&hid_quirk_mtx, MA_OWNED);
+	HID_MTX_ASSERT(&hidquirk_mtx, MA_OWNED);
 
 	if ((bus | vid | pid | lo_rev | hi_rev) == 0) {
 		/* all zero - special case */
-		return (hid_quirks + HID_DEV_QUIRKS_MAX - 1);
+		return (hidquirks + HID_DEV_QUIRKS_MAX - 1);
 	}
 	/* search for an existing entry */
 	for (x = 0; x != HID_DEV_QUIRKS_MAX; x++) {
 		/* see if quirk information does not match */
-		if ((hid_quirks[x].bus != bus) ||
-		    (hid_quirks[x].vid != vid) ||
-		    (hid_quirks[x].pid != pid) ||
-		    (hid_quirks[x].lo_rev != lo_rev) ||
-		    (hid_quirks[x].hi_rev != hi_rev)) {
+		if ((hidquirks[x].bus != bus) ||
+		    (hidquirks[x].vid != vid) ||
+		    (hidquirks[x].pid != pid) ||
+		    (hidquirks[x].lo_rev != lo_rev) ||
+		    (hidquirks[x].hi_rev != hi_rev)) {
 			continue;
 		}
-		return (hid_quirks + x);
+		return (hidquirks + x);
 	}
 
 	if (do_alloc == 0) {
@@ -286,20 +286,20 @@ hid_quirk_get_entry(uint16_t bus, uint16_t vid, uint16_t pid,
 	/* search for a free entry */
 	for (x = 0; x != HID_DEV_QUIRKS_MAX; x++) {
 		/* see if quirk information does not match */
-		if ((hid_quirks[x].bus |
-		    hid_quirks[x].vid |
-		    hid_quirks[x].pid |
-		    hid_quirks[x].lo_rev |
-		    hid_quirks[x].hi_rev) != 0) {
+		if ((hidquirks[x].bus |
+		    hidquirks[x].vid |
+		    hidquirks[x].pid |
+		    hidquirks[x].lo_rev |
+		    hidquirks[x].hi_rev) != 0) {
 			continue;
 		}
-		hid_quirks[x].bus = bus;
-		hid_quirks[x].vid = vid;
-		hid_quirks[x].pid = pid;
-		hid_quirks[x].lo_rev = lo_rev;
-		hid_quirks[x].hi_rev = hi_rev;
+		hidquirks[x].bus = bus;
+		hidquirks[x].vid = vid;
+		hidquirks[x].pid = pid;
+		hidquirks[x].lo_rev = lo_rev;
+		hidquirks[x].hi_rev = hi_rev;
 
-		return (hid_quirks + x);
+		return (hidquirks + x);
 	}
 
 	/* no entry found */
@@ -315,7 +315,7 @@ hid_quirk_get_entry(uint16_t bus, uint16_t vid, uint16_t pid,
  * Else: Failure
  *------------------------------------------------------------------------*/
 static int
-hid_quirk_ioctl(unsigned long cmd, caddr_t data,
+hidquirk_ioctl(unsigned long cmd, caddr_t data,
     int fflag, struct thread *td)
 {
 	struct usb_gen_quirk *pgq;
@@ -332,16 +332,16 @@ hid_quirk_ioctl(unsigned long cmd, caddr_t data,
 		if (y >= USB_DEV_QUIRKS_MAX) {
 			return (EINVAL);
 		}
-		USB_MTX_LOCK(&hid_quirk_mtx);
+		USB_MTX_LOCK(&hidquirk_mtx);
 		/* copy out data */
-		pgq->vid = hid_quirks[y].vid;
-		pgq->pid = hid_quirks[y].pid;
-		pgq->bcdDeviceLow = hid_quirks[y].lo_rev;
-		pgq->bcdDeviceHigh = hid_quirks[y].hi_rev;
+		pgq->vid = hidquirks[y].vid;
+		pgq->pid = hidquirks[y].pid;
+		pgq->bcdDeviceLow = hidquirks[y].lo_rev;
+		pgq->bcdDeviceHigh = hidquirks[y].hi_rev;
 		strlcpy(pgq->quirkname,
-		    hid_quirkstr(hid_quirks[y].quirks[x]),
+		    hidquirkstr(hidquirks[y].quirks[x]),
 		    sizeof(pgq->quirkname));
-		USB_MTX_UNLOCK(&hid_quirk_mtx);
+		USB_MTX_UNLOCK(&hidquirk_mtx);
 		return (0);		/* success */
 
 	case USB_QUIRK_NAME_GET:
@@ -351,7 +351,7 @@ hid_quirk_ioctl(unsigned long cmd, caddr_t data,
 			return (EINVAL);
 		}
 		strlcpy(pgq->quirkname,
-		    hid_quirkstr(x), sizeof(pgq->quirkname));
+		    hidquirkstr(x), sizeof(pgq->quirkname));
 		return (0);		/* success */
 
 	case USB_DEV_QUIRK_ADD:
@@ -364,7 +364,7 @@ hid_quirk_ioctl(unsigned long cmd, caddr_t data,
 		}
 		/* convert quirk string into numerical */
 		for (y = 0; y != USB_DEV_QUIRKS_MAX; y++) {
-			if (strcmp(pgq->quirkname, hid_quirkstr(y)) == 0) {
+			if (strcmp(pgq->quirkname, hidquirkstr(y)) == 0) {
 				break;
 			}
 		}
@@ -374,11 +374,11 @@ hid_quirk_ioctl(unsigned long cmd, caddr_t data,
 		if (y == UQ_NONE) {
 			return (EINVAL);
 		}
-		USB_MTX_LOCK(&hid_quirk_mtx);
+		USB_MTX_LOCK(&hidquirk_mtx);
 		pqe = usb_quirk_get_entry(pgq->vid, pgq->pid,
 		    pgq->bcdDeviceLow, pgq->bcdDeviceHigh, 1);
 		if (pqe == NULL) {
-			USB_MTX_UNLOCK(&hid_quirk_mtx);
+			USB_MTX_UNLOCK(&hidquirk_mtx);
 			return (EINVAL);
 		}
 		for (x = 0; x != USB_SUB_QUIRKS_MAX; x++) {
@@ -387,7 +387,7 @@ hid_quirk_ioctl(unsigned long cmd, caddr_t data,
 				break;
 			}
 		}
-		USB_MTX_UNLOCK(&hid_quirk_mtx);
+		USB_MTX_UNLOCK(&hidquirk_mtx);
 		if (x == USB_SUB_QUIRKS_MAX) {
 			return (ENOMEM);
 		}
@@ -402,7 +402,7 @@ hid_quirk_ioctl(unsigned long cmd, caddr_t data,
 		}
 		/* convert quirk string into numerical */
 		for (y = 0; y != USB_DEV_QUIRKS_MAX; y++) {
-			if (strcmp(pgq->quirkname, hid_quirkstr(y)) == 0) {
+			if (strcmp(pgq->quirkname, hidquirkstr(y)) == 0) {
 				break;
 			}
 		}
@@ -412,11 +412,11 @@ hid_quirk_ioctl(unsigned long cmd, caddr_t data,
 		if (y == UQ_NONE) {
 			return (EINVAL);
 		}
-		USB_MTX_LOCK(&hid_quirk_mtx);
+		USB_MTX_LOCK(&hidquirk_mtx);
 		pqe = usb_quirk_get_entry(pgq->vid, pgq->pid,
 		    pgq->bcdDeviceLow, pgq->bcdDeviceHigh, 0);
 		if (pqe == NULL) {
-			USB_MTX_UNLOCK(&hid_quirk_mtx);
+			USB_MTX_UNLOCK(&hidquirk_mtx);
 			return (EINVAL);
 		}
 		for (x = 0; x != USB_SUB_QUIRKS_MAX; x++) {
@@ -426,7 +426,7 @@ hid_quirk_ioctl(unsigned long cmd, caddr_t data,
 			}
 		}
 		if (x == USB_SUB_QUIRKS_MAX) {
-			USB_MTX_UNLOCK(&hid_quirk_mtx);
+			USB_MTX_UNLOCK(&hidquirk_mtx);
 			return (ENOMEM);
 		}
 		for (x = 0; x != USB_SUB_QUIRKS_MAX; x++) {
@@ -438,7 +438,7 @@ hid_quirk_ioctl(unsigned long cmd, caddr_t data,
 			/* all quirk entries are unused - release */
 			memset(pqe, 0, sizeof(*pqe));
 		}
-		USB_MTX_UNLOCK(&hid_quirk_mtx);
+		USB_MTX_UNLOCK(&hidquirk_mtx);
 		return (0);		/* success */
 
 	default:
@@ -454,7 +454,7 @@ hid_quirk_ioctl(unsigned long cmd, caddr_t data,
  * Helper function to scan a 16-bit integer.
  *------------------------------------------------------------------------*/
 static uint16_t
-hid_quirk_strtou16(const char **pptr, const char *name, const char *what)
+hidquirk_strtou16(const char **pptr, const char *name, const char *what)
 {
 	unsigned long value;
 	char *end;
@@ -476,10 +476,10 @@ hid_quirk_strtou16(const char **pptr, const char *name, const char *what)
  *     "VENDOR PRODUCT LO_REV HI_REV QUIRK[,QUIRK[,...]]"
  *------------------------------------------------------------------------*/
 static void
-hid_quirk_add_entry_from_str(const char *name, const char *env)
+hidquirk_add_entry_from_str(const char *name, const char *env)
 {
-	struct hid_quirk_entry entry = { };
-	struct hid_quirk_entry *new;
+	struct hidquirk_entry entry = { };
+	struct hidquirk_entry *new;
 	uint16_t quirk_idx;
 	uint16_t quirk;
 	const char *end;
@@ -492,11 +492,11 @@ hid_quirk_add_entry_from_str(const char *name, const char *env)
 		printf("Adding HID QUIRK '%s' = '%s'\n", name, env);
 
 	/* parse device information */
-	entry.bus = hid_quirk_strtou16(&env, name, "Bus ID");
-	entry.vid = hid_quirk_strtou16(&env, name, "Vendor ID");
-	entry.pid = hid_quirk_strtou16(&env, name, "Product ID");
-	entry.lo_rev = hid_quirk_strtou16(&env, name, "Low revision");
-	entry.hi_rev = hid_quirk_strtou16(&env, name, "High revision");
+	entry.bus = hidquirk_strtou16(&env, name, "Bus ID");
+	entry.vid = hidquirk_strtou16(&env, name, "Vendor ID");
+	entry.pid = hidquirk_strtou16(&env, name, "Product ID");
+	entry.lo_rev = hidquirk_strtou16(&env, name, "Low revision");
+	entry.hi_rev = hidquirk_strtou16(&env, name, "High revision");
 
 	/* parse quirk information */
 	quirk_idx = 0;
@@ -531,27 +531,27 @@ hid_quirk_add_entry_from_str(const char *name, const char *env)
 			printf("%s: Too many HID quirks, only %d allowed!\n",
 			    name, HID_SUB_QUIRKS_MAX);
 		}
-		HID_MTX_LOCK(&hid_quirk_mtx);
-		new = hid_quirk_get_entry(entry.bus, entry.vid, entry.pid,
+		HID_MTX_LOCK(&hidquirk_mtx);
+		new = hidquirk_get_entry(entry.bus, entry.vid, entry.pid,
 		    entry.lo_rev, entry.hi_rev, 1);
 		if (new == NULL)
 			printf("%s: HID quirks table is full!\n", name);
 		else
 			memcpy(new->quirks, entry.quirks, sizeof(entry.quirks));
-		HID_MTX_UNLOCK(&hid_quirk_mtx);
+		HID_MTX_UNLOCK(&hidquirk_mtx);
 	} else {
 		printf("%s: No USB quirks found!\n", name);
 	}
 }
 
 static void
-hid_quirk_init(void *arg)
+hidquirk_init(void *arg)
 {
 	char envkey[sizeof(HID_QUIRK_ENVROOT) + 2];	/* 2 digits max, 0 to 99 */
 	int i;
   
 	/* initialize mutex */
-	mtx_init(&hid_quirk_mtx, "HID quirk", NULL, MTX_DEF);
+	mtx_init(&hidquirk_mtx, "HID quirk", NULL, MTX_DEF);
 
 	/* look for quirks defined by the environment variable */
 	for (i = 0; i != 100; i++) {
@@ -562,24 +562,24 @@ hid_quirk_init(void *arg)
 			break;
 
 		/* parse environment variable */
-		hid_quirk_add_entry_from_str(envkey, kern_getenv(envkey));
+		hidquirk_add_entry_from_str(envkey, kern_getenv(envkey));
 	}
 	
 	/* register our function */
 	hid_test_quirk_p = &hid_test_quirk_by_info;
 #ifdef NOT_YET
-	hid_quirk_ioctl_p = &hid_quirk_ioctl;
+	hidquirk_ioctl_p = &hidquirk_ioctl;
 #endif
 }
 
 static void
-hid_quirk_uninit(void *arg)
+hidquirk_uninit(void *arg)
 {
-	hid_quirk_unload(arg);
+	hidquirk_unload(arg);
 
 	/* destroy mutex */
-	mtx_destroy(&hid_quirk_mtx);
+	mtx_destroy(&hidquirk_mtx);
 }
 
-SYSINIT(hid_quirk_init, SI_SUB_LOCK, SI_ORDER_FIRST, hid_quirk_init, NULL);
-SYSUNINIT(hid_quirk_uninit, SI_SUB_LOCK, SI_ORDER_ANY, hid_quirk_uninit, NULL);
+SYSINIT(hidquirk_init, SI_SUB_LOCK, SI_ORDER_FIRST, hidquirk_init, NULL);
+SYSUNINIT(hidquirk_uninit, SI_SUB_LOCK, SI_ORDER_ANY, hidquirk_uninit, NULL);

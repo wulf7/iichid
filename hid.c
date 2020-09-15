@@ -40,7 +40,7 @@
 #include <sys/proc.h>
 
 #include "hid.h"
-#include "hid_quirk.h"
+#include "hidquirk.h"
 
 static hid_test_quirk_t hid_test_quirk_w;
 hid_test_quirk_t *hid_test_quirk_p = &hid_test_quirk_w;
@@ -173,12 +173,12 @@ hid_add_dynamic_quirk(struct hid_device_info *dev_info, uint16_t quirk)
 }
 
 void
-hid_quirk_unload(void *arg)
+hidquirk_unload(void *arg)
 {
 	/* reset function pointer */
 	hid_test_quirk_p = &hid_test_quirk_w;
 #ifdef NOT_YET
-	hid_quirk_ioctl_p = &hid_quirk_ioctl_w;
+	hidquirk_ioctl_p = &hidquirk_ioctl_w;
 #endif
 
 	/* wait for CPU to exit the loaded functions, if any */

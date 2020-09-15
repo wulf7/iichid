@@ -72,7 +72,7 @@ __FBSDID("$FreeBSD$");
 #include "hid.h"
 #include "hidbus.h"
 #include "hid_if.h"
-#include "hid_quirk.h"
+#include "hidquirk.h"
 
 /* Set default probe priority lesser than other USB device drivers have */
 #ifndef USBHID_BUS_PROBE_PRIO
