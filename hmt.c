@@ -935,3 +935,4 @@ MODULE_DEPEND(hmt, hid, 1, 1, 1);
 MODULE_DEPEND(hmt, hconf, 1, 1, 1);
 MODULE_DEPEND(hmt, evdev, 1, 1, 1);
 MODULE_VERSION(hmt, 1);
+HID_PNP_INFO(hmt_devs);

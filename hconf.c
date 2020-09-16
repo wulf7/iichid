@@ -337,3 +337,4 @@ DRIVER_MODULE(hconf, hidbus, hconf_driver, hconf_devclass, NULL, 0);
 MODULE_DEPEND(hconf, hidbus, 1, 1, 1);
 MODULE_DEPEND(hconf, hid, 1, 1, 1);
 MODULE_VERSION(hconf, 1);
+HID_PNP_INFO(hconf_devs);

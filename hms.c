@@ -322,4 +322,4 @@ MODULE_DEPEND(hms, hid, 1, 1, 1);
 MODULE_DEPEND(hms, hidmap, 1, 1, 1);
 MODULE_DEPEND(hms, evdev, 1, 1, 1);
 MODULE_VERSION(hms, 1);
-/* USB_PNP_HOST_INFO(hms_devs); */
+HID_PNP_INFO(hms_devs);

@@ -1476,3 +1476,4 @@ MODULE_DEPEND(ps4dshock, hid, 1, 1, 1);
 MODULE_DEPEND(ps4dshock, hidmap, 1, 1, 1);
 MODULE_DEPEND(ps4dshock, evdev, 1, 1, 1);
 MODULE_VERSION(ps4dshock, 1);
+HID_PNP_INFO(ps4dshock_devs);

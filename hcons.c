@@ -331,3 +331,4 @@ MODULE_DEPEND(hcons, hid, 1, 1, 1);
 MODULE_DEPEND(hcons, hidmap, 1, 1, 1);
 MODULE_DEPEND(hcons, evdev, 1, 1, 1);
 MODULE_VERSION(hcons, 1);
+HID_PNP_INFO(hcons_devs);

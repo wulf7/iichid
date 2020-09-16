@@ -224,3 +224,4 @@ MODULE_DEPEND(hgame, hid, 1, 1, 1);
 MODULE_DEPEND(hgame, hidmap, 1, 1, 1);
 MODULE_DEPEND(hgame, evdev, 1, 1, 1);
 MODULE_VERSION(hgame, 1);
+HID_PNP_INFO(hgame_devs);

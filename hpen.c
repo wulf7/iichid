@@ -264,3 +264,4 @@ MODULE_DEPEND(hpen, hid, 1, 1, 1);
 MODULE_DEPEND(hpen, hidmap, 1, 1, 1);
 MODULE_DEPEND(hpen, evdev, 1, 1, 1);
 MODULE_VERSION(hpen, 1);
+HID_PNP_INFO(hpen_devs);

@@ -137,3 +137,4 @@ MODULE_DEPEND(hsctrl, hid, 1, 1, 1);
 MODULE_DEPEND(hsctrl, hidmap, 1, 1, 1);
 MODULE_DEPEND(hsctrl, evdev, 1, 1, 1);
 MODULE_VERSION(hsctrl, 1);
+HID_PNP_INFO(hsctrl_devs);

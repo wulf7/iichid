@@ -371,3 +371,4 @@ MODULE_DEPEND(hskbd, hid, 1, 1, 1);
 MODULE_DEPEND(hskbd, hidmap, 1, 1, 1);
 MODULE_DEPEND(hskbd, evdev, 1, 1, 1);
 MODULE_VERSION(hskbd, 1);
+HID_PNP_INFO(hskbd_devs);

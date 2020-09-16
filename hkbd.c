@@ -1996,6 +1996,4 @@ MODULE_DEPEND(hkbd, hid, 1, 1, 1);
 MODULE_DEPEND(hkbd, evdev, 1, 1, 1);
 #endif
 MODULE_VERSION(hkbd, 1);
-#ifdef NOT_YET
-HID_PNP_HOST_INFO(hkbd_devs);
-#endif
+HID_PNP_INFO(hkbd_devs);
