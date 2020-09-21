@@ -27,9 +27,6 @@ SRCS	= iichid.c iichid.h
 .endif
 SRCS	+= hconf.c hconf.h hgame.c hgame.h hms.c hmt.c hpen.c hsctrl.c hcons.c
 SRCS	+= xb360gp.c ps4dshock.c
-MAN	+= hidbus.4 hidquirk.4 hidraw.4 usbhid.4
-MAN	+= hconf.4 hcons.4 hgame.4 hkbd.4 hms.4 hmt.4 hpen.4 hsctrl.4
-MAN	+= ps4dshock.4 xb360gp.4
 SRCS	+= hidbus.c hidbus.h hid_if.c hid_if.h hid.c hid.h
 SRCS	+= hid_debug.h hid_debug.c
 SRCS	+= hidmap.h hidmap.c
@@ -42,6 +39,9 @@ SRCS	+= hidquirk.h hidquirk.c
 SRCS	+= acpi_if.h bus_if.h device_if.h iicbus_if.h
 SRCS	+= opt_acpi.h opt_usb.h opt_evdev.h
 SRCS	+= strcasestr.c strcasestr.h
+MAN	+= hidbus.4 hidquirk.4 hidraw.4 iichid.4 usbhid.4
+MAN	+= hconf.4 hcons.4 hgame.4 hkbd.4 hms.4 hmt.4 hpen.4 hsctrl.4
+MAN	+= ps4dshock.4 xb360gp.4
 # Revert 5d3a4a2 for compiling hkbd on pre 1300068 systems
 .if ${OSVERSION} >= 1300068 || \
     (${OSVERSION} >= 1201507 && ${OSVERSION} < 1300000)
