@@ -59,8 +59,6 @@ SYSCTL_INT(_hw_hid_hcons, OID_AUTO, debug, CTLFLAG_RWTUN,
 		&hcons_debug, 0, "Debug level");
 #endif
 
-#define	HUC_CONSUMER_CONTROL	0x0001
-
 #ifndef	KEY_FULL_SCREEN
 #define KEY_FULL_SCREEN		0x174
 #endif

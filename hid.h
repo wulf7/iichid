@@ -61,6 +61,9 @@ SYSCTL_DECL(_hw_hid);
 #define	HUD_SEC_BARREL_SWITCH	0x5a
 #endif
 
+#ifndef	HUC_CONSUMER_CONTROL
+#define	HUC_CONSUMER_CONTROL	0x0001
+#endif
 #ifndef	HUC_HEADPHONE
 #define	HUC_HEADPHONE	0x05
 #endif
