@@ -151,6 +151,9 @@ hidmap_intr(void *context, void *buf, hid_size_t len)
 
 	mtx_assert(hidbus_get_lock(hm->dev), MA_OWNED);
 
+	DPRINTFN(hm, 6, "hm=%p len=%d\n", hm, len);
+	DPRINTFN(hm, 6, "data = %*D\n", len, buf, " ");
+
 	/* Strip leading "report ID" byte */
 	if (hm->hid_items[0].id) {
 		id = *(uint8_t *)buf;
@@ -164,6 +167,8 @@ hidmap_intr(void *context, void *buf, hid_size_t len)
 	for (hi = hm->hid_items; hi < hm->hid_items + hm->nhid_items; hi++) {
 		/* At first run callbacks that not tied to HID items */
 		if (hi->type == HIDMAP_TYPE_FINALCB) {
+			DPRINTFN(hm, 6, "type=%d item=%*D\n", hi->type,
+			    (int)sizeof(hi->cb), &hi->cb, " ");
 			if (hi->cb(hm, hi, (union hidmap_cb_ctx){.rid = id})
 			    == 0)
 				do_sync = true;
@@ -183,6 +188,9 @@ hidmap_intr(void *context, void *buf, hid_size_t len)
 		data = hi->lmin < 0 || hi->lmax < 0
 		    ? hid_get_data(buf, len, &hi->loc)
 		    : hid_get_udata(buf, len, &hi->loc);
+
+		DPRINTFN(hm, 6, "type=%d data=%d item=%*D\n", hi->type, data,
+		    (int)sizeof(hi->cb), &hi->cb, " ");
 
 		switch (hi->type) {
 		case HIDMAP_TYPE_CALLBACK:
@@ -435,8 +443,6 @@ hidmap_probe_hid_descr(void *d_ptr, hid_size_t d_len, uint8_t tlc_index,
 	if (items != 0) {
 		for (i = 0; i < nmap_items; i++) {
 			if (map[i].required && !bit_test(caps, i)) {
-//				DPRINTF(dev, "required usage %s not found\n",
-//				    map[i].name);
 				items = 0;
 				break;
 			}
@@ -610,6 +616,10 @@ mapped:
 	item->lmin = hi->logical_minimum;
 	item->lmax = hi->logical_maximum;
 
+	DPRINTFN(hm, 6, "usage=%04x id=%d loc=%u/%u type=%d item=%*D\n",
+	    hi->usage, hi->report_ID, hi->loc.pos, hi->loc.size, item->type,
+	    (int)sizeof(item->cb), &item->cb, " ");
+
 	return (true);
 }
 
@@ -677,6 +687,8 @@ hidmap_attach(struct hidmap* hm)
 	const struct hid_device_info *hw = hid_get_device_info(hm->dev);
 	int error;
 
+	DPRINTFN(hm, 11, "hm=%p\n", hm);
+
 	hm->cb_state = HIDMAP_CB_IS_ATTACHING;
 
 	hm->hid_items = malloc(hm->nhid_items * sizeof(struct hid_item),
@@ -697,6 +709,7 @@ hidmap_attach(struct hidmap* hm)
 	evdev_support_event(hm->evdev, EV_SYN);
 	error = hidmap_parse_hid_descr(hm, hidbus_get_index(hm->dev));
 	if (error) {
+		DPRINTF(hm, "error=%d\n", error);
 		hidmap_detach(hm);
 		return (ENXIO);
 	}
@@ -706,6 +719,7 @@ hidmap_attach(struct hidmap* hm)
 
 	error = evdev_register_mtx(hm->evdev, hidbus_get_lock(hm->dev));
 	if (error) {
+		DPRINTF(hm, "error=%d\n", error);
 		hidmap_detach(hm);
 		return (ENXIO);
 	}
@@ -717,6 +731,8 @@ int
 hidmap_detach(struct hidmap* hm)
 {
 	struct hidmap_hid_item *hi;
+
+	DPRINTFN(hm, 11, "\n");
 
 	hm->cb_state = HIDMAP_CB_IS_DETACHING;
 
