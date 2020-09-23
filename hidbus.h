@@ -175,6 +175,15 @@ struct hid_device_id {
 #define	HIDBUS_LOOKUP_DRIVER_INFO(d, h)		\
 	hidbus_lookup_driver_info((d), (h), sizeof(h))
 
+/*
+ * Walk through all HID items hi belonging Top Level Collection #tlc_index
+ */
+#define	HIDBUS_FOREACH_ITEM(hd, hi, tlc_index)				\
+	for (uint8_t _iter = 0;						\
+	    _iter <= (tlc_index) && hid_get_item((hd), (hi));		\
+	    _iter += (hi)->kind == hid_endcollection && (hi)->collevel == 0) \
+		if (_iter == (tlc_index))
+
 int	hidbus_locate(const void *desc, hid_size_t size, int32_t u,
 	    enum hid_kind k, uint8_t tlc_index, uint8_t index,
 	    struct hid_location *loc, uint32_t *flags, uint8_t *id,

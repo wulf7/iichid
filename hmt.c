@@ -740,7 +740,7 @@ hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, hid_size_t d_len,
 
 	/* Parse input for other parameters */
 	hd = hid_start_parse(d_ptr, d_len, 1 << hid_input);
-	HID_TLC_FOREACH_ITEM(hd, &hi, tlc_index) {
+	HIDBUS_FOREACH_ITEM(hd, &hi, tlc_index) {
 		switch (hi.kind) {
 		case hid_collection:
 			if (hi.collevel == 2 &&

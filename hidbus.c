@@ -123,7 +123,7 @@ hidbus_locate(const void *desc, hid_size_t size, int32_t u, enum hid_kind k,
 	struct hid_item h;
 
 	d = hid_start_parse(desc, size, 1 << k);
-	HID_TLC_FOREACH_ITEM(d, &h, tlc_index) {
+	HIDBUS_FOREACH_ITEM(d, &h, tlc_index) {
 		if (h.kind == k && h.usage == u) {
 			if (index--)
 				continue;

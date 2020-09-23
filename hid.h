@@ -68,15 +68,6 @@ SYSCTL_DECL(_hw_hid);
 #define	HID_IN_POLLING_MODE_FUNC() hid_in_polling_mode()
 #define	HID_IN_POLLING_MODE_VALUE() (SCHEDULER_STOPPED() || kdb_active)
 
-/*
- * Walk through all HID items hi belonging Top Level Collection #tidx
- */
-#define HID_TLC_FOREACH_ITEM(hd, hi, tidx)				\
-	for (uint8_t _iter = 0;						\
-	    _iter <= (tidx) && hid_get_item((hd), (hi));		\
-	    _iter += (hi)->kind == hid_endcollection && (hi)->collevel == 0) \
-		if (_iter == (tidx))
-
 typedef usb_size_t hid_size_t;
 
 struct hid_absinfo {

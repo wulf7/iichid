@@ -420,7 +420,7 @@ hidmap_probe_hid_descr(void *d_ptr, hid_size_t d_len, uint8_t tlc_index,
 
 	/* Parse inputs */
 	hd = hid_start_parse(d_ptr, d_len, 1 << hid_input);
-	HID_TLC_FOREACH_ITEM(hd, &hi, tlc_index) {
+	HIDBUS_FOREACH_ITEM(hd, &hi, tlc_index) {
 		if (hi.kind != hid_input)
 			continue;
 		if (hi.flags & HIO_CONST)
@@ -643,7 +643,7 @@ hidmap_parse_hid_descr(struct hidmap *hm, uint8_t tlc_index)
 
 	/* Parse inputs */
 	hd = hid_start_parse(d_ptr, d_len, 1 << hid_input);
-	HID_TLC_FOREACH_ITEM(hd, &hi, tlc_index) {
+	HIDBUS_FOREACH_ITEM(hd, &hi, tlc_index) {
 		if (hi.kind != hid_input)
 			continue;
 		if (hi.flags & HIO_CONST)
