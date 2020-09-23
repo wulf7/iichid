@@ -48,7 +48,7 @@ __FBSDID("$FreeBSD$");
 #include "hid_debug.h"
 
 #if __FreeBSD_version >= 1300067
-#define HAVE_BUS_DELAYED_ATTACH_CHILDREN
+#define	HAVE_BUS_DELAYED_ATTACH_CHILDREN
 #endif
 
 #define	HID_RSIZE_MAX	1024
@@ -391,7 +391,7 @@ hidbus_read_ivar(device_t bus, device_t child, int which, uintptr_t *result)
 	default:
 		return (EINVAL);
 	}
-        return (0);
+	return (0);
 }
 
 static int
@@ -412,7 +412,7 @@ hidbus_write_ivar(device_t bus, device_t child, int which, uintptr_t value)
 	default:
 		return (EINVAL);
 	}
-        return (0);
+	return (0);
 }
 
 /* Location hint for devctl(8) */
@@ -644,7 +644,6 @@ hid_set_report_descr(device_t dev, const void *data, hid_size_t len)
 int
 hid_read(device_t dev, void *data, hid_size_t maxlen, hid_size_t *actlen)
 {
-
 	return (HID_READ(device_get_parent(dev), data, maxlen, actlen));
 }
 
@@ -676,7 +675,6 @@ int
 hid_get_report(device_t dev, void *data, hid_size_t maxlen, hid_size_t *actlen,
     uint8_t type, uint8_t id)
 {
-
 	return (HID_GET_REPORT(device_get_parent(dev),
 	    data, maxlen, actlen, type, id));
 }
@@ -685,21 +683,18 @@ int
 hid_set_report(device_t dev, const void *data, hid_size_t len, uint8_t type,
     uint8_t id)
 {
-
 	return (HID_SET_REPORT(device_get_parent(dev), data, len, type, id));
 }
 
 int
 hid_set_idle(device_t dev, uint16_t duration, uint8_t id)
 {
-
 	return (HID_SET_IDLE(device_get_parent(dev), duration, id));
 }
 
 int
 hid_set_protocol(device_t dev, uint16_t protocol)
 {
-
 	return (HID_SET_PROTOCOL(device_get_parent(dev), protocol));
 }
 
@@ -808,11 +803,11 @@ hid_get_device_info(device_t dev)
 
 static device_method_t hidbus_methods[] = {
 	/* device interface */
-	DEVMETHOD(device_probe,         hidbus_probe),
-	DEVMETHOD(device_attach,        hidbus_attach),
-	DEVMETHOD(device_detach,        hidbus_detach),
-	DEVMETHOD(device_suspend,       bus_generic_suspend),
-	DEVMETHOD(device_resume,        bus_generic_resume),
+	DEVMETHOD(device_probe,		hidbus_probe),
+	DEVMETHOD(device_attach,	hidbus_attach),
+	DEVMETHOD(device_detach,	hidbus_detach),
+	DEVMETHOD(device_suspend,	bus_generic_suspend),
+	DEVMETHOD(device_resume,	bus_generic_resume),
 
 	/* bus interface */
 	DEVMETHOD(bus_add_child,	hidbus_add_child),
@@ -825,12 +820,12 @@ static device_method_t hidbus_methods[] = {
 	/* hid interface */
 	DEVMETHOD(hid_read,		hid_read),
 	DEVMETHOD(hid_write,		hid_write),
-	DEVMETHOD(hid_get_report,       hid_get_report),
-	DEVMETHOD(hid_set_report,       hid_set_report),
+	DEVMETHOD(hid_get_report,	hid_get_report),
+	DEVMETHOD(hid_set_report,	hid_set_report),
 	DEVMETHOD(hid_set_idle,		hid_set_idle),
 	DEVMETHOD(hid_set_protocol,	hid_set_protocol),
 
-        DEVMETHOD_END
+	DEVMETHOD_END
 };
 
 devclass_t hidbus_devclass;
