@@ -118,10 +118,6 @@ extern hid_test_quirk_t *hid_test_quirk_p;
  */
 int	hid_report_size_1(const void *buf, hid_size_t len, enum hid_kind k,
 	    uint8_t id);
-int	hid_tlc_locate(const void *desc, hid_size_t size, int32_t u,
-	    enum hid_kind k, uint8_t tlc_index, uint8_t index,
-	    struct hid_location *loc, uint32_t *flags, uint8_t *id,
-	    struct hid_absinfo *ai);
 bool	hid_test_quirk(const struct hid_device_info *dev_info, uint16_t quirk);
 int	hid_add_dynamic_quirk(struct hid_device_info *dev_info,
 	    uint16_t quirk);

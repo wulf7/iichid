@@ -773,7 +773,7 @@ hkbd_parse_hid(struct hkbd_softc *sc, const uint8_t *ptr, uint32_t len,
 	    hid_input, &sc->sc_kbd_id);
 
 	/* investigate if this is an Apple Keyboard */
-	if (hid_tlc_locate(ptr, len,
+	if (hidbus_locate(ptr, len,
 	    HID_USAGE2(HUP_CONSUMER, HUG_APPLE_EJECT),
 	    hid_input, tlc_index, 0, &sc->sc_loc_apple_eject, &flags,
 	    &sc->sc_id_apple_eject, NULL)) {
@@ -782,7 +782,7 @@ hkbd_parse_hid(struct hkbd_softc *sc, const uint8_t *ptr, uint32_t len,
 			    HKBD_FLAG_APPLE_SWAP;
 		DPRINTFN(1, "Found Apple eject-key\n");
 	}
-	if (hid_tlc_locate(ptr, len,
+	if (hidbus_locate(ptr, len,
 	    HID_USAGE2(0xFFFF, 0x0003),
 	    hid_input, tlc_index, 0, &sc->sc_loc_apple_fn, &flags,
 	    &sc->sc_id_apple_fn, NULL)) {
@@ -792,7 +792,7 @@ hkbd_parse_hid(struct hkbd_softc *sc, const uint8_t *ptr, uint32_t len,
 	}
 
 	/* figure out event buffer */
-	if (hid_tlc_locate(ptr, len,
+	if (hidbus_locate(ptr, len,
 	    HID_USAGE2(HUP_KEYBOARD, 0x00),
 	    hid_input, tlc_index, 0, &sc->sc_loc_key[0], &flags,
 	    &sc->sc_id_loc_key[0], NULL)) {
@@ -806,7 +806,7 @@ hkbd_parse_hid(struct hkbd_softc *sc, const uint8_t *ptr, uint32_t len,
 
 	/* figure out the keys */
 	for (key = 1; key != HKBD_NKEYCODE; key++) {
-		if (hid_tlc_locate(ptr, len,
+		if (hidbus_locate(ptr, len,
 		    HID_USAGE2(HUP_KEYBOARD, key),
 		    hid_input, tlc_index, 0, &sc->sc_loc_key[key], &flags,
 		    &sc->sc_id_loc_key[key], NULL)) {
@@ -819,7 +819,7 @@ hkbd_parse_hid(struct hkbd_softc *sc, const uint8_t *ptr, uint32_t len,
 	}
 
 	/* figure out leds on keyboard */
-	if (hid_tlc_locate(ptr, len,
+	if (hidbus_locate(ptr, len,
 	    HID_USAGE2(HUP_LEDS, 0x01),
 	    hid_output, tlc_index, 0, &sc->sc_loc_numlock, &flags,
 	    &sc->sc_id_leds, NULL)) {
@@ -827,7 +827,7 @@ hkbd_parse_hid(struct hkbd_softc *sc, const uint8_t *ptr, uint32_t len,
 			sc->sc_flags |= HKBD_FLAG_NUMLOCK;
 		DPRINTFN(1, "Found keyboard numlock\n");
 	}
-	if (hid_tlc_locate(ptr, len,
+	if (hidbus_locate(ptr, len,
 	    HID_USAGE2(HUP_LEDS, 0x02),
 	    hid_output, tlc_index, 0, &sc->sc_loc_capslock, &flags,
 	    &id, NULL)) {
@@ -837,7 +837,7 @@ hkbd_parse_hid(struct hkbd_softc *sc, const uint8_t *ptr, uint32_t len,
 			sc->sc_flags |= HKBD_FLAG_CAPSLOCK;
 		DPRINTFN(1, "Found keyboard capslock\n");
 	}
-	if (hid_tlc_locate(ptr, len,
+	if (hidbus_locate(ptr, len,
 	    HID_USAGE2(HUP_LEDS, 0x03),
 	    hid_output, tlc_index, 0, &sc->sc_loc_scrolllock, &flags,
 	    &id, NULL)) {

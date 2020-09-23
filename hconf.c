@@ -228,7 +228,7 @@ hconf_parse_feature(struct feature_control *fc, uint8_t tlc_index,
 {
 	uint32_t flags;
 
-	if (!hid_tlc_locate(d_ptr, d_len, HID_USAGE2(HUP_DIGITIZERS, usage),
+	if (!hidbus_locate(d_ptr, d_len, HID_USAGE2(HUP_DIGITIZERS, usage),
 	    hid_feature, tlc_index, 0, &fc->loc, &flags, &fc->rid, NULL))
 		return (ENOENT);
 

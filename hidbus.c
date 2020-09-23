@@ -114,6 +114,45 @@ hidbus_fill_report_descr(struct hidbus_report_descr *hrd, const void *data,
 	return (error);
 }
 
+int
+hidbus_locate(const void *desc, hid_size_t size, int32_t u, enum hid_kind k,
+    uint8_t tlc_index, uint8_t index, struct hid_location *loc,
+    uint32_t *flags, uint8_t *id, struct hid_absinfo *ai)
+{
+	struct hid_data *d;
+	struct hid_item h;
+
+	d = hid_start_parse(desc, size, 1 << k);
+	HID_TLC_FOREACH_ITEM(d, &h, tlc_index) {
+		if (h.kind == k && h.usage == u) {
+			if (index--)
+				continue;
+			if (loc != NULL)
+				*loc = h.loc;
+			if (flags != NULL)
+				*flags = h.flags;
+			if (id != NULL)
+				*id = h.report_ID;
+			if (ai != NULL && (h.flags & HIO_RELATIVE) == 0)
+			*ai = (struct hid_absinfo) {
+					.max = h.logical_maximum,
+					.min = h.logical_minimum,
+					.res = hid_item_resolution(&h),
+				};
+			hid_end_parse(d);
+			return (1);
+		}
+	}
+	if (loc != NULL)
+		loc->size = 0;
+	if (flags != NULL)
+		*flags = 0;
+	if (id != NULL)
+		*id = 0;
+	hid_end_parse(d);
+	return (0);
+}
+
 static device_t
 hidbus_add_child(device_t dev, u_int order, const char *name, int unit)
 {

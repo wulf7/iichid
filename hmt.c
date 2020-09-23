@@ -719,7 +719,7 @@ hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, hid_size_t d_len,
 	}
 
 	/* Parse features for mandatory maximum contact count usage */
-	if (!hid_tlc_locate(d_ptr, d_len,
+	if (!hidbus_locate(d_ptr, d_len,
 	    HID_USAGE2(HUP_DIGITIZERS, HUD_CONTACT_MAX), hid_feature,
 	    tlc_index, 0, &sc->cont_max_loc, &flags, &sc->cont_max_rid, &ai) ||
 	    (flags & (HIO_VARIABLE | HIO_RELATIVE)) != HIO_VARIABLE)
@@ -728,14 +728,14 @@ hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, hid_size_t d_len,
 	cont_count_max = ai.max;
 
 	/* Parse features for button type usage */
-	if (hid_tlc_locate(d_ptr, d_len,
+	if (hidbus_locate(d_ptr, d_len,
 	    HID_USAGE2(HUP_DIGITIZERS, HUD_BUTTON_TYPE), hid_feature,
 	    tlc_index, 0, &sc->btn_type_loc, &flags, &sc->btn_type_rid, NULL)
 	    && (flags & (HIO_VARIABLE | HIO_RELATIVE)) != HIO_VARIABLE)
 		sc->btn_type_rid = 0;
 
 	/* Parse features for THQA certificate report ID */
-	hid_tlc_locate(d_ptr, d_len, HID_USAGE2(HUP_MICROSOFT, HUMS_THQA_CERT),
+	hidbus_locate(d_ptr, d_len, HID_USAGE2(HUP_MICROSOFT, HUMS_THQA_CERT),
 	    hid_feature, tlc_index, 0, NULL, NULL, &sc->thqa_cert_rid, NULL);
 
 	/* Parse input for other parameters */
