@@ -51,6 +51,12 @@ SYSCTL_DECL(_hw_hid);
 #define	HUG_D_PAD_LEFT	0x93
 #endif
 
+#ifndef	HUD_SURFACE_SWITCH
+#define	HUD_SURFACE_SWITCH	0x0057
+#endif
+#ifndef	HUD_BUTTONS_SWITCH
+#define	HUD_BUTTONS_SWITCH	0x0058
+#endif
 #ifndef HUD_SEC_BARREL_SWITCH
 #define	HUD_SEC_BARREL_SWITCH	0x5a
 #endif

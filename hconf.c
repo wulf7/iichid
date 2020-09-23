@@ -48,13 +48,6 @@ __FBSDID("$FreeBSD$");
 
 #include "hconf.h"
 
-#ifndef	HUD_SURFACE_SWITCH
-#define	HUD_SURFACE_SWITCH	0x0057
-#endif
-#ifndef	HUD_BUTTONS_SWITCH
-#define	HUD_BUTTONS_SWITCH	0x0058
-#endif
-
 #define	HID_DEBUG_VAR	hconf_debug
 #include "hid_debug.h"
 
