@@ -561,6 +561,8 @@ hidbus_get_report_descr(device_t child)
  *
  * Hidbus as well as any hidbus child can be passed as first arg.
  */
+
+/* Read cached report descriptor */
 int
 hid_get_report_descr(device_t dev, void **data, hid_size_t *len)
 {
@@ -584,6 +586,29 @@ hid_get_report_descr(device_t dev, void **data, hid_size_t *len)
 		*len = sc->rdesc.len;
 
 	return (0);
+}
+
+/* Read uncached report descriptor */
+int
+hid_get_report_descr_raw(device_t dev, void **data, hid_size_t *len)
+{
+	struct hid_device_info *devinfo;
+	device_t bus;
+	void *buf;
+	int error;
+
+	bus = device_get_devclass(dev) == hidbus_devclass ?
+	    dev : device_get_parent(dev);
+	devinfo = device_get_ivars(bus);
+	buf = malloc(devinfo->rdescsize, M_DEVBUF, M_ZERO | M_WAITOK);
+	error = HID_GET_REPORT_DESCR(bus, data, devinfo->rdescsize);
+	if (error == 0) {
+		*data = buf;
+		*len = devinfo->rdescsize;
+	} else
+		free(buf, M_DEVBUF);
+
+	return (error);
 }
 
 /*
