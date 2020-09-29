@@ -526,13 +526,14 @@ static int
 hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
     struct thread *td)
 {
-	uint8_t local_buf[HIDRAW_LOCAL_BUFSIZE], *buf;
+	uint8_t local_buf[HIDRAW_LOCAL_BUFSIZE];
+	void *buf;
 	struct hidraw_softc *sc;
 	struct usb_gen_descriptor *ugd;
 	struct hidraw_report_descriptor *hrd;
 	struct hidraw_devinfo *hdi;
 	uint32_t size;
-	hid_size_t ordsize;
+	hid_size_t repsize;
 	int id, len;
 	int error = 0;
 
@@ -666,7 +667,7 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		buf = HIDRAW_LOCAL_ALLOC(local_buf, size);
 		copyin(ugd->ugd_data, buf, size);
 		if (id != 0)
-			id = buf[0];
+			id = *(uint8_t *)buf;
 		error = hid_set_report(sc->sc_dev, buf, size,
 		    ugd->ugd_report_type, id);
 		HIDRAW_LOCAL_FREE(local_buf, buf);
@@ -691,8 +692,13 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		 */
 		if (size >= HID_MAX_DESCRIPTOR_SIZE)
 			return (EINVAL);
-		size = MIN(size, sc->sc_rdesc->len);
-		return (copyout(sc->sc_rdesc->data, hrd->value, size));
+		error = hid_get_report_descr_raw(sc->sc_dev, &buf, &repsize);
+		if (error)
+			return (error);
+		size = MIN(size, repsize);
+		error = copyout(buf, hrd->value, size);
+		free(buf, M_DEVBUF);
+		return (error);
 
 	case HIDIOCGRAWINFO:
 		hdi = (struct hidraw_devinfo *)addr;
@@ -766,7 +772,6 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 
 		/* Lock newbus around set_report_descr call */
 		mtx_lock(&Giant);
-		ordsize = sc->sc_rdesc->rdsize;
 		error = hid_set_report_descr(sc->sc_dev, addr, len);
 		mtx_unlock(&Giant);
 		/* Realloc hidraw input queue */
