@@ -181,6 +181,16 @@ iichid_get_config_reg(ACPI_HANDLE handle, uint16_t *config_reg)
 		0xAD, 0x05, 0xB3, 0x0A, 0x3D, 0x89, 0x38, 0xDE,
 	};
 
+#ifdef HAVE_ACPI_EVALUATEDSMTYPED
+	status = acpi_EvaluateDSMTyped(handle, dsm_guid, 1, 1, NULL, &acpi_buf,
+	    ACPI_TYPE_INTEGER);
+	if (ACPI_FAILURE(status)) {
+		printf("%s: error evaluating _DSM\n", __func__);
+		return (status);
+	}
+	result = (ACPI_OBJECT *) acpi_buf.Pointer;
+	*config_reg = result->Integer.Value & 0xFFFF;
+#else
 	status = acpi_EvaluateDSM(handle, dsm_guid, 1, 1, NULL, &acpi_buf);
 	if (ACPI_FAILURE(status)) {
 		printf("%s: error evaluating _DSM\n", __func__);
@@ -197,6 +207,7 @@ iichid_get_config_reg(ACPI_HANDLE handle, uint16_t *config_reg)
 		*config_reg = result->Integer.Value & 0xFFFF;
 		status = AE_OK;
 	}
+#endif
 
 	AcpiOsFree(result);
 	return (status);
