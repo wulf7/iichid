@@ -70,7 +70,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/usb/quirk/usb_quirk.h>
 
 #include "hid.h"
-#include "hidbus.h"
 #include "hid_if.h"
 #include "hidquirk.h"
 
@@ -304,7 +303,7 @@ static const struct usb_config usbhid_config[USBHID_N_TRANSFER] = {
 
 static void
 usbhid_intr_setup(device_t dev, struct mtx *mtx, hid_intr_t intr,
-    void *context, struct hidbus_report_descr *rdesc)
+    void *context, struct hid_rdesc_info *rdesc)
 {
 	struct usbhid_softc* sc = device_get_softc(dev);
 	uint16_t n;

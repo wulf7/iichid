@@ -90,7 +90,7 @@ struct hidraw_softc {
 
 	struct mtx *sc_mtx;		/* hidbus private mutex */
 
-	struct hidbus_report_descr *sc_rdesc;
+	struct hid_rdesc_info *sc_rdesc;
 	const struct hid_device_info *sc_hw;
 
 	uint8_t *sc_q;

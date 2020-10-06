@@ -96,6 +96,22 @@ struct hid_device_info {
 	uint8_t		autoQuirk[HID_MAX_AUTO_QUIRK];
 };
 
+struct hid_rdesc_info {
+	void		*data;
+	hid_size_t	len;
+	hid_size_t	isize;
+	hid_size_t	osize;
+	hid_size_t	fsize;
+	uint8_t		iid;
+	uint8_t		oid;
+	uint8_t		fid;
+	/* Max sizes for HID requests supported by transport backend */
+	hid_size_t	rdsize;
+	hid_size_t	wrsize;
+	hid_size_t	grsize;
+	hid_size_t	srsize;
+};
+
 /* OpenBSD/NetBSD compat shim */
 #define	HID_GET_USAGE(u) ((u) & 0xffff)
 #define	HID_GET_USAGE_PAGE(u) (((u) >> 16) & 0xffff)

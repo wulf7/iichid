@@ -55,7 +55,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/iicbus/iiconf.h>
 
 #include "hid.h"
-#include "hidbus.h"
 #include "hid_if.h"
 #include "hidquirk.h"
 
@@ -877,7 +876,7 @@ iichid_sysctl_sampling_rate_handler(SYSCTL_HANDLER_ARGS)
 
 static void
 iichid_intr_setup(device_t dev, struct mtx *mtx, hid_intr_t intr,
-    void *context, struct hidbus_report_descr *rdesc)
+    void *context, struct hid_rdesc_info *rdesc)
 {
 	struct iichid_softc* sc = device_get_softc(dev);
 

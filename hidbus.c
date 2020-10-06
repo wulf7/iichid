@@ -66,7 +66,7 @@ struct hidbus_softc {
 
 	bool				nowrite;
 
-	struct hidbus_report_descr	rdesc;
+	struct hid_rdesc_info		rdesc;
 	bool				overloaded;
 	int				nest;	/* Child attach nesting lvl */
 
@@ -74,41 +74,41 @@ struct hidbus_softc {
 };
 
 static int
-hidbus_fill_report_descr(struct hidbus_report_descr *hrd, const void *data,
+hidbus_fill_rdesc_info(struct hid_rdesc_info *hri, const void *data,
     hid_size_t len)
 {
 	int error = 0;
 
-	hrd->data = __DECONST(void *, data);
-	hrd->len = len;
+	hri->data = __DECONST(void *, data);
+	hri->len = len;
 
 	/*
 	 * If report descriptor is not available yet, set maximal
 	 * report sizes high enough to allow hidraw to work.
 	 */
-	hrd->isize = len == 0 ? HID_RSIZE_MAX :
-	    hid_report_size(data, len, hid_input, &hrd->iid);
-	hrd->osize = len == 0 ? HID_RSIZE_MAX :
-	    hid_report_size(data, len, hid_output, &hrd->oid);
-	hrd->fsize = len == 0 ? HID_RSIZE_MAX :
-	    hid_report_size(data, len, hid_feature, &hrd->fid);
+	hri->isize = len == 0 ? HID_RSIZE_MAX :
+	    hid_report_size(data, len, hid_input, &hri->iid);
+	hri->osize = len == 0 ? HID_RSIZE_MAX :
+	    hid_report_size(data, len, hid_output, &hri->oid);
+	hri->fsize = len == 0 ? HID_RSIZE_MAX :
+	    hid_report_size(data, len, hid_feature, &hri->fid);
 
-	if (hrd->isize > HID_RSIZE_MAX) {
+	if (hri->isize > HID_RSIZE_MAX) {
 		DPRINTF("input size is too large, %u bytes (truncating)\n",
-		    hrd->isize);
-		hrd->isize = HID_RSIZE_MAX;
+		    hri->isize);
+		hri->isize = HID_RSIZE_MAX;
 		error = EOVERFLOW;
 	}
-	if (hrd->osize > HID_RSIZE_MAX) {
+	if (hri->osize > HID_RSIZE_MAX) {
 		DPRINTF("output size is too large, %u bytes (truncating)\n",
-		    hrd->osize);
-		hrd->osize = HID_RSIZE_MAX;
+		    hri->osize);
+		hri->osize = HID_RSIZE_MAX;
 		error = EOVERFLOW;
 	}
-	if (hrd->fsize > HID_RSIZE_MAX) {
+	if (hri->fsize > HID_RSIZE_MAX) {
 		DPRINTF("feature size is too large, %u bytes (truncating)\n",
-		    hrd->fsize);
-		hrd->fsize = HID_RSIZE_MAX;
+		    hri->fsize);
+		hri->fsize = HID_RSIZE_MAX;
 		error = EOVERFLOW;
 	}
 
@@ -335,7 +335,7 @@ hidbus_attach(device_t dev)
 		}
 	}
 
-	hidbus_fill_report_descr(&sc->rdesc, d_ptr, d_len);
+	hidbus_fill_rdesc_info(&sc->rdesc, d_ptr, d_len);
 
 	sc->nowrite = hid_test_quirk(devinfo, HQ_NOWRITE);
 
@@ -548,7 +548,7 @@ hidbus_intr_poll(device_t child)
 	HID_INTR_POLL(device_get_parent(bus));
 }
 
-struct hidbus_report_descr *
+struct hid_rdesc_info *
 hidbus_get_report_descr(device_t child)
 {
 	device_t bus = device_get_parent(child);
@@ -625,7 +625,7 @@ hid_get_report_descr_raw(device_t dev, void **data, hid_size_t *len)
 int
 hid_set_report_descr(device_t dev, const void *data, hid_size_t len)
 {
-	struct hidbus_report_descr rdesc;
+	struct hid_rdesc_info rdesc;
 	device_t bus;
 	struct hidbus_softc *sc;
 	bool is_bus;
@@ -647,7 +647,7 @@ hid_set_report_descr(device_t dev, const void *data, hid_size_t len)
 	DPRINTFN(5, "len=%d\n", len);
 	DPRINTFN(5, "data = %*D\n", len, data, " ");
 
-	error = hidbus_fill_report_descr(&rdesc, data, len);
+	error = hidbus_fill_rdesc_info(&rdesc, data, len);
 	if (error != 0)
 		return (error);
 
@@ -660,7 +660,7 @@ hid_set_report_descr(device_t dev, const void *data, hid_size_t len)
 	bcopy(data, rdesc.data, len);
 	sc->overloaded = true;
 	free(sc->rdesc.data, M_DEVBUF);
-	bcopy(&rdesc, &sc->rdesc, sizeof(struct hidbus_report_descr));
+	bcopy(&rdesc, &sc->rdesc, sizeof(struct hid_rdesc_info));
 
 	error = hidbus_attach_children(bus);
 

@@ -26,22 +26,6 @@
 #ifndef _HIDBUS_H_
 #define _HIDBUS_H_
 
-struct hidbus_report_descr {
-	void		*data;
-	hid_size_t	len;
-	hid_size_t	isize;
-	hid_size_t	osize;
-	hid_size_t	fsize;
-	uint8_t		iid;
-	uint8_t		oid;
-	uint8_t		fid;
-	/* Maximal sizes for HID requests supported by transport backend */
-	hid_size_t	rdsize;
-	hid_size_t	wrsize;
-	hid_size_t	grsize;
-	hid_size_t	srsize;
-};
-
 struct hidbus_ivars {
 	device_t			child;
 	int32_t				usage;
@@ -190,7 +174,7 @@ int	hidbus_locate(const void *desc, hid_size_t size, int32_t u,
 
 const struct hid_device_id *hidbus_lookup_id(device_t,
 		    const struct hid_device_id *, size_t);
-struct hidbus_report_descr *hidbus_get_report_descr(device_t);
+struct hid_rdesc_info *hidbus_get_report_descr(device_t);
 int		hidbus_lookup_driver_info(device_t,
 		    const struct hid_device_id *, size_t);
 struct mtx *	hidbus_get_lock(device_t);

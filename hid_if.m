@@ -27,7 +27,6 @@
 
 #include <sys/bus.h>
 #include "hid.h"
-#include "hidbus.h"
 
 INTERFACE hid;
 
@@ -49,7 +48,7 @@ METHOD void intr_setup {
 	struct mtx *lock;
 	hid_intr_t intr;
 	void *context;
-	struct hidbus_report_descr *rdesc;
+	struct hid_rdesc_info *rdesc;
 };
 
 #
