@@ -35,7 +35,6 @@ struct hidbus_report_descr {
 	uint8_t		iid;
 	uint8_t		oid;
 	uint8_t		fid;
-	bool		overloaded;
 	/* Maximal sizes for HID requests supported by transport backend */
 	hid_size_t	rdsize;
 	hid_size_t	wrsize;

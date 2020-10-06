@@ -67,6 +67,7 @@ struct hidbus_softc {
 	bool				nowrite;
 
 	struct hidbus_report_descr	rdesc;
+	bool				overloaded;
 	int				nest;	/* Child attach nesting lvl */
 
 	STAILQ_HEAD(, hidbus_ivars)	tlcs;
@@ -640,7 +641,7 @@ hid_set_report_descr(device_t dev, const void *data, hid_size_t len)
 	 * Do not overload already overloaded report descriptor in
 	 * device_identify handler. It causes infinite recursion loop.
 	 */
-	if (is_bus && sc->rdesc.overloaded)
+	if (is_bus && sc->overloaded)
 		return(0);
 
 	DPRINTFN(5, "len=%d\n", len);
@@ -657,7 +658,7 @@ hid_set_report_descr(device_t dev, const void *data, hid_size_t len)
 	/* Make private copy to handle a case of dynamicaly allocated data. */
 	rdesc.data = malloc(len, M_DEVBUF, M_ZERO | M_WAITOK);
 	bcopy(data, rdesc.data, len);
-	rdesc.overloaded = true;
+	sc->overloaded = true;
 	free(sc->rdesc.data, M_DEVBUF);
 	bcopy(&rdesc, &sc->rdesc, sizeof(struct hidbus_report_descr));
 
