@@ -59,8 +59,6 @@ __FBSDID("$FreeBSD$");
 #include "hid_if.h"
 #include "hidquirk.h"
 
-#include "iichid.h"
-
 #ifdef IICHID_DEBUG
 static int iichid_debug = 1;
 
@@ -82,6 +80,53 @@ SYSCTL_INT(_hw_iichid, OID_AUTO, debug, CTLFLAG_RWTUN,
 
 typedef	hid_size_t	iichid_size_t;
 #define	IICHID_SIZE_MAX	(UINT16_MAX - 2)
+
+/* 7.2 */
+enum {
+        I2C_HID_CMD_DESCR       = 0x0,
+        I2C_HID_CMD_RESET       = 0x1,
+        I2C_HID_CMD_GET_REPORT  = 0x2,
+        I2C_HID_CMD_SET_REPORT  = 0x3,
+        I2C_HID_CMD_GET_IDLE    = 0x4,
+        I2C_HID_CMD_SET_IDLE    = 0x5,
+        I2C_HID_CMD_GET_PROTO   = 0x6,
+        I2C_HID_CMD_SET_PROTO   = 0x7,
+        I2C_HID_CMD_SET_POWER   = 0x8,
+};
+
+#define	I2C_HID_POWER_ON		0x0
+#define	I2C_HID_POWER_OFF		0x1
+
+/*
+ * Since interrupt resource acquisition is not always possible (in case of GPIO
+ * interrupts) iichid now supports a sampling_mode.
+ * Set dev.iichid.<unit>.sampling_rate_slow to a value greater then 0
+ * to activate sampling. A value of 0 is possible but will not reset the
+ * callout and, thereby, disable further report requests. Do not set the
+ * sampling_rate_fast value too high as it may result in periodical lags of
+ * cursor motion.
+ */
+#define	IICHID_SAMPLING_RATE_FAST	60
+#define	IICHID_SAMPLING_RATE_SLOW	10
+#define	IICHID_SAMPLING_HYSTERESIS	1
+
+/* 5.1.1 - HID Descriptor Format */
+struct i2c_hid_desc {
+	uint16_t wHIDDescLength;
+	uint16_t bcdVersion;
+	uint16_t wReportDescLength;
+	uint16_t wReportDescRegister;
+	uint16_t wInputRegister;
+	uint16_t wMaxInputLength;
+	uint16_t wOutputRegister;
+	uint16_t wMaxOutputLength;
+	uint16_t wCommandRegister;
+	uint16_t wDataRegister;
+	uint16_t wVendorID;
+	uint16_t wProductID;
+	uint16_t wVersionID;
+	uint32_t reserved;
+} __packed;
 
 static char *iichid_ids[] = {
 	"PNP0C50",

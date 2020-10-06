@@ -23,7 +23,7 @@ OSVERSION!=	awk '/^\#define[[:space:]]*__FreeBSD_version/ { print $$3 }' \
 
 KMOD	= iichid
 .if !defined(DISABLE_IICHID)
-SRCS	= iichid.c iichid.h
+SRCS	= iichid.c
 .endif
 SRCS	+= hconf.c hconf.h hgame.c hgame.h hms.c hmt.c hpen.c hsctrl.c hcons.c
 SRCS	+= xb360gp.c ps4dshock.c
