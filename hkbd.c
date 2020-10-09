@@ -1,7 +1,6 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-
 /*-
  * SPDX-License-Identifier: BSD-2-Clause-NetBSD
  *
@@ -425,7 +424,6 @@ hkbd_do_poll(struct hkbd_softc *sc, uint8_t wait)
 	}
 
 	while (sc->sc_inputs == 0) {
-
 		hidbus_intr_poll(sc->sc_dev);
 
 		/* Delay-optimised support for repetition of keys */
@@ -922,7 +920,6 @@ hkbd_attach(device_t dev)
 	/* check if we should use the boot protocol */
 	if (hid_test_quirk(hw, HQ_KBD_BOOTPROTO) ||
 	    (err != 0) || hkbd_any_key_valid(sc) == false) {
-
 		DPRINTF("Forcing boot protocol\n");
 
 		err = hid_set_protocol(dev, 0);
@@ -1297,7 +1294,6 @@ next_code:
 
 	if ((sc->sc_composed_char > 0) &&
 	    (!(sc->sc_flags & HKBD_FLAG_COMPOSE))) {
-
 		action = sc->sc_composed_char;
 		sc->sc_composed_char = 0;
 
@@ -1646,7 +1642,6 @@ hkbd_ioctl(keyboard_t *kbd, u_long cmd, caddr_t arg)
 		return (result);
 	}
 }
-
 
 /* clear the internal state of the keyboard */
 static void

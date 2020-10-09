@@ -104,7 +104,6 @@ struct hmt_hid_map_item {
 };
 
 static const struct hmt_hid_map_item hmt_hid_map[HMT_N_USAGES] = {
-
 	[HMT_TIP_SWITCH] = {	/* HMT_SLOT */
 		.name = "TIP",
 		.usage = HID_USAGE2(HUP_DIGITIZERS, HUD_TIP_SWITCH),
@@ -578,7 +577,6 @@ hmt_intr(void *context, void *buf, hid_size_t len)
 
 	/* Use protocol Type B for reporting events */
 	for (cont = 0; cont < cont_count; cont++) {
-
 		bzero(slot_data, sizeof(sc->slot_data));
 		HMT_FOREACH_USAGE(sc->caps, usage) {
 			if (sc->locs[cont][usage].size > 0)
