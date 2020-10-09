@@ -59,8 +59,8 @@ SYSCTL_INT(_hw_hid_hsctrl, OID_AUTO, debug, CTLFLAG_RWTUN,
 		&hsctrl_debug, 0, "Debug level");
 #endif
 
-#define HUG_SYSTEM_POWER_UP	0x008e
-#define HUG_SYSTEM_RESTART	0x008f
+#define	HUG_SYSTEM_POWER_UP	0x008e
+#define	HUG_SYSTEM_RESTART	0x008f
 
 #define	HSCTRL_MAP(usage, code)	\
 	{ HIDMAP_KEY(HUP_GENERIC_DESKTOP, HUG_SYSTEM_##usage, code) }

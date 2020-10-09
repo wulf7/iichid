@@ -211,7 +211,7 @@ hconf_feature_control_handler(SYSCTL_HANDLER_ARGS)
 		DPRINTF("Failed to set %s: %d\n",
 		    feature_control_descrs[ctrl_id].name, error);
 	}
-        return (0);
+	return (0);
 }
 
 

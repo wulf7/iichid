@@ -188,9 +188,9 @@ struct hmt_softc {
 	device_t dev;
 	enum hmt_type		type;
 
-	struct hid_absinfo      ai[HMT_N_USAGES];
-	struct hid_location     locs[MAX_MT_SLOTS][HMT_N_USAGES];
-	struct hid_location     cont_count_loc;
+	struct hid_absinfo	ai[HMT_N_USAGES];
+	struct hid_location	locs[MAX_MT_SLOTS][HMT_N_USAGES];
+	struct hid_location	cont_count_loc;
 	struct hid_location	btn_loc[HMT_BTN_MAX];
 	struct hid_location	int_btn_loc;
 	struct hid_location	scan_time_loc;
@@ -200,29 +200,29 @@ struct hmt_softc {
 	bool			touch;
 	bool			prev_touch;
 
-	struct evdev_dev        *evdev;
+	struct evdev_dev	*evdev;
 
-	uint32_t                slot_data[HMT_N_USAGES];
+	uint32_t		slot_data[HMT_N_USAGES];
 	uint32_t		caps;
 	uint32_t		buttons;
-	uint32_t                isize;
-	uint32_t                nconts_per_report;
+	uint32_t		isize;
+	uint32_t		nconts_per_report;
 	uint32_t		nconts_todo;
-	uint8_t                 report_id;
+	uint8_t			report_id;
 	uint32_t		max_button;
 	bool			has_int_button;
 	bool			is_clickpad;
 	bool			do_timestamps;
 	bool			iichid_sampling;
 
-	struct hid_location     cont_max_loc;
-	uint32_t                cont_max_rlen;
-	uint8_t                 cont_max_rid;
+	struct hid_location	cont_max_loc;
+	uint32_t		cont_max_rlen;
+	uint8_t			cont_max_rid;
 	struct hid_location	btn_type_loc;
 	uint32_t		btn_type_rlen;
 	uint8_t			btn_type_rid;
-	uint32_t                thqa_cert_rlen;
-	uint8_t                 thqa_cert_rid;
+	uint32_t		thqa_cert_rlen;
+	uint8_t			thqa_cert_rid;
 };
 
 static enum hmt_type hmt_hid_parse(struct hmt_softc *, const void *,

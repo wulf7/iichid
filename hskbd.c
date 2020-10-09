@@ -101,14 +101,14 @@ static const uint8_t hskbd_boot_desc[] = {
 static evdev_event_t	hskbd_ev_event;
 static hidmap_cb_t	hskbd_final_cb;
 
-#define HSKBD_KEY(usage, code)	{ HIDMAP_KEY(HUP_KEYBOARD, usage, code) }
+#define	HSKBD_KEY(usage, code)	{ HIDMAP_KEY(HUP_KEYBOARD, usage, code) }
 #define	HSKBD_FINAL_CB(cb)	{ HIDMAP_FINAL_CB(&cb) }
 
 static struct hidmap_item hskbd_map[256] = {
-	HSKBD_KEY(0x00,	KEY_RESERVED),	/* No event indicated */
+	HSKBD_KEY(0x00,	KEY_RESERVED),		/* No event indicated */
 	HSKBD_KEY(0x01, HIDMAP_KEY_NULL),	/* Error RollOver */
 	HSKBD_KEY(0x02, HIDMAP_KEY_NULL),	/* POSTFail */
-	HSKBD_KEY(0x03, KEY_RESERVED),	/* Error Undefined */
+	HSKBD_KEY(0x03, KEY_RESERVED),		/* Error Undefined */
 	HSKBD_FINAL_CB(hskbd_final_cb),
 };
 /* Map items starting from 5-th are filled by SYSINIT handler */

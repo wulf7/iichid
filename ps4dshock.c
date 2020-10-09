@@ -829,8 +829,8 @@ ps4dshock_final_cb(HIDMAP_CB_ARGS)
 	if (HIDMAP_CB_GET_STATE() == HIDMAP_CB_IS_ATTACHING)
 		evdev_support_prop(evdev, INPUT_PROP_DIRECT);
 
-        /* Do not execute callback at interrupt handler and detach */
-        return (ENOSYS);
+	/* Do not execute callback at interrupt handler and detach */
+	return (ENOSYS);
 }
 
 static int

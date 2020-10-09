@@ -178,13 +178,13 @@ hpen_identify(driver_t *driver, device_t parent)
 			hid_set_report_descr(parent,
 			    hpen_graphire_report_descr,
 			    sizeof(hpen_graphire_report_descr));
-	                break;
+			break;
 
 		case USB_PRODUCT_WACOM_GRAPHIRE3_4X5:
 			hid_set_report_descr(parent,
 			    hpen_graphire3_4x5_report_descr,
 			    sizeof(hpen_graphire3_4x5_report_descr));
-	                break;
+			break;
 		}
 	}
 }

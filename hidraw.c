@@ -214,7 +214,7 @@ hidraw_attach(device_t self)
 
 	hidbus_set_intr(sc->sc_dev, hidraw_intr, sc);
 
-	return 0;
+	return (0);
 }
 
 static int
@@ -291,7 +291,7 @@ hidraw_lock_queue(struct hidraw_softc *sc, bool flush)
 			sc->sc_state.aslp = false;
 			DPRINTFN(5, "waking %p\n", &sc->sc_q);
 			wakeup(&sc->sc_q);
-	        }
+		}
 		error = mtx_sleep(&sc->sc_sleepcnt, sc->sc_mtx, PZERO | PCATCH,
 		    "hidrawio", 0);
 	}

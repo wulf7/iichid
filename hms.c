@@ -237,7 +237,7 @@ hms_probe(device_t dev)
 	if (hidmap_test_cap(sc->caps, HMS_ABS_X) ||
 	    hidmap_test_cap(sc->caps, HMS_ABS_Y))
 		hidbus_set_desc(dev, "Tablet");
-	 else
+	else
 		hidbus_set_desc(dev, "Mouse");
 
 	return (BUS_PROBE_DEFAULT);
