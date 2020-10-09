@@ -55,14 +55,16 @@ __FBSDID("$FreeBSD$");
 #define	HID_DEBUG_VAR	hmt_debug
 #include "hid_debug.h"
 
-#ifdef HID_DEBUG
-static int hmt_debug = 0;
-
 static SYSCTL_NODE(_hw_hid, OID_AUTO, hmt, CTLFLAG_RW, 0,
     "MSWindows 7/8/10 compatible HID Multi-touch Device");
+#ifdef HID_DEBUG
+static int hmt_debug = 0;
 SYSCTL_INT(_hw_hid_hmt, OID_AUTO, debug, CTLFLAG_RWTUN,
     &hmt_debug, 1, "Debug level");
 #endif
+static bool hmt_timestamps = 0;
+SYSCTL_BOOL(_hw_hid_hmt, OID_AUTO, timestamps, CTLFLAG_RDTUN,
+    &hmt_timestamps, 1, "Enable hardware timestamp reporting");
 
 #define	HMT_BTN_MAX	8	/* Number of buttons supported */
 
@@ -395,7 +397,7 @@ hmt_attach(device_t dev)
 		sc->ai[HMT_SLOT].max = MAX_MT_SLOTS - 1;
 	}
 
-	if (hid_test_quirk(hw, HQ_MT_TIMESTAMP))
+	if (hid_test_quirk(hw, HQ_MT_TIMESTAMP) || hmt_timestamps)
 		sc->do_timestamps = true;
 	if (hid_test_quirk(hw, HQ_IICHID_SAMPLING))
 		sc->iichid_sampling = true;
