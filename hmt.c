@@ -34,7 +34,6 @@ __FBSDID("$FreeBSD$");
  */
 
 #include <sys/param.h>
-#include <sys/bitstring.h>
 #include <sys/bus.h>
 #include <sys/kernel.h>
 #include <sys/lock.h>
@@ -178,7 +177,7 @@ static const struct hmt_hid_map_item hmt_hid_map[HMT_N_USAGES] = {
 	},
 };
 
-#define	USAGE_SUPPORTED(caps, usage)	bit_test(caps, usage)
+#define	USAGE_SUPPORTED(caps, usage)	(((caps) & 1 << (usage)) != 0)
 #define	HMT_FOREACH_USAGE(caps, usage)			\
 	for ((usage) = 0; (usage) < HMT_N_USAGES; ++(usage))	\
 		if (USAGE_SUPPORTED((caps), (usage)))
@@ -202,8 +201,8 @@ struct hmt_softc {
 	struct evdev_dev        *evdev;
 
 	uint32_t                slot_data[HMT_N_USAGES];
-	bitstr_t		bit_decl(caps, HMT_N_USAGES);
-	bitstr_t		bit_decl(buttons, HMT_BTN_MAX);
+	uint32_t		caps;
+	uint32_t		buttons;
 	uint32_t                isize;
 	uint32_t                nconts_per_report;
 	uint32_t		nconts_todo;
@@ -436,7 +435,7 @@ hmt_attach(device_t dev)
 		if (sc->has_int_button)
 			evdev_support_key(sc->evdev, BTN_LEFT);
 		for (btn = 0; btn < sc->max_button; ++btn)
-			if (bit_test(sc->buttons, btn))
+			if (USAGE_SUPPORTED(sc->buttons, btn))
 				evdev_support_key(sc->evdev, BTN_MOUSE + btn);
 	}
 	HMT_FOREACH_USAGE(sc->caps, i) {
@@ -452,7 +451,7 @@ hmt_attach(device_t dev)
 	}
 
 	/* Announce information about the touch device */
-	bit_count(sc->buttons, 0, HMT_BTN_MAX, &nbuttons);
+	nbuttons = bitcount32(sc->buttons);
 	device_printf(sc->dev, "Multitouch %s with %d external button%s%s\n",
 	    sc->type == HMT_TYPE_TOUCHSCREEN ? "touchscreen" : "touchpad",
 	    nbuttons, nbuttons != 1 ? "s" : "",
@@ -651,14 +650,14 @@ hmt_intr(void *context, void *buf, hid_size_t len)
 		/* Report both the click and external left btns as BTN_LEFT */
 		if (sc->has_int_button)
 			int_btn = hid_get_data(buf, len, &sc->int_btn_loc);
-		if (sc->max_button != 0 && bit_test(sc->buttons, 0))
+		if (sc->max_button != 0 && (sc->buttons & 1 << 0) != 0)
 			left_btn = hid_get_data(buf, len, &sc->btn_loc[0]);
 		if (sc->has_int_button ||
-		    (sc->max_button != 0 && bit_test(sc->buttons, 0)))
+		    (sc->max_button != 0 && (sc->buttons & 1 << 0) != 0))
 			evdev_push_key(sc->evdev, BTN_LEFT,
 			    int_btn != 0 | left_btn != 0);
 		for (btn = 1; btn < sc->max_button; ++btn) {
-			if (bit_test(sc->buttons, btn))
+			if ((sc->buttons & 1 << btn) != 0)
 				evdev_push_key(sc->evdev, BTN_MOUSE + btn,
 				    hid_get_data(buf,
 						 len,
@@ -771,7 +770,7 @@ hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, hid_size_t d_len,
 			    hi.usage >= HID_USAGE2(HUP_BUTTON, left_btn) &&
 			    hi.usage <= HID_USAGE2(HUP_BUTTON, HMT_BTN_MAX)) {
 				btn = (hi.usage & 0xFFFF) - left_btn;
-				bit_set(sc->buttons, btn);
+				sc->buttons |= 1 << btn;
 				sc->btn_loc[btn] = hi.loc;
 				if (btn >= sc->max_button)
 					sc->max_button = btn + 1;
@@ -817,7 +816,7 @@ hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, hid_size_t d_len,
 					 */
 					if (cont > 0)
 						break;
-					bit_set(sc->caps, i);
+					sc->caps |= 1 << i;
 					sc->ai[i] = (struct hid_absinfo) {
 					    .max = hi.logical_maximum,
 					    .min = hi.logical_minimum,
@@ -863,7 +862,7 @@ hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, hid_size_t d_len,
 	/* Report touch orientation if both width and height are supported */
 	if (USAGE_SUPPORTED(sc->caps, HMT_WIDTH) &&
 	    USAGE_SUPPORTED(sc->caps, HMT_HEIGHT)) {
-		bit_set(sc->caps, HMT_ORIENTATION);
+		sc->caps |= 1 << HMT_ORIENTATION;
 		sc->ai[HMT_ORIENTATION].max = 1;
 	}
 
