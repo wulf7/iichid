@@ -315,7 +315,6 @@ hidbus_attach(device_t dev)
 {
 	struct hidbus_softc *sc = device_get_softc(dev);
 	struct hid_device_info *devinfo = device_get_ivars(dev);
-	device_t parent = device_get_parent(dev);
 	void *d_ptr = NULL;
 	hid_size_t d_len;
 	int error;
@@ -324,10 +323,14 @@ hidbus_attach(device_t dev)
 	STAILQ_INIT(&sc->tlcs);
 	mtx_init(&sc->mtx, "hidbus lock", NULL, MTX_DEF);
 
+	/*
+	 * Ignore error. It is possible to emulate HID device on top of
+	 * non-HID one through overloading of report descriptor.
+	 */
 	d_len = devinfo->rdescsize;
 	if (d_len != 0) {
 		d_ptr = malloc(d_len, M_DEVBUF, M_ZERO | M_WAITOK);
-		error = HID_GET_REPORT_DESCR(parent, d_ptr, d_len);
+		error = hid_get_rdesc(dev, d_ptr, d_len);
 		if (error != 0) {
 			free(d_ptr, M_DEVBUF);
 			d_len = 0;
@@ -549,7 +552,7 @@ hidbus_intr_poll(device_t child)
 }
 
 struct hid_rdesc_info *
-hidbus_get_report_descr(device_t child)
+hidbus_get_rdesc_info(device_t child)
 {
 	device_t bus = device_get_parent(child);
 	struct hidbus_softc *sc = device_get_softc(bus);
@@ -577,7 +580,7 @@ hid_get_report_descr(device_t dev, void **data, hid_size_t *len)
 	/*
 	 * Do not send request to a transport backend.
 	 * Use cached report descriptor instead of it.
-         */
+	 */
 	if (sc->rdesc.data == NULL || sc->rdesc.len == 0)
 		return (ENXIO);
 
@@ -587,29 +590,6 @@ hid_get_report_descr(device_t dev, void **data, hid_size_t *len)
 		*len = sc->rdesc.len;
 
 	return (0);
-}
-
-/* Read uncached report descriptor */
-int
-hid_get_report_descr_raw(device_t dev, void **data, hid_size_t *len)
-{
-	struct hid_device_info *devinfo;
-	device_t bus;
-	void *buf;
-	int error;
-
-	bus = device_get_devclass(dev) == hidbus_devclass ?
-	    dev : device_get_parent(dev);
-	devinfo = device_get_ivars(bus);
-	buf = malloc(devinfo->rdescsize, M_DEVBUF, M_ZERO | M_WAITOK);
-	error = HID_GET_REPORT_DESCR(bus, data, devinfo->rdescsize);
-	if (error == 0) {
-		*data = buf;
-		*len = devinfo->rdescsize;
-	} else
-		free(buf, M_DEVBUF);
-
-	return (error);
 }
 
 /*
@@ -667,61 +647,24 @@ hid_set_report_descr(device_t dev, const void *data, hid_size_t len)
 	return (error);
 }
 
-int
-hid_read(device_t dev, void *data, hid_size_t maxlen, hid_size_t *actlen)
-{
-	return (HID_READ(device_get_parent(dev), data, maxlen, actlen));
-}
-
-int
-hid_write(device_t dev, const void *data, hid_size_t len)
+static int
+hidbus_write(device_t dev, const void *data, hid_size_t len)
 {
 	struct hidbus_softc *sc;
 	uint8_t id;
 
-	if (device_get_devclass(dev) == hidbus_devclass) {
-		sc = device_get_softc(dev);
-		/*
-		 * Output interrupt endpoint is often optional. If HID device
-		 * do not provide it, send reports via control pipe.
-		 */
-		if (sc->nowrite) {
-			/* try to extract the ID byte */
-			id = (sc->rdesc.oid & (len > 0)) ?
-			    ((const uint8_t*)data)[0] : 0;
-			return (HID_SET_REPORT(device_get_parent(dev),
-			   data, len, HID_OUTPUT_REPORT, id));
-		}
+	sc = device_get_softc(dev);
+	/*
+	 * Output interrupt endpoint is often optional. If HID device
+	 * does not provide it, send reports via control pipe.
+	 */
+	if (sc->nowrite) {
+		/* try to extract the ID byte */
+		id = (sc->rdesc.oid & (len > 0)) ? *(const uint8_t*)data : 0;
+		return (hid_set_report(dev, data, len, HID_OUTPUT_REPORT, id));
 	}
 
-	return (HID_WRITE(device_get_parent(dev), data, len));
-}
-
-int
-hid_get_report(device_t dev, void *data, hid_size_t maxlen, hid_size_t *actlen,
-    uint8_t type, uint8_t id)
-{
-	return (HID_GET_REPORT(device_get_parent(dev),
-	    data, maxlen, actlen, type, id));
-}
-
-int
-hid_set_report(device_t dev, const void *data, hid_size_t len, uint8_t type,
-    uint8_t id)
-{
-	return (HID_SET_REPORT(device_get_parent(dev), data, len, type, id));
-}
-
-int
-hid_set_idle(device_t dev, uint16_t duration, uint8_t id)
-{
-	return (HID_SET_IDLE(device_get_parent(dev), duration, id));
-}
-
-int
-hid_set_protocol(device_t dev, uint16_t protocol)
-{
-	return (HID_SET_PROTOCOL(device_get_parent(dev), protocol));
+	return (hid_write(dev, data, len));
 }
 
 /*------------------------------------------------------------------------*
@@ -844,8 +787,9 @@ static device_method_t hidbus_methods[] = {
 	DEVMETHOD(bus_child_location_str,hidbus_child_location_str),
 
 	/* hid interface */
+	DEVMETHOD(hid_get_rdesc,	hid_get_rdesc),
 	DEVMETHOD(hid_read,		hid_read),
-	DEVMETHOD(hid_write,		hid_write),
+	DEVMETHOD(hid_write,		hidbus_write),
 	DEVMETHOD(hid_get_report,	hid_get_report),
 	DEVMETHOD(hid_set_report,	hid_set_report),
 	DEVMETHOD(hid_set_idle,		hid_set_idle),

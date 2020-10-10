@@ -33,6 +33,7 @@
  */
 
 #include <sys/param.h>
+#include <sys/bus.h>
 #include <sys/kdb.h>
 #include <sys/kernel.h>
 #include <sys/lock.h>
@@ -41,6 +42,8 @@
 
 #include "hid.h"
 #include "hidquirk.h"
+
+#include "hid_if.h"
 
 static hid_test_quirk_t hid_test_quirk_w;
 hid_test_quirk_t *hid_test_quirk_p = &hid_test_quirk_w;
@@ -153,6 +156,51 @@ int
 hid_in_polling_mode(void)
 {
 	return (HID_IN_POLLING_MODE_VALUE());
+}
+
+int
+hid_get_rdesc(device_t dev, void *data, hid_size_t len)
+{
+	return (HID_GET_RDESC(device_get_parent(dev), data, len));
+}
+
+int
+hid_read(device_t dev, void *data, hid_size_t maxlen, hid_size_t *actlen)
+{
+	return (HID_READ(device_get_parent(dev), data, maxlen, actlen));
+}
+
+int
+hid_write(device_t dev, const void *data, hid_size_t len)
+{
+	return (HID_WRITE(device_get_parent(dev), data, len));
+}
+
+int
+hid_get_report(device_t dev, void *data, hid_size_t maxlen, hid_size_t *actlen,
+    uint8_t type, uint8_t id)
+{
+	return (HID_GET_REPORT(device_get_parent(dev), data, maxlen, actlen,
+	    type, id));
+}
+
+int
+hid_set_report(device_t dev, const void *data, hid_size_t len, uint8_t type,
+    uint8_t id)
+{
+	return (HID_SET_REPORT(device_get_parent(dev), data, len, type, id));
+}
+
+int
+hid_set_idle(device_t dev, uint16_t duration, uint8_t id)
+{
+	return (HID_SET_IDLE(device_get_parent(dev), duration, id));
+}
+
+int
+hid_set_protocol(device_t dev, uint16_t protocol)
+{
+	return (HID_SET_PROTOCOL(device_get_parent(dev), protocol));
 }
 
 MODULE_DEPEND(hid, usb, 1, 1, 1);

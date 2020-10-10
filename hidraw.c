@@ -188,7 +188,7 @@ hidraw_attach(device_t self)
 	sc->sc_dev = self;
 	sc->sc_mtx = hidbus_get_lock(self);
 
-	sc->sc_rdesc = hidbus_get_report_descr(self);
+	sc->sc_rdesc = hidbus_get_rdesc_info(self);
 	sc->sc_hw = hid_get_device_info(self);
 
 	/* Hidraw mode does not require report descriptor to work */
@@ -533,7 +533,6 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 	struct hidraw_report_descriptor *hrd;
 	struct hidraw_devinfo *hdi;
 	uint32_t size;
-	hid_size_t repsize;
 	int id, len;
 	int error = 0;
 
@@ -692,12 +691,13 @@ hidraw_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 		 */
 		if (size >= HID_MAX_DESCRIPTOR_SIZE)
 			return (EINVAL);
-		error = hid_get_report_descr_raw(sc->sc_dev, &buf, &repsize);
-		if (error)
-			return (error);
-		size = MIN(size, repsize);
-		error = copyout(buf, hrd->value, size);
-		free(buf, M_DEVBUF);
+		buf = HIDRAW_LOCAL_ALLOC(local_buf, size);
+		error = hid_get_rdesc(sc->sc_dev, buf, size);
+		if (error == 0) {
+			size = MIN(size, sc->sc_rdesc->len);
+			error = copyout(buf, hrd->value, size);
+		}
+		HIDRAW_LOCAL_FREE(local_buf, buf);
 		return (error);
 
 	case HIDIOCGRAWINFO:

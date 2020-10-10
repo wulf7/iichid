@@ -958,7 +958,7 @@ iichid_intr_poll(device_t dev)
  * HID interface
  */
 static int
-iichid_get_report_desc(device_t dev, void *buf, hid_size_t len)
+iichid_get_rdesc(device_t dev, void *buf, hid_size_t len)
 {
 	struct iichid_softc* sc = device_get_softc(dev);
 	int error;
@@ -1422,7 +1422,7 @@ static device_method_t iichid_methods[] = {
 	DEVMETHOD(hid_intr_poll,	iichid_intr_poll),
 
 	/* HID interface */
-	DEVMETHOD(hid_get_report_descr,	iichid_get_report_desc),
+	DEVMETHOD(hid_get_rdesc,	iichid_get_rdesc),
 	DEVMETHOD(hid_read,		iichid_read),
 	DEVMETHOD(hid_write,		iichid_write),
 	DEVMETHOD(hid_get_report,	iichid_get_report),

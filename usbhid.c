@@ -462,7 +462,7 @@ usbhid_sync_xfer(struct usbhid_softc* sc, int xfer_idx,
 }
 
 static int
-usbhid_get_report_desc(device_t dev, void *buf, hid_size_t len)
+usbhid_get_rdesc(device_t dev, void *buf, hid_size_t len)
 {
 	struct usbhid_softc* sc = device_get_softc(dev);
 	int error;
@@ -738,7 +738,7 @@ static device_method_t usbhid_methods[] = {
 	DEVMETHOD(hid_intr_poll,	usbhid_intr_poll),
 
 	/* HID interface */
-	DEVMETHOD(hid_get_report_descr,	usbhid_get_report_desc),
+	DEVMETHOD(hid_get_rdesc,	usbhid_get_rdesc),
 	DEVMETHOD(hid_read,		usbhid_read),
 	DEVMETHOD(hid_write,		usbhid_write),
 	DEVMETHOD(hid_get_report,	usbhid_get_report),

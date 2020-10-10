@@ -89,7 +89,7 @@ METHOD void intr_poll {
 #
 # Read out an report descriptor from the HID device.
 #
-METHOD int get_report_descr {
+METHOD int get_rdesc {
 	device_t dev;
 	void *data;
 	hid_size_t len;

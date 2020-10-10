@@ -174,7 +174,7 @@ int	hidbus_locate(const void *desc, hid_size_t size, int32_t u,
 
 const struct hid_device_id *hidbus_lookup_id(device_t,
 		    const struct hid_device_id *, size_t);
-struct hid_rdesc_info *hidbus_get_report_descr(device_t);
+struct hid_rdesc_info *hidbus_get_rdesc_info(device_t);
 int		hidbus_lookup_driver_info(device_t,
 		    const struct hid_device_id *, size_t);
 struct mtx *	hidbus_get_lock(device_t);
@@ -186,15 +186,7 @@ void		hidbus_set_desc(device_t, const char *);
 
 /* hidbus HID interface */
 int	hid_get_report_descr(device_t, void **, hid_size_t *);
-int	hid_get_report_descr_raw(device_t, void **, hid_size_t *);
 int	hid_set_report_descr(device_t, const void *, hid_size_t);
-int	hid_read(device_t, void *, hid_size_t, hid_size_t *);
-int	hid_write(device_t, const void *, hid_size_t);
-int	hid_get_report(device_t, void *, hid_size_t, hid_size_t *, uint8_t,
-	    uint8_t);
-int	hid_set_report(device_t, const void *, hid_size_t, uint8_t, uint8_t);
-int	hid_set_idle(device_t, uint16_t, uint8_t);
-int	hid_set_protocol(device_t, uint16_t);
 
 const struct hid_device_info *hid_get_device_info(device_t);
 
