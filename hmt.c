@@ -179,13 +179,8 @@ static const struct hmt_hid_map_item hmt_hid_map[HMT_N_USAGES] = {
 	},
 };
 
-#define	USAGE_SUPPORTED(caps, usage)	(((caps) & 1 << (usage)) != 0)
-#define	HMT_FOREACH_USAGE(caps, usage)			\
-	for ((usage) = 0; (usage) < HMT_N_USAGES; ++(usage))	\
-		if (USAGE_SUPPORTED((caps), (usage)))
-
 struct hmt_softc {
-	device_t dev;
+	device_t		dev;
 	enum hmt_type		type;
 
 	struct hid_absinfo	ai[HMT_N_USAGES];
@@ -205,7 +200,6 @@ struct hmt_softc {
 	uint32_t		slot_data[HMT_N_USAGES];
 	uint32_t		caps;
 	uint32_t		buttons;
-	uint32_t		isize;
 	uint32_t		nconts_per_report;
 	uint32_t		nconts_todo;
 	uint8_t			report_id;
@@ -225,35 +219,23 @@ struct hmt_softc {
 	uint8_t			thqa_cert_rid;
 };
 
+#define	USAGE_SUPPORTED(caps, usage)	(((caps) & 1 << (usage)) != 0)
+#define	HMT_FOREACH_USAGE(caps, usage)			\
+	for ((usage) = 0; (usage) < HMT_N_USAGES; ++(usage))	\
+		if (USAGE_SUPPORTED((caps), (usage)))
+
 static enum hmt_type hmt_hid_parse(struct hmt_softc *, const void *,
     hid_size_t, uint32_t, uint8_t);
 static int hmt_set_input_mode(struct hmt_softc *, enum hconf_input_mode);
 
-static hid_intr_t		hmt_intr;
+static hid_intr_t	hmt_intr;
 
-static device_probe_t		hmt_probe;
-static device_attach_t		hmt_attach;
-static device_detach_t		hmt_detach;
+static device_probe_t	hmt_probe;
+static device_attach_t	hmt_attach;
+static device_detach_t	hmt_detach;
 
 static evdev_open_t	hmt_ev_open;
 static evdev_close_t	hmt_ev_close;
-
-static devclass_t hmt_devclass;
-
-static device_method_t hmt_methods[] = {
-
-	DEVMETHOD(device_probe,		hmt_probe),
-	DEVMETHOD(device_attach,	hmt_attach),
-	DEVMETHOD(device_detach,	hmt_detach),
-
-	DEVMETHOD_END
-};
-
-static driver_t hmt_driver = {
-	.name = "hmt",
-	.methods = hmt_methods,
-	.size = sizeof(struct hmt_softc),
-};
 
 static const struct evdev_methods hmt_evdev_methods = {
 	.ev_open = &hmt_ev_open,
@@ -291,16 +273,16 @@ hmt_probe(device_t dev)
 	struct hmt_softc *sc = device_get_softc(dev);
 	void *d_ptr;
 	hid_size_t d_len;
-	int error;
+	int err;
 
-	error = HIDBUS_LOOKUP_DRIVER_INFO(dev, hmt_devs);
-	if (error != 0)
-		return (error);
+	err = HIDBUS_LOOKUP_DRIVER_INFO(dev, hmt_devs);
+	if (err != 0)
+		return (err);
 
-	error = hid_get_report_descr(dev, &d_ptr, &d_len);
-	if (error != 0) {
+	err = hid_get_report_descr(dev, &d_ptr, &d_len);
+	if (err != 0) {
 		device_printf(dev, "could not retrieve report descriptor from "
-		     "device: %d\n", error);
+		     "device: %d\n", err);
 		return (ENXIO);
 	}
 
@@ -328,12 +310,12 @@ hmt_attach(device_t dev)
 	uint32_t cont_count_max;
 	int nbuttons, btn;
 	size_t i;
-	int error;
+	int err;
 
-	error = hid_get_report_descr(dev, &d_ptr, &d_len);
-	if (error) {
+	err = hid_get_report_descr(dev, &d_ptr, &d_len);
+	if (err != 0) {
 		device_printf(dev, "could not retrieve report descriptor from "
-		    "device: %d\n", error);
+		    "device: %d\n", err);
 		return (ENXIO);
 	}
 
@@ -345,9 +327,9 @@ hmt_attach(device_t dev)
 
 	/* Fetch and parse "Contact count maximum" feature report */
 	if (sc->cont_max_rlen > 1) {
-		error = hid_get_report(dev, fbuf, sc->cont_max_rlen, NULL,
+		err = hid_get_report(dev, fbuf, sc->cont_max_rlen, NULL,
 		    HID_FEATURE_REPORT, sc->cont_max_rid);
-		if (error == 0) {
+		if (err == 0) {
 			cont_count_max = hid_get_udata(fbuf + 1,
 			    sc->cont_max_rlen - 1, &sc->cont_max_loc);
 			/*
@@ -357,7 +339,7 @@ hmt_attach(device_t dev)
 			if (cont_count_max > 0)
 				sc->ai[HMT_SLOT].max = cont_count_max - 1;
 		} else
-			DPRINTF("usbd_req_get_report error=%d\n", error);
+			DPRINTF("hid_get_report error=%d\n", err);
 	} else
 		DPRINTF("Feature report %hhu size invalid: %u\n",
 		    sc->cont_max_rid, sc->cont_max_rlen);
@@ -365,15 +347,15 @@ hmt_attach(device_t dev)
 	/* Fetch and parse "Button type" feature report */
 	if (sc->btn_type_rlen > 1 && sc->btn_type_rid != sc->cont_max_rid) {
 		bzero(fbuf, fsize);
-		error = hid_get_report(dev, fbuf, sc->btn_type_rlen, NULL,
+		err = hid_get_report(dev, fbuf, sc->btn_type_rlen, NULL,
 		    HID_FEATURE_REPORT, sc->btn_type_rid);
 	}
 	if (sc->btn_type_rlen > 1) {
-		if (error == 0)
+		if (err == 0)
 			sc->is_clickpad = hid_get_udata(fbuf + 1,
 			    sc->btn_type_rlen - 1, &sc->btn_type_loc) == 0;
 		else
-			DPRINTF("usbd_req_get_report error=%d\n", error);
+			DPRINTF("hid_get_report error=%d\n", err);
 	}
 
 	/* Fetch THQA certificate to enable some devices like WaveShare */
@@ -385,9 +367,9 @@ hmt_attach(device_t dev)
 
 	/* Switch touchpad in to absolute multitouch mode */
 	if (sc->type == HMT_TYPE_TOUCHPAD) {
-		error = hmt_set_input_mode(sc, HCONF_INPUT_MODE_MT_TOUCHPAD);
-		if (error != 0)
-			DPRINTF("Failed to set input mode: %d\n", error);
+		err = hmt_set_input_mode(sc, HCONF_INPUT_MODE_MT_TOUCHPAD);
+		if (err != 0)
+			DPRINTF("Failed to set input mode: %d\n", err);
 	}
 
 	/* Cap contact count maximum to MAX_MT_SLOTS */
@@ -446,8 +428,8 @@ hmt_attach(device_t dev)
 			    sc->ai[i].min, sc->ai[i].max, 0, 0, sc->ai[i].res);
 	}
 
-	error = evdev_register_mtx(sc->evdev, hidbus_get_lock(sc->dev));
-	if (error) {
+	err = evdev_register_mtx(sc->evdev, hidbus_get_lock(sc->dev));
+	if (err) {
 		hmt_detach(dev);
 		return (ENXIO);
 	}
@@ -525,12 +507,8 @@ hmt_intr(void *context, void *buf, hid_size_t len)
 		return;
 	}
 
-	/* Make sure we don't process old data */
-	if (len < sc->isize)
-		bzero((uint8_t *)buf + len, sc->isize - len);
-
 	/* Strip leading "report ID" byte */
-	if (sc->report_id) {
+	if (sc->report_id != 0) {
 		len--;
 		buf = (uint8_t *)buf + 1;
 	}
@@ -868,7 +846,6 @@ hmt_hid_parse(struct hmt_softc *sc, const void *d_ptr, hid_size_t d_len,
 		sc->ai[HMT_ORIENTATION].max = 1;
 	}
 
-	sc->isize = hid_report_size_1(d_ptr, d_len, hid_input, report_id);
 	sc->cont_max_rlen = hid_report_size_1(d_ptr, d_len, hid_feature,
 	    sc->cont_max_rid);
 	if (sc->btn_type_rid > 0)
@@ -890,7 +867,7 @@ hmt_set_input_mode(struct hmt_softc *sc, enum hconf_input_mode mode)
 {
 	devclass_t hconf_devclass;
 	device_t *children, hidbus, hconf = NULL;
-	int ccount, i, error;
+	int ccount, i, err;
 
 	GIANT_REQUIRED;
 
@@ -922,11 +899,27 @@ hmt_set_input_mode(struct hmt_softc *sc, enum hconf_input_mode mode)
 
 	/* hconf_set_input_mode can drop the Giant while sleeping */
 	device_busy(hconf);
-	error = hconf_set_input_mode(hconf, mode);
+	err = hconf_set_input_mode(hconf, mode);
 	device_unbusy(hconf);
 
-	return (error);
+	return (err);
 }
+
+static devclass_t hmt_devclass;
+
+static device_method_t hmt_methods[] = {
+	DEVMETHOD(device_probe,		hmt_probe),
+	DEVMETHOD(device_attach,	hmt_attach),
+	DEVMETHOD(device_detach,	hmt_detach),
+
+	DEVMETHOD_END
+};
+
+static driver_t hmt_driver = {
+	.name = "hmt",
+	.methods = hmt_methods,
+	.size = sizeof(struct hmt_softc),
+};
 
 DRIVER_MODULE(hmt, hidbus, hmt_driver, hmt_devclass, NULL, 0);
 MODULE_DEPEND(hmt, hidbus, 1, 1, 1);
