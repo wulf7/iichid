@@ -33,7 +33,6 @@ __FBSDID("$FreeBSD$");
  */
 
 #include <sys/param.h>
-#include <sys/bitstring.h>
 #include <sys/types.h>
 #include <sys/systm.h>
 #include <sys/kernel.h>
@@ -334,7 +333,7 @@ can_map_arr_list(struct hid_item *hi, const struct hidmap_item *mi,
 
 static bool
 hidmap_probe_hid_item(struct hid_item *hi, const struct hidmap_item *map,
-    int nmap_items, bitstr_t *caps)
+    int nmap_items, hidmap_caps_t caps)
 {
 	int32_t arr_size, usage;
 	u_int i, j;
@@ -350,7 +349,7 @@ hidmap_probe_hid_item(struct hid_item *hi, const struct hidmap_item *map,
 			if (map[i].cb(NULL, NULL,
 			    (union hidmap_cb_ctx){.hi = hi}) != 0)
 				break;
-			bit_set(caps, i);
+			setbit(caps, i);
 			return (true);
 		}
 	}
@@ -363,7 +362,7 @@ hidmap_probe_hid_item(struct hid_item *hi, const struct hidmap_item *map,
 					map[i].type == EV_ABS ||
 					map[i].type == EV_SW,
 				    ("Unsupported event type"));
-				bit_set(caps, i);
+				setbit(caps, i);
 				return (true);
 			}
 		}
@@ -373,7 +372,7 @@ hidmap_probe_hid_item(struct hid_item *hi, const struct hidmap_item *map,
 	if (hi->usage_minimum != 0 || hi->usage_maximum != 0) {
 		HIDMAP_FOREACH_INDEX(map, nmap_items, i, uoff) {
 			if (can_map_arr_range(hi, map + i, uoff)) {
-				bit_set(caps, i);
+				setbit(caps, i);
 				found = true;
 			}
 		}
@@ -394,7 +393,7 @@ hidmap_probe_hid_item(struct hid_item *hi, const struct hidmap_item *map,
 		usage = hi->usage;
 		HIDMAP_FOREACH_INDEX(map, nmap_items, i, uoff) {
 			if (can_map_arr_list(hi, map + i, usage, uoff)) {
-				bit_set(caps, i);
+				setbit(caps, i);
 				found = true;
 			}
 		}
@@ -405,7 +404,7 @@ hidmap_probe_hid_item(struct hid_item *hi, const struct hidmap_item *map,
 
 static uint32_t
 hidmap_probe_hid_descr(void *d_ptr, hid_size_t d_len, uint8_t tlc_index,
-    const struct hidmap_item *map, int nmap_items, bitstr_t *caps)
+    const struct hidmap_item *map, int nmap_items, hidmap_caps_t caps)
 {
 	struct hid_data *hd;
 	struct hid_item hi;
@@ -413,10 +412,10 @@ hidmap_probe_hid_descr(void *d_ptr, hid_size_t d_len, uint8_t tlc_index,
 	bool do_free = false;
 
 	if (caps == NULL) {
-		caps = bit_alloc(nmap_items, M_DEVBUF, M_WAITOK);
+		caps = malloc(HIDMAP_CAPS_SZ(nmap_items), M_DEVBUF, M_WAITOK);
 		do_free = true;
 	} else
-		bzero (caps, bitstr_size(nmap_items));
+		bzero (caps, HIDMAP_CAPS_SZ(nmap_items));
 
 	/* Parse inputs */
 	hd = hid_start_parse(d_ptr, d_len, 1 << hid_input);
@@ -434,7 +433,7 @@ hidmap_probe_hid_descr(void *d_ptr, hid_size_t d_len, uint8_t tlc_index,
 	for (i = 0; i < nmap_items; i++) {
 		if (map[i].has_cb && map[i].final_cb &&
 		    map[i].cb(NULL, NULL, (union hidmap_cb_ctx){}) == 0) {
-			bit_set(caps, i);
+			setbit(caps, i);
 			items++;
 		}
 	}
@@ -442,7 +441,7 @@ hidmap_probe_hid_descr(void *d_ptr, hid_size_t d_len, uint8_t tlc_index,
 	/* Check that all mandatory usages are present in report descriptor */
 	if (items != 0) {
 		for (i = 0; i < nmap_items; i++) {
-			if (map[i].required && !bit_test(caps, i)) {
+			if (map[i].required && isclr(caps, i)) {
 				items = 0;
 				break;
 			}
@@ -457,7 +456,7 @@ hidmap_probe_hid_descr(void *d_ptr, hid_size_t d_len, uint8_t tlc_index,
 
 uint32_t
 hidmap_add_map(struct hidmap *hm, const struct hidmap_item *map,
-    int nmap_items, bitstr_t *caps)
+    int nmap_items, hidmap_caps_t caps)
 {
 	void *d_ptr;
 	uint32_t items;

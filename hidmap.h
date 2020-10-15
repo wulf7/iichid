@@ -29,7 +29,6 @@
 #define _HIDMAP_H_
 
 #include <sys/param.h>
-#include <sys/bitstring.h>
 
 #include "hid.h"
 
@@ -201,21 +200,13 @@ struct hidmap {
 	hid_size_t		intr_len;
 };
 
-#define	HIDMAP_CAPS(name, map)	bitstr_t bit_decl((name), nitems(map));
+typedef	uint8_t *		hidmap_caps_t;
+#define	HIDMAP_CAPS_SZ(nitems)	(((nitems) + 7) / 8)
+#define	HIDMAP_CAPS(name, map)	uint8_t	(name)[HIDMAP_CAPS_SZ(nitems(map))]
 static inline bool
-hidmap_test_cap(bitstr_t *caps, int cap)
+hidmap_test_cap(hidmap_caps_t caps, int cap)
 {
-
-	return (bit_test(caps, cap));
-}
-
-static inline int
-hidmap_count_caps(bitstr_t *caps, int first, int last)
-{
-	int count;
-
-	bit_count(caps, first, last + 1, &count);
-	return (count);
+	return (isset(caps, cap) != 0);
 }
 
 /*
@@ -233,7 +224,7 @@ void		hidmap_set_debug_var(struct hidmap *hm, int *debug_var);
 	hidmap_add_map((hm), (map), nitems(map), (caps))
 uint32_t	hidmap_add_map(struct hidmap *hm,
 		    const struct hidmap_item *map, int nmap_items,
-		    bitstr_t *caps);
+		    hidmap_caps_t caps);
 
 int	hidmap_attach(struct hidmap *hm);
 int	hidmap_detach(struct hidmap *hm);
