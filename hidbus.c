@@ -439,10 +439,11 @@ hidbus_child_pnpinfo_str(device_t bus, device_t child, char *buf,
 	struct hid_device_info *devinfo = device_get_ivars(bus);
 
 	snprintf(buf, buflen, "page=0x%04x usage=0x%04x bus=0x%02hx "
-	    "vendor=0x%04hx product=0x%04hx version=0x%04hx",
+	    "vendor=0x%04hx product=0x%04hx version=0x%04hx%s%s",
 	    HID_GET_USAGE_PAGE(tlc->usage), HID_GET_USAGE(tlc->usage),
 	    devinfo->idBus, devinfo->idVendor, devinfo->idProduct,
-	    devinfo->idVersion);
+	    devinfo->idVersion, devinfo->idPnP[0] == '\0' ? "" : " _HID=",
+	    devinfo->idPnP[0] == '\0' ? "" : devinfo->idPnP);
 	return (0);
 }
 
@@ -732,6 +733,10 @@ hidbus_lookup_id(device_t dev, const struct hid_device_id *id,
 		}
 		if ((id->match_flag_ver_hi) &&
 		    (id->idVersion_hi < info->idVersion)) {
+			continue;
+		}
+		if ((id->match_flag_pnp) &&
+		    strncmp(id->idPnP, info->idPnP, HID_PNP_ID_SIZE) != 0) {
 			continue;
 		}
 		/* We found a match! */

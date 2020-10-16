@@ -1063,6 +1063,9 @@ iichid_fill_device_info(struct i2c_hid_desc *desc, ACPI_HANDLE handle,
 	if (ACPI_FAILURE(AcpiGetObjectInfo(handle, &device_info)))
 		return (ENXIO);
 
+	if (device_info->Valid & ACPI_VALID_HID)
+		strlcpy(hw->idPnP, device_info->HardwareId.String,
+		    HID_PNP_ID_SIZE);
 	snprintf(hw->name, sizeof(hw->name), "%s:%02lX %04X:%04X",
 	    (device_info->Valid & ACPI_VALID_HID) ?
 	    device_info->HardwareId.String : "Unknown",

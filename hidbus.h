@@ -67,10 +67,12 @@ struct hid_device_id {
 		match_flag_product:1,
 		match_flag_ver_lo:1,
 		match_flag_ver_hi:1,
-		match_flag_unused:9;
+		match_flag_pnp:1,
+		match_flag_unused:8;
 #else
 	uint16_t
-		match_flag_unused:9;
+		match_flag_unused:8,
+		match_flag_pnp:1,
 		match_flag_ver_hi:1,
 		match_flag_ver_lo:1,
 		match_flag_product:1,
@@ -90,13 +92,15 @@ struct hid_device_id {
 	uint16_t idProduct;
 	uint16_t idVersion_lo;
 	uint16_t idVersion_hi;
+	char *idPnP;
 
 	/* Hook for driver specific information */
 	uintptr_t driver_info;
 };
 
-#define	HID_STD_PNP_INFO			\
-  "M16:mask;U16:page;U16:usage;U8:bus;U16:vendor;U16:product;L16:version;G16:version"
+#define	HID_STD_PNP_INFO					\
+  "M16:mask;U16:page;U16:usage;U8:bus;U16:vendor;U16:product;"	\
+  "L16:version;G16:version;Z:_HID"
 #define HID_PNP_INFO(table)			\
   MODULE_PNP_INFO(HID_STD_PNP_INFO, hidbus, table, table, nitems(table))
 
@@ -126,6 +130,9 @@ struct hid_device_id {
 
 #define HID_VERSION_LTEQ(hi)	/* less than or equal */	\
   .match_flag_ver_hi = 1, .idVersion_hi = (hi)
+
+#define	HID_PNP(pnp)				\
+  .match_flag_pnp = 1, .idPnP = (pnp)
 
 #define HID_DRIVER_INFO(n)			\
   .driver_info = (n)

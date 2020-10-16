@@ -73,6 +73,7 @@ SYSCTL_DECL(_hw_hid);
 #define	HID_FEATURE_REPORT	0x3
 
 #define	HID_MAX_AUTO_QUIRK	8	/* maximum number of dynamic quirks */
+#define	HID_PNP_ID_SIZE		20	/* includes null terminator */
 
 #define	HID_IN_POLLING_MODE_FUNC() hid_in_polling_mode()
 #define	HID_IN_POLLING_MODE_VALUE() (SCHEDULER_STOPPED() || kdb_active)
@@ -88,6 +89,7 @@ struct hid_absinfo {
 struct hid_device_info {
 	char		name[80];
 	char		serial[80];
+	char		idPnP[HID_PNP_ID_SIZE];
 	uint16_t	idBus;
 	uint16_t	idVendor;
 	uint16_t	idProduct;
