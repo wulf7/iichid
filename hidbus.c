@@ -706,8 +706,12 @@ hidbus_lookup_id(device_t dev, const struct hid_device_id *id,
 	 */
 	for (; id != id_end; id++) {
 
+		if (is_child && (id->match_flag_page) &&
+		    (id->page != HID_GET_USAGE_PAGE(usage))) {
+			continue;
+		}
 		if (is_child && (id->match_flag_usage) &&
-		    (id->usage != usage)) {
+		    (id->usage != HID_GET_USAGE(usage))) {
 			continue;
 		}
 		if ((id->match_flag_bus) &&

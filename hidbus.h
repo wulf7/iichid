@@ -60,29 +60,32 @@ struct hid_device_id {
 	/* Select which fields to match against */
 #if BYTE_ORDER == LITTLE_ENDIAN
 	uint16_t
+		match_flag_page:1,
 		match_flag_usage:1,
 		match_flag_bus:1,
 		match_flag_vendor:1,
 		match_flag_product:1,
 		match_flag_ver_lo:1,
 		match_flag_ver_hi:1,
-		match_flag_unused:10;
+		match_flag_unused:9;
 #else
 	uint16_t
-		match_flag_unused:10;
+		match_flag_unused:9;
 		match_flag_ver_hi:1,
 		match_flag_ver_lo:1,
 		match_flag_product:1,
 		match_flag_vendor:1,
 		match_flag_bus:1,
 		match_flag_usage:1,
+		match_flag_page:1;
 #endif
 
 	/* Used for top level collection usage matches */
-	int32_t usage;
+	uint16_t page;
+	uint16_t usage;
 
 	/* Used for product specific matches; the Version range is inclusive */
-	uint16_t idBus;
+	uint8_t idBus;
 	uint16_t idVendor;
 	uint16_t idProduct;
 	uint16_t idVersion_lo;
@@ -93,12 +96,12 @@ struct hid_device_id {
 };
 
 #define	HID_STD_PNP_INFO			\
-  "M16:mask;U32:usage;U16:bus;U16:vendor;U16:product;L16:release;G16:release"
+  "M16:mask;U16:page;U16:usage;U8:bus;U16:vendor;U16:product;L16:version;G16:version"
 #define HID_PNP_INFO(table)			\
   MODULE_PNP_INFO(HID_STD_PNP_INFO, hidbus, table, table, nitems(table))
 
-#define HID_TLC(page,usg)			\
-  .match_flag_usage = 1, .usage = HID_USAGE2((page),(usg))
+#define HID_TLC(pg,usg)				\
+  .match_flag_page = 1, .match_flag_usage = 1, .page = (pg), .usage = (usg)
 
 #define HID_BUS(bus)				\
   .match_flag_bus = 1, .idBus = (bus)
