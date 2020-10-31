@@ -238,6 +238,7 @@ hidbus_attach_children(device_t dev)
 	if (sc->nest != 0)
 		return (0);
 
+	error = 0;
 	if (is_sc_kbd)
 		error = bus_generic_attach(dev);
 	else
