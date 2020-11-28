@@ -306,6 +306,7 @@ ietp_attach(device_t dev)
 
 	evdev_support_event(sc->evdev, EV_SYN);
 	evdev_support_event(sc->evdev, EV_ABS);
+	evdev_support_event(sc->evdev, EV_KEY);
 	evdev_support_prop(sc->evdev, INPUT_PROP_POINTER);
 	evdev_support_key(sc->evdev, BTN_LEFT);
 	if (sc->is_clickpad) {
@@ -313,7 +314,7 @@ ietp_attach(device_t dev)
 	} else {
 		evdev_support_key(sc->evdev, BTN_RIGHT);
 #if 0
-		/* A there any way to detect middle button presence? */
+		/* Is there any way to detect middle button presence? */
 		evdev_support_key(sc->evdev, BTN_MIDDLE);
 #endif
 	}
