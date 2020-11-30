@@ -137,6 +137,7 @@ struct hetp_softc {
 	uint16_t		res_y;
 	bool			hi_precission;
 	bool			is_clickpad;
+	bool			has_3buttons;
 };
 
 static evdev_open_t	hetp_ev_open;
@@ -265,6 +266,9 @@ static int
 hetp_attach(struct hetp_softc *sc)
 {
 	const struct hid_device_info *hw = hid_get_device_info(sc->dev);
+	device_t mouse;
+	void *d_ptr;
+	hid_size_t d_len;
 	int32_t minor, major;
 	int error;
 
@@ -272,6 +276,22 @@ hetp_attach(struct hetp_softc *sc)
 	    HETP_REPORT_ID_HI : HETP_REPORT_ID_LO;
 	sc->report_len = sc->hi_precission ?
 	    HETP_REPORT_LEN_HI : HETP_REPORT_LEN_LO;
+
+	/* Try to detect 3-rd button by relative mouse TLC */
+	mouse = hidbus_find_child(device_get_parent(sc->dev),
+	    HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_MOUSE));
+	if (!sc->is_clickpad && mouse != NULL) {
+		error = hid_get_report_descr(sc->dev, &d_ptr, &d_len);
+		if (error != 0) {
+			device_printf(sc->dev, "could not retrieve report "
+			    "descriptor from device: %d\n", error);
+			return (ENXIO);
+		}
+		if (hidbus_locate(d_ptr, d_len, HID_USAGE2(HUP_BUTTON, 3),
+		    hid_input, hidbus_get_index(mouse), 0, NULL, NULL, NULL,
+		    NULL))
+			sc->has_3buttons = true;
+	}
 
 	sc->evdev = evdev_alloc();
 	evdev_set_name(sc->evdev, device_get_desc(sc->dev));
@@ -291,10 +311,8 @@ hetp_attach(struct hetp_softc *sc)
 		evdev_support_prop(sc->evdev, INPUT_PROP_BUTTONPAD);
 	} else {
 		evdev_support_key(sc->evdev, BTN_RIGHT);
-#if 0
-		/* Is there any way to detect middle button presence? */
-		evdev_support_key(sc->evdev, BTN_MIDDLE);
-#endif
+		if (sc->has_3buttons)
+			evdev_support_key(sc->evdev, BTN_MIDDLE);
 	}
 
 	major = HETP_FINGER_MAX_WIDTH * MAX(sc->trace_x, sc->trace_y);
@@ -323,7 +341,8 @@ hetp_attach(struct hetp_softc *sc)
 
 	sc->initialized = true;
 	device_printf(sc->dev, "[%d:%d], %s\n", sc->max_x, sc->max_y,
-	    sc->is_clickpad ? "clickpad" : "2 buttons");
+	    sc->is_clickpad ? "clickpad" :
+	    sc->has_3buttons ? "3 buttons" : "2 buttons");
 
 	return (0);
 }
