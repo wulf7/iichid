@@ -867,25 +867,14 @@ static int
 hmt_set_input_mode(struct hmt_softc *sc, enum hconf_input_mode mode)
 {
 	devclass_t hconf_devclass;
-	device_t *children, hidbus, hconf = NULL;
-	int ccount, i, err;
+	device_t hconf;
+	int err;
 
 	GIANT_REQUIRED;
 
-	/* Get a list of all hidbus children */
-	hidbus = device_get_parent(sc->dev);
-	if (device_get_children(hidbus, &children, &ccount) != 0)
-		return (ENXIO);
-
-	/* Scan through to find configutarion TLC */
-	for (i = 0; i < ccount; i++) {
-		if (hidbus_get_usage(children[i]) ==
-		    HID_USAGE2(HUP_DIGITIZERS, HUD_CONFIG)) {
-			hconf = children[i];
-			break;
-		}
-	}
-	free(children, M_TEMP);
+	/* Find touchpad's configuration TLC */
+	hconf =	hidbus_find_child(device_get_parent(sc->dev),
+	    HID_USAGE2(HUP_DIGITIZERS, HUD_CONFIG));
 	if (hconf == NULL)
 		return (ENXIO);
 

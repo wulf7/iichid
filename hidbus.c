@@ -471,6 +471,30 @@ hidbus_set_desc(device_t child, const char *suffix)
 		device_set_desc(child, devinfo->name);
 }
 
+device_t
+hidbus_find_child(device_t bus, int32_t usage)
+{
+	device_t *children, child;
+	int ccount, i;
+
+	GIANT_REQUIRED;
+
+	/* Get a list of all hidbus children */
+	if (device_get_children(bus, &children, &ccount) != 0)
+		return (NULL);
+
+	/* Scan through to find required TLC */
+	for (i = 0, child = NULL; i < ccount; i++) {
+		if (hidbus_get_usage(children[i]) == usage) {
+			child = children[i];
+			break;
+		}
+	}
+	free(children, M_TEMP);
+
+	return (child);
+}
+
 void
 hidbus_intr(void *context, void *buf, hid_size_t len)
 {

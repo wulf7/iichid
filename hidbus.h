@@ -193,6 +193,7 @@ int		hidbus_intr_start(device_t);
 int		hidbus_intr_stop(device_t);
 void		hidbus_intr_poll(device_t);
 void		hidbus_set_desc(device_t, const char *);
+device_t	hidbus_find_child(device_t, int32_t);
 
 /* hidbus HID interface */
 int	hid_get_report_descr(device_t, void **, hid_size_t *);

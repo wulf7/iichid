@@ -249,18 +249,8 @@ hetp_ev_close(struct evdev_dev *evdev)
 static int
 hetp_probe(struct hetp_softc *sc)
 {
-	void *d_ptr;
-	hid_size_t d_len;
-	int error;
-
-	error = hid_get_report_descr(sc->dev, &d_ptr, &d_len);
-	if (error != 0) {
-		device_printf(sc->dev, "could not retrieve report descriptor "
-		    "from device: %d\n", error);
-		return (ENXIO);
-	}
-	if (hid_is_collection(d_ptr, d_len,
-	    HID_USAGE2(HUP_DIGITIZERS, HUD_TOUCHPAD))) {
+	if (hidbus_find_child(device_get_parent(sc->dev),
+	    HID_USAGE2(HUP_DIGITIZERS, HUD_TOUCHPAD)) != NULL) {
 		DPRINTFN(5, "Ignore HID-compatible touchpad on %s\n",
 		    device_get_nameunit(device_get_parent(sc->dev)));
 		return (ENXIO);
