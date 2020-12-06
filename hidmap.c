@@ -424,8 +424,9 @@ hidmap_probe_hid_descr(void *d_ptr, hid_size_t d_len, uint8_t tlc_index,
 			continue;
 		if (hi.flags & HIO_CONST)
 			continue;
-		if (hidmap_probe_hid_item(&hi, map, nmap_items, caps))
-			items++;
+		for (i = 0; i < hi.loc.count; i++, hi.loc.pos += hi.loc.size)
+			if (hidmap_probe_hid_item(&hi, map, nmap_items, caps))
+				items++;
 	}
 	hid_end_parse(hd);
 
@@ -612,6 +613,7 @@ hidmap_parse_hid_item(struct hidmap *hm, struct hid_item *hi,
 mapped:
 	item->id = hi->report_ID;
 	item->loc = hi->loc;
+	item->loc.count = 1;
 	item->lmin = hi->logical_minimum;
 	item->lmax = hi->logical_maximum;
 
@@ -647,8 +649,9 @@ hidmap_parse_hid_descr(struct hidmap *hm, uint8_t tlc_index)
 			continue;
 		if (hi.flags & HIO_CONST)
 			continue;
-		if (hidmap_parse_hid_item(hm, &hi, item))
-			item++;
+		for (i = 0; i < hi.loc.count; i++, hi.loc.pos += hi.loc.size)
+			if (hidmap_parse_hid_item(hm, &hi, item))
+				item++;
 		KASSERT(item <= hm->hid_items + hm->nhid_items,
 		    ("Parsed HID item array overflow"));
 	}
