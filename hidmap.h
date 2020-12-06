@@ -94,7 +94,8 @@ struct hidmap_item {
 	enum hidmap_relabs	relabs:2;
 	bool			has_cb:1;
 	bool			final_cb:1;
-	u_int			reserved:11;
+	bool			invert_value:1;
+	u_int			reserved:10;
 };
 
 #define	HIDMAP_ANY(_page, _usage, _type, _code)				\
@@ -177,6 +178,7 @@ struct hidmap_hid_item {
 	int32_t			lmax;		/* HID item logical maximum */
 	enum hidmap_type	type:8;
 	uint8_t			id;		/* Report ID */
+	bool			invert_value;
 };
 
 struct hidmap {
