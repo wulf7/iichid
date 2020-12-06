@@ -70,7 +70,8 @@ SYSCTL_INT(_hw_hid_hgame, OID_AUTO, debug, CTLFLAG_RWTUN,
 #define HGAME_FINALCB(cb)	\
 	{ HIDMAP_FINAL_CB(&cb) }
 
-static const struct hidmap_item hgame_common_map[] = {
+static const struct hidmap_item hgame_map[] = {
+	HGAME_MAP_BRG(1, 16,		BTN_TRIGGER),
 	HGAME_MAP_ABS(X,		ABS_X),
 	HGAME_MAP_ABS(Y,		ABS_Y),
 	HGAME_MAP_ABS(Z,		ABS_Z),
@@ -81,14 +82,6 @@ static const struct hidmap_item hgame_common_map[] = {
 	HGAME_MAP_CRG(D_PAD_UP, D_PAD_LEFT, hgame_dpad_cb),
 	HGAME_MAP_BRG(17, 57,		BTN_TRIGGER_HAPPY),
 	HGAME_FINALCB(			hgame_final_cb),
-};
-
-static const struct hidmap_item hgame_joystick_map[] = {
-	HGAME_MAP_BRG(1, 16,		BTN_TRIGGER),
-};
-
-static const struct hidmap_item hgame_gamepad_map[] = {
-	HGAME_MAP_BRG(1, 16,		BTN_GAMEPAD),
 };
 
 static const struct hid_device_id hgame_devs[] = {
@@ -167,7 +160,7 @@ hgame_probe(device_t dev)
 {
 	const struct hid_device_info *hw = hid_get_device_info(dev);
 	struct hgame_softc *sc = device_get_softc(dev);
-	int error, error2;
+	int error;
 
 	if (hid_test_quirk(hw, HQ_IS_XBOX360GP))
 		return(ENXIO);
@@ -179,12 +172,8 @@ hgame_probe(device_t dev)
 	hidmap_set_dev(&sc->hm, dev);
 	hidmap_set_debug_var(&sc->hm, &HID_DEBUG_VAR);
 
-	if (hidbus_get_driver_info(dev) == HUG_GAME_PAD)
-		error = HIDMAP_ADD_MAP(&sc->hm, hgame_gamepad_map, NULL);
-	else
-		error = HIDMAP_ADD_MAP(&sc->hm, hgame_joystick_map, NULL);
-	error2 = HIDMAP_ADD_MAP(&sc->hm, hgame_common_map, NULL);
-	if (error != 0 && error2 != 0)
+	error = HIDMAP_ADD_MAP(&sc->hm, hgame_map, NULL);
+	if (error != 0)
 		return (error);
 
 	hidbus_set_desc(dev, hidbus_get_driver_info(dev) == HUG_GAME_PAD ?
