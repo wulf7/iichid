@@ -69,6 +69,8 @@ __FBSDID("$FreeBSD$");
 static evdev_open_t hidmap_ev_open;
 static evdev_close_t hidmap_ev_close;
 
+#define	HIDMAP_WANT_MERGE_KEYS(hm)	((hm)->key_rel != NULL)
+
 #define HIDMAP_FOREACH_ITEM(hm, mi, uoff)				\
 	for (u_int _map = 0, _item = 0, _uoff_priv = -1;		\
 	    ((mi) = hidmap_get_next_map_item(				\
@@ -134,6 +136,57 @@ hidmap_ev_open(struct evdev_dev *evdev)
 	mtx_assert(hidbus_get_lock(dev), MA_OWNED);
 
 	return (hidbus_intr_start(dev));
+}
+
+void
+hidmap_support_key(struct hidmap *hm, uint16_t key)
+{
+	if (hm->key_press == NULL) {
+		hm->key_press = malloc(howmany(KEY_CNT, 8), M_DEVBUF,
+		    M_ZERO | M_WAITOK);
+		evdev_support_event(hm->evdev, EV_KEY);
+		hm->key_min = key;
+		hm->key_max = key;
+	}
+	hm->key_min = MIN(hm->key_min, key);
+	hm->key_max = MAX(hm->key_max, key);
+	if (isset(hm->key_press, key)) {
+		if (hm->key_rel == NULL)
+			hm->key_rel = malloc(howmany(KEY_CNT, 8), M_DEVBUF,
+			    M_ZERO | M_WAITOK);
+	} else {
+		setbit(hm->key_press, key);
+		evdev_support_key(hm->evdev, key);
+	}
+}
+
+void
+hidmap_push_key(struct hidmap *hm, uint16_t key, int32_t value)
+{
+	if (HIDMAP_WANT_MERGE_KEYS(hm))
+		setbit(value != 0 ? hm->key_press : hm->key_rel, key);
+	else
+		evdev_push_key(hm->evdev, key, value);
+}
+
+static void
+hidmap_sync_keys(struct hidmap *hm)
+{
+	int i, j;
+	bool press, rel;
+
+	for (j = hm->key_min / 8; j <= hm->key_max / 8; j++) {
+		if (hm->key_press[j] != hm->key_rel[j]) {
+			for (i = j * 8; i < j * 8 + 8; i++) {
+				press = isset(hm->key_press, i);
+				rel = isset(hm->key_rel, i);
+				if (press != rel)
+					evdev_push_key(hm->evdev, i, press);
+			}
+		}
+	}
+	bzero(hm->key_press, howmany(KEY_CNT, 8));
+	bzero(hm->key_rel, howmany(KEY_CNT, 8));
 }
 
 static void
@@ -215,8 +268,11 @@ hidmap_intr(void *context, void *buf, hid_size_t len)
 			 */
 			if (data == (hi->evtype == EV_REL ? 0 : hi->last_val))
 				continue;
-			evdev_push_event(hm->evdev, hi->evtype,
-			    hi->code, data);
+			if (hi->evtype == EV_KEY)
+				hidmap_push_key(hm, hi->code, data);
+			else
+				evdev_push_event(hm->evdev, hi->evtype,
+				    hi->code, data);
 			hi->last_val = data;
 			break;
 
@@ -270,9 +326,9 @@ report_key:
 			if (key == HIDMAP_KEY_NULL || key == hi->last_key)
 				continue;
 			if (hi->last_key != KEY_RESERVED)
-				evdev_push_key(hm->evdev, hi->last_key, 0);
+				hidmap_push_key(hm, hi->last_key, 0);
 			if (key != KEY_RESERVED)
-				evdev_push_key(hm->evdev, key, 1);
+				hidmap_push_key(hm, key, 1);
 			hi->last_key = key;
 			break;
 
@@ -282,8 +338,11 @@ report_key:
 		do_sync = true;
 	}
 
-	if (do_sync)
+	if (do_sync) {
+		if (HIDMAP_WANT_MERGE_KEYS(hm))
+			hidmap_sync_keys(hm);
 		evdev_sync(hm->evdev);
+	}
 }
 
 static inline bool
@@ -532,9 +591,7 @@ hidmap_parse_hid_item(struct hidmap *hm, struct hid_item *hi,
 				item->last_val = 0;
 				switch (mi->type) {
 				case EV_KEY:
-					evdev_support_event(hm->evdev, EV_KEY);
-					evdev_support_key(hm->evdev,
-					    item->code);
+					hidmap_support_key(hm, item->code);
 					break;
 				case EV_REL:
 					evdev_support_event(hm->evdev, EV_REL);
@@ -566,7 +623,7 @@ hidmap_parse_hid_item(struct hidmap *hm, struct hid_item *hi,
 	if (hi->usage_minimum != 0 || hi->usage_maximum != 0) {
 		HIDMAP_FOREACH_ITEM(hm, mi, uoff) {
 			if (can_map_arr_range(hi, mi, uoff)) {
-				evdev_support_key(hm->evdev, mi->code + uoff);
+				hidmap_support_key(hm, mi->code + uoff);
 				found = true;
 			}
 		}
@@ -575,7 +632,6 @@ hidmap_parse_hid_item(struct hidmap *hm, struct hid_item *hi,
 		item->umin = hi->usage_minimum;
 		item->type = HIDMAP_TYPE_ARR_RANGE;
 		item->last_key = KEY_RESERVED;
-		evdev_support_event(hm->evdev, EV_KEY);
 		goto mapped;
 	}
 
@@ -593,7 +649,7 @@ hidmap_parse_hid_item(struct hidmap *hm, struct hid_item *hi,
 		usage = hi->usage;
 		HIDMAP_FOREACH_ITEM(hm, mi, uoff) {
 			if (can_map_arr_list(hi, mi, usage, uoff)) {
-				evdev_support_key(hm->evdev, mi->code + uoff);
+				hidmap_support_key(hm, mi->code + uoff);
 				if (item->codes == NULL)
 					item->codes = malloc(
 					    arr_size * sizeof(uint16_t),
@@ -608,7 +664,6 @@ hidmap_parse_hid_item(struct hidmap *hm, struct hid_item *hi,
 		return (false);
 	item->type = HIDMAP_TYPE_ARR_LIST;
 	item->last_key = KEY_RESERVED;
-	evdev_support_event(hm->evdev, EV_KEY);
 
 mapped:
 	item->id = hi->report_ID;
@@ -680,6 +735,9 @@ hidmap_parse_hid_descr(struct hidmap *hm, uint8_t tlc_index)
 		    "result=%td\n", hm->nhid_items, item - hm->hid_items);
 	hm->nhid_items = item - hm->hid_items;
 
+	if (HIDMAP_WANT_MERGE_KEYS(hm))
+		bzero(hm->key_press, howmany(KEY_CNT, 8));
+
 	return (0);
 }
 
@@ -750,6 +808,9 @@ hidmap_detach(struct hidmap* hm)
 				free(hi->codes, M_DEVBUF);
 		free(hm->hid_items, M_DEVBUF);
 	}
+
+	free(hm->key_press, M_DEVBUF);
+	free(hm->key_rel, M_DEVBUF);
 
 	return (0);
 }
