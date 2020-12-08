@@ -245,7 +245,7 @@ hidmap_intr(void *context, void *buf, hid_size_t len)
 		    (int)sizeof(hi->cb), &hi->cb, " ");
 
 		if (hi->invert_value)
-			data = ~data;
+			data = hi->lmin + hi->lmax - data;
 
 		switch (hi->type) {
 		case HIDMAP_TYPE_CALLBACK:
