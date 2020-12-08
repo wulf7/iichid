@@ -71,7 +71,8 @@ static const uint8_t	xb360gp_rdesc[] = {UHID_XB360GP_REPORT_DESCR()};
 #define XB360GP_MAP_ABS(usage, code)	\
 	{ HIDMAP_ABS(HUP_GENERIC_DESKTOP, HUG_##usage, code) }
 #define XB360GP_MAP_ABS_INV(usage, code)	\
-	{ HIDMAP_ABS(HUP_GENERIC_DESKTOP, HUG_##usage, code), .invert_value = 1 }
+	{ HIDMAP_ABS(HUP_GENERIC_DESKTOP, HUG_##usage, code),	\
+	    .invert_value = 1 }
 #define XB360GP_MAP_CRG(usage_from, usage_to, callback)	\
 	{ HIDMAP_ANY_CB_RANGE(HUP_GENERIC_DESKTOP,	\
 	    HUG_##usage_from, HUG_##usage_to, callback) }
