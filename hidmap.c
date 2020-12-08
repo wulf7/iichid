@@ -609,7 +609,9 @@ hidmap_parse_hid_item(struct hidmap *hm, struct hid_item *hi,
 					evdev_support_abs(hm->evdev,
 					    item->code, 0,
 					    hi->logical_minimum,
-					    hi->logical_maximum, 0, 0,
+					    hi->logical_maximum,
+					    mi->fuzz,
+					    mi->flat,
 					    hid_item_resolution(hi));
 					break;
 				case EV_SW:

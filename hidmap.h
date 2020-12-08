@@ -85,6 +85,8 @@ struct hidmap_item {
 		struct {
 			uint16_t	type;	/* Evdev event type */
 			uint16_t	code;	/* Evdev event code */
+			uint16_t	fuzz;	/* Evdev event fuzz */
+			uint16_t	flat;	/* Evdev event flat */
 		};
 		hidmap_cb_t		*cb;	/* Reporting callback */
 	};
