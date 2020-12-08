@@ -93,7 +93,6 @@ enum {
 	HMS_ABS_X,
 	HMS_ABS_Y,
 	HMS_ABS_Z,
-	HMS_WHEEL,
 	HMS_HWHEEL,
 	HMS_BTN,
 	HMS_BTN_MS1,
@@ -101,7 +100,6 @@ enum {
 	HMS_FINAL_CB,
 };
 
-static hidmap_cb_t	hms_wheel_cb;
 static hidmap_cb_t	hms_final_cb;
 
 #define HMS_MAP_BUT_RG(usage_from, usage_to, code)	\
@@ -112,10 +110,10 @@ static hidmap_cb_t	hms_final_cb;
 	{ HIDMAP_ABS(HUP_GENERIC_DESKTOP, usage, code) }
 #define HMS_MAP_REL(usage, code)	\
 	{ HIDMAP_REL(HUP_GENERIC_DESKTOP, usage, code) }
+#define HMS_MAP_REL_REV(usage, code)	\
+	{ HIDMAP_REL(HUP_GENERIC_DESKTOP, usage, code), .invert_value = true }
 #define HMS_MAP_REL_CN(usage, code)	\
 	{ HIDMAP_REL(HUP_CONSUMER, usage, code) }
-#define HMS_MAP_REL_CB(usage, cb)	\
-	{ HIDMAP_REL_CB(HUP_GENERIC_DESKTOP, usage, &cb) }
 #define	HMS_FINAL_CB(cb)		\
 	{ HIDMAP_FINAL_CB(&cb) }
 
@@ -126,12 +124,18 @@ static const struct hidmap_item hms_map[] = {
 	[HMS_ABS_X]	= HMS_MAP_ABS(HUG_X,		ABS_X),
 	[HMS_ABS_Y]	= HMS_MAP_ABS(HUG_Y,		ABS_Y),
 	[HMS_ABS_Z]	= HMS_MAP_ABS(HUG_Z,		ABS_Z),
-	[HMS_WHEEL]	= HMS_MAP_REL_CB(HUG_WHEEL,	hms_wheel_cb),
 	[HMS_HWHEEL]	= HMS_MAP_REL_CN(HUC_AC_PAN,	REL_HWHEEL),
 	[HMS_BTN]	= HMS_MAP_BUT_RG(1, 16,		BTN_MOUSE),
 	[HMS_BTN_MS1]	= HMS_MAP_BUT_MS(1,		BTN_RIGHT),
 	[HMS_BTN_MS2]	= HMS_MAP_BUT_MS(2,		BTN_MIDDLE),
 	[HMS_FINAL_CB]	= HMS_FINAL_CB(hms_final_cb),
+};
+
+static const struct hidmap_item hms_map_wheel[] = {
+	HMS_MAP_REL(HUG_WHEEL,		REL_WHEEL),
+};
+static const struct hidmap_item hms_map_wheel_rev[] = {
+	HMS_MAP_REL_REV(HUG_WHEEL,	REL_WHEEL),
 };
 
 /* A match on these entries will load hms */
@@ -142,34 +146,7 @@ static const struct hid_device_id hms_devs[] = {
 struct hms_softc {
 	struct hidmap		hm;
 	HIDMAP_CAPS(caps, hms_map);
-	bool			rev_wheel;
 };
-
-/* Reverse wheel if required. */
-static int
-hms_wheel_cb(HIDMAP_CB_ARGS)
-{
-	struct hms_softc *sc = HIDMAP_CB_GET_SOFTC();
-	struct evdev_dev *evdev = HIDMAP_CB_GET_EVDEV();
-	int32_t data;
-
-	switch (HIDMAP_CB_GET_STATE()) {
-	case HIDMAP_CB_IS_ATTACHING:
-		evdev_support_event(evdev, EV_REL);
-		evdev_support_rel(evdev, REL_WHEEL);
-		break;
-	case HIDMAP_CB_IS_RUNNING:
-		data = ctx.data;
-		/* No movement. Nothing to report. */
-		if (data == 0)
-			return (ENOMSG);
-		if (sc->rev_wheel)
-			data = -data;
-		evdev_push_rel(evdev, REL_WHEEL, data);
-	}
-
-	return (0);
-}
 
 static int
 hms_final_cb(HIDMAP_CB_ARGS)
@@ -249,6 +226,7 @@ hms_attach(device_t dev)
 	struct hms_softc *sc = device_get_softc(dev);
 	const struct hid_device_info *hw = hid_get_device_info(dev);
 	struct hidmap_hid_item *hi;
+	HIDMAP_CAPS(cap_wheel, hms_map_wheel);
 	void *d_ptr;
 	hid_size_t d_len;
 	bool set_report_proto;
@@ -266,10 +244,10 @@ hms_attach(device_t dev)
 	    memcmp(d_ptr, hms_boot_desc, sizeof(hms_boot_desc)) == 0);
 	(void)hid_set_protocol(dev, set_report_proto ? 1 : 0);
 
-	if (hid_test_quirk(hw, HQ_MS_REVZ)) {
-		/* Some wheels need the Z axis reversed. */
-		sc->rev_wheel = true;
-	}
+	if (hid_test_quirk(hw, HQ_MS_REVZ))
+		HIDMAP_ADD_MAP(&sc->hm, hms_map_wheel_rev, cap_wheel);
+	else
+		HIDMAP_ADD_MAP(&sc->hm, hms_map_wheel, cap_wheel);
 
 	error = hidmap_attach(&sc->hm);
 	if (error)
@@ -291,7 +269,7 @@ hms_attach(device_t dev)
 	     hidmap_test_cap(sc->caps, HMS_ABS_Y)) ? "Y" : "",
 	    (hidmap_test_cap(sc->caps, HMS_REL_Z) ||
 	     hidmap_test_cap(sc->caps, HMS_ABS_Z)) ? "Z" : "",
-	    hidmap_test_cap(sc->caps, HMS_WHEEL) ? "W" : "",
+	    hidmap_test_cap(cap_wheel, 0) ? "W" : "",
 	    hidmap_test_cap(sc->caps, HMS_HWHEEL) ? "H" : "",
 	    sc->hm.hid_items[0].id);
 

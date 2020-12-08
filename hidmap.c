@@ -244,8 +244,10 @@ hidmap_intr(void *context, void *buf, hid_size_t len)
 		DPRINTFN(hm, 6, "type=%d data=%d item=%*D\n", hi->type, data,
 		    (int)sizeof(hi->cb), &hi->cb, " ");
 
-		if (hi->invert_value)
-			data = hi->lmin + hi->lmax - data;
+		if (hi->invert_value && hi->type < HIDMAP_TYPE_ARR_LIST)
+			data = hi->evtype == EV_REL
+			    ? -data
+			    : hi->lmin + hi->lmax - data;
 
 		switch (hi->type) {
 		case HIDMAP_TYPE_CALLBACK:
