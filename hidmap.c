@@ -244,6 +244,9 @@ hidmap_intr(void *context, void *buf, hid_size_t len)
 		DPRINTFN(hm, 6, "type=%d data=%d item=%*D\n", hi->type, data,
 		    (int)sizeof(hi->cb), &hi->cb, " ");
 
+		if (hi->invert_value)
+			data = ~data;
+
 		switch (hi->type) {
 		case HIDMAP_TYPE_CALLBACK:
 			if (hi->cb(hm, hi, (union hidmap_cb_ctx){.data = data})
@@ -589,6 +592,7 @@ hidmap_parse_hid_item(struct hidmap *hm, struct hid_item *hi,
 				    ? HIDMAP_TYPE_VAR_NULLST
 				    : HIDMAP_TYPE_VARIABLE;
 				item->last_val = 0;
+				item->invert_value = mi->invert_value;
 				switch (mi->type) {
 				case EV_KEY:
 					hidmap_support_key(hm, item->code);
