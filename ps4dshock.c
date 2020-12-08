@@ -720,6 +720,8 @@ enum {
 	{ HIDMAP_KEY(HUP_BUTTON, number, code) }
 #define PS4DS_MAP_ABS(usage, code)		\
 	{ HIDMAP_ABS(HUP_GENERIC_DESKTOP, HUG_##usage, code) }
+#define PS4DS_MAP_FLT(usage, code)		\
+	{ HIDMAP_ABS(HUP_GENERIC_DESKTOP, HUG_##usage, code), .flat = 15 }
 #define PS4DS_MAP_VSW(usage, code)	\
 	{ HIDMAP_SW(HUP_MICROSOFT, usage, code) }
 #define PS4DS_MAP_GCB(usage, callback)	\
@@ -730,11 +732,11 @@ enum {
 	{ HIDMAP_FINAL_CB(&cb) }
 
 static const struct hidmap_item ps4dshock_map[] = {
-	PS4DS_MAP_ABS(X,		ABS_X),
-	PS4DS_MAP_ABS(Y,		ABS_Y),
+	PS4DS_MAP_FLT(X,		ABS_X),
+	PS4DS_MAP_FLT(Y,		ABS_Y),
 	PS4DS_MAP_ABS(Z,		ABS_Z),
-	PS4DS_MAP_ABS(RX,		ABS_RX),
-	PS4DS_MAP_ABS(RY,		ABS_RY),
+	PS4DS_MAP_FLT(RX,		ABS_RX),
+	PS4DS_MAP_FLT(RY,		ABS_RY),
 	PS4DS_MAP_ABS(RZ,		ABS_RZ),
 	PS4DS_MAP_BTN(1,		BTN_WEST),
 	PS4DS_MAP_BTN(2,		BTN_SOUTH),
