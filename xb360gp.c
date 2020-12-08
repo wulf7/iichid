@@ -70,9 +70,12 @@ static const uint8_t	xb360gp_rdesc[] = {UHID_XB360GP_REPORT_DESCR()};
 	{ HIDMAP_KEY(HUP_BUTTON, number, code) }
 #define XB360GP_MAP_ABS(usage, code)	\
 	{ HIDMAP_ABS(HUP_GENERIC_DESKTOP, HUG_##usage, code) }
+#define XB360GP_MAP_ABS_FLT(usage, code)	\
+	{ HIDMAP_ABS(HUP_GENERIC_DESKTOP, HUG_##usage, code),	\
+	    .fuzz = 16, .flat = 128 }
 #define XB360GP_MAP_ABS_INV(usage, code)	\
 	{ HIDMAP_ABS(HUP_GENERIC_DESKTOP, HUG_##usage, code),	\
-	    .invert_value = 1 }
+	    .fuzz = 16, .flat = 128, .invert_value = true }
 #define XB360GP_MAP_CRG(usage_from, usage_to, callback)	\
 	{ HIDMAP_ANY_CB_RANGE(HUP_GENERIC_DESKTOP,	\
 	    HUG_##usage_from, HUG_##usage_to, callback) }
@@ -93,10 +96,10 @@ static const struct hidmap_item xb360gp_map[] = {
 	XB360GP_MAP_BUT(10,		BTN_THUMBR),
 	XB360GP_MAP_BUT(11,		BTN_MODE),
 	XB360GP_MAP_CRG(D_PAD_UP, D_PAD_LEFT, hgame_dpad_cb),
-	XB360GP_MAP_ABS(X,		ABS_X),
+	XB360GP_MAP_ABS_FLT(X,		ABS_X),
 	XB360GP_MAP_ABS_INV(Y,		ABS_Y),
 	XB360GP_MAP_ABS(Z,		ABS_Z),
-	XB360GP_MAP_ABS(RX,		ABS_RX),
+	XB360GP_MAP_ABS_FLT(RX,		ABS_RX),
 	XB360GP_MAP_ABS_INV(RY,		ABS_RY),
 	XB360GP_MAP_ABS(RZ,		ABS_RZ),
 	XB360GP_FINALCB(		hgame_final_cb),
