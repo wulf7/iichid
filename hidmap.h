@@ -229,7 +229,14 @@ hidmap_set_dev(struct hidmap *hm, device_t dev)
 {
 	hm->dev = dev;
 }
-void		hidmap_set_debug_var(struct hidmap *hm, int *debug_var);
+
+/* Hack to avoid #ifdef-ing of hidmap_set_debug_var in hidmap based drivers */
+#ifdef HID_DEBUG
+#define	hidmap_set_debug_var(h, d)	_hidmap_set_debug_var((h), (d))
+#else
+#define	hidmap_set_debug_var(...)
+#endif
+void	_hidmap_set_debug_var(struct hidmap *hm, int *debug_var);
 #define	HIDMAP_ADD_MAP(hm, map, caps)					\
 	hidmap_add_map((hm), (map), nitems(map), (caps))
 uint32_t	hidmap_add_map(struct hidmap *hm,
