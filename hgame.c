@@ -48,18 +48,6 @@ __FBSDID("$FreeBSD$");
 #include "hidquirk.h"
 #include "hidmap.h"
 
-#define	HID_DEBUG_VAR	hgame_debug
-#include "hid_debug.h"
-
-#ifdef HID_DEBUG
-static int hgame_debug = 1;
-
-static SYSCTL_NODE(_hw_hid, OID_AUTO, hgame, CTLFLAG_RW, 0,
-		"Generic HID joystick/gamepad");
-SYSCTL_INT(_hw_hid_hgame, OID_AUTO, debug, CTLFLAG_RWTUN,
-		&hgame_debug, 0, "Debug level");
-#endif
-
 #define HGAME_MAP_BRG(number_from, number_to, code)	\
 	{ HIDMAP_KEY_RANGE(HUP_BUTTON, number_from, number_to, code) }
 #define HGAME_MAP_ABS(usage, code)	\
@@ -170,7 +158,6 @@ hgame_probe(device_t dev)
 		return (error);
 
 	hidmap_set_dev(&sc->hm, dev);
-	hidmap_set_debug_var(&sc->hm, &HID_DEBUG_VAR);
 
 	error = HIDMAP_ADD_MAP(&sc->hm, hgame_map, NULL);
 	if (error != 0)

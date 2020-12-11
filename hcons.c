@@ -47,18 +47,6 @@ __FBSDID("$FreeBSD$");
 #include "hidbus.h"
 #include "hidmap.h"
 
-#define	HID_DEBUG_VAR	hcons_debug
-#include "hid_debug.h"
-
-#ifdef HID_DEBUG
-static int hcons_debug = 1;
-
-static SYSCTL_NODE(_hw_hid, OID_AUTO, hcons, CTLFLAG_RW, 0,
-		"Consumer Controls");
-SYSCTL_INT(_hw_hid_hcons, OID_AUTO, debug, CTLFLAG_RWTUN,
-		&hcons_debug, 0, "Debug level");
-#endif
-
 #ifndef	KEY_FULL_SCREEN
 #define KEY_FULL_SCREEN		0x174
 #endif
@@ -290,7 +278,6 @@ hcons_probe(device_t dev)
 		return (error);
 
 	hidmap_set_dev(hm, dev);
-	hidmap_set_debug_var(hm, &HID_DEBUG_VAR);
 
 	/* Check if report descriptor belongs to a Consumer controls page */
 	error = HIDMAP_ADD_MAP(hm, hcons_map, NULL);

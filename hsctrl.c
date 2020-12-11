@@ -47,18 +47,6 @@ __FBSDID("$FreeBSD$");
 #include "hidbus.h"
 #include "hidmap.h"
 
-#define	HID_DEBUG_VAR	hsctrl_debug
-#include "hid_debug.h"
-
-#ifdef HID_DEBUG
-static int hsctrl_debug = 1;
-
-static SYSCTL_NODE(_hw_hid, OID_AUTO, hsctrl, CTLFLAG_RW, 0,
-		"System Controls");
-SYSCTL_INT(_hw_hid_hsctrl, OID_AUTO, debug, CTLFLAG_RWTUN,
-		&hsctrl_debug, 0, "Debug level");
-#endif
-
 #define	HUG_SYSTEM_POWER_UP	0x008e
 #define	HUG_SYSTEM_RESTART	0x008f
 
@@ -98,7 +86,6 @@ hsctrl_probe(device_t dev)
 		return (error);
 
 	hidmap_set_dev(hm, dev);
-	hidmap_set_debug_var(hm, &HID_DEBUG_VAR);
 
 	/* Check if report descriptor belongs to a System control TLC */
 	error = HIDMAP_ADD_MAP(hm, hsctrl_map, NULL);

@@ -205,6 +205,7 @@ struct hidmap {
 	uint16_t		key_max;
 
 	int			*debug_var;
+	int			debug_level;
 	enum hidmap_cb_state	cb_state;
 	void *			intr_buf;
 	hid_size_t		intr_len;

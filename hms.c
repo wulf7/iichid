@@ -46,17 +46,6 @@ __FBSDID("$FreeBSD$");
 #include "hidquirk.h"
 #include "hidmap.h"
 
-#define	HID_DEBUG_VAR	hms_debug
-#include "hid_debug.h"
-
-#ifdef HID_DEBUG
-static int hms_debug = 0;
-
-static SYSCTL_NODE(_hw_hid, OID_AUTO, hms, CTLFLAG_RW, 0, "USB hms");
-SYSCTL_INT(_hw_hid_hms, OID_AUTO, debug, CTLFLAG_RWTUN,
-    &hms_debug, 0, "Debug level");
-#endif
-
 static const uint8_t hms_boot_desc[] = {
 	0x05, 0x01,	// Usage Page (Generic Desktop Ctrls)
 	0x09, 0x02,	// Usage (Mouse)
@@ -197,7 +186,6 @@ hms_probe(device_t dev)
 		return (error);
 
 	hidmap_set_dev(&sc->hm, dev);
-	hidmap_set_debug_var(&sc->hm, &HID_DEBUG_VAR);
 
 	/* Check if report descriptor belongs to mouse */
 	error = HIDMAP_ADD_MAP(&sc->hm, hms_map, sc->caps);

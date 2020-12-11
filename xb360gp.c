@@ -52,18 +52,6 @@ __FBSDID("$FreeBSD$");
 #include "hidquirk.h"
 #include "hidmap.h"
 
-#define	HID_DEBUG_VAR	xb360gp_debug
-#include "hid_debug.h"
-
-#ifdef HID_DEBUG
-static int xb360gp_debug = 1;
-
-static SYSCTL_NODE(_hw_hid, OID_AUTO, xb360gp, CTLFLAG_RW, 0,
-		"XBox360 gamepad");
-SYSCTL_INT(_hw_hid_xb360gp, OID_AUTO, debug, CTLFLAG_RWTUN,
-		&xb360gp_debug, 0, "Debug level");
-#endif
-
 static const uint8_t	xb360gp_rdesc[] = {UHID_XB360GP_REPORT_DESCR()};
 
 #define XB360GP_MAP_BUT(number, code)	\
@@ -134,7 +122,6 @@ xb360gp_probe(device_t dev)
 		return (ENXIO);
 
 	hidmap_set_dev(&sc->hm, dev);
-	hidmap_set_debug_var(&sc->hm, &HID_DEBUG_VAR);
 
 	error = HIDMAP_ADD_MAP(&sc->hm, xb360gp_map, NULL);
 	if (error != 0)
@@ -159,7 +146,7 @@ xb360gp_attach(device_t dev)
 	error = hid_set_report(dev, reportbuf, sizeof(reportbuf),
 	    HID_OUTPUT_REPORT, 0);
 	if (error)
-		DPRINTF("set output report failed, error=%d "
+		device_printf(dev, "set output report failed, error=%d "
 		    "(ignored)\n", error);
 
 	return (hidmap_attach(&sc->hm));

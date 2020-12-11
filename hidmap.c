@@ -111,7 +111,7 @@ hidmap_get_next_map_item(struct hidmap *hm, u_int *map, u_int *item,
 }
 
 void
-hidmap_set_debug_var(struct hidmap *hm, int *debug_var)
+_hidmap_set_debug_var(struct hidmap *hm, int *debug_var)
 {
 #ifdef HID_DEBUG
 	hm->debug_var = debug_var;
@@ -536,8 +536,8 @@ hidmap_add_map(struct hidmap *hm, const struct hidmap_item *map,
 
 	error = hid_get_report_descr(hm->dev, &d_ptr, &d_len);
 	if (error != 0) {
-		DPRINTF(hm, "could not retrieve report descriptor from "
-		     "device: %d\n", error);
+		device_printf(hm->dev, "could not retrieve report descriptor "
+		    "from device: %d\n", error);
 		return (error);
 	}
 
@@ -753,7 +753,23 @@ int
 hidmap_attach(struct hidmap* hm)
 {
 	const struct hid_device_info *hw = hid_get_device_info(hm->dev);
+#ifdef HID_DEBUG
+	char tunable[40];
+#endif
 	int error;
+
+#ifdef HID_DEBUG
+	if (hm->debug_var == NULL) {
+		hm->debug_var = &hm->debug_level;
+		snprintf(tunable, sizeof(tunable), "hw.hid.%s.debug",
+		    device_get_name(hm->dev));
+		TUNABLE_INT_FETCH(tunable, &hm->debug_level);
+		SYSCTL_ADD_INT(device_get_sysctl_ctx(hm->dev),
+			SYSCTL_CHILDREN(device_get_sysctl_tree(hm->dev)),
+			OID_AUTO, "debug", CTLTYPE_INT | CTLFLAG_RWTUN,
+			&hm->debug_level, 0, "Verbosity level");
+	}
+#endif
 
 	DPRINTFN(hm, 11, "hm=%p\n", hm);
 

@@ -52,18 +52,6 @@ __FBSDID("$FreeBSD$");
 #include "hidbus.h"
 #include "hidmap.h"
 
-#define	HID_DEBUG_VAR	hpen_debug
-#include "hid_debug.h"
-
-#ifdef HID_DEBUG
-static int hpen_debug = 1;
-
-static SYSCTL_NODE(_hw_hid, OID_AUTO, hpen, CTLFLAG_RW, 0,
-		"Generic HID tablet");
-SYSCTL_INT(_hw_hid_hpen, OID_AUTO, debug, CTLFLAG_RWTUN,
-		&hpen_debug, 0, "Debug level");
-#endif
-
 static const uint8_t	hpen_graphire_report_descr[] =
 			   { UHID_GRAPHIRE_REPORT_DESCR() };
 static const uint8_t	hpen_graphire3_4x5_report_descr[] =
@@ -201,7 +189,6 @@ hpen_probe(device_t dev)
 		return (error);
 
 	hidmap_set_dev(hm, dev);
-	hidmap_set_debug_var(hm, &HID_DEBUG_VAR);
 
 	/* Check if report descriptor belongs to a HID tablet device */
 	is_pen = hidbus_get_usage(dev) == HID_USAGE2(HUP_DIGITIZERS, HUD_PEN);
@@ -234,8 +221,8 @@ hpen_attach(device_t dev)
 		error = hid_set_report(dev, reportbuf, sizeof(reportbuf),
 		    HID_FEATURE_REPORT, reportbuf[0]);
 		if (error)
-			DPRINTF("set feature report failed, error=%d "
-			    "(ignored)\n", error);
+			device_printf(dev, "set feature report failed, "
+			    "error=%d (ignored)\n", error);
 	}
 
 	return (hidmap_attach(hm));
