@@ -267,23 +267,10 @@ static int
 hskbd_probe(device_t dev)
 {
 	struct hskbd_softc *sc = device_get_softc(dev);
-	int error;
 
-	error = HIDBUS_LOOKUP_DRIVER_INFO(dev, hskbd_devs);
-	if (error != 0)
-		return (error);
-
-	hidmap_set_dev(&sc->hm, dev);
 	hidmap_set_debug_var(&sc->hm, &HID_DEBUG_VAR);
-
-	/* Check if report descriptor belongs to keyboard */
-	error = hidmap_add_map(&sc->hm, hskbd_map, hskbd_nmap_items, NULL);
-	if (error != 0)
-		return (error);
-
-	hidbus_set_desc(dev, "Simple Keyboard");
-
-	return (BUS_PROBE_DEFAULT);
+	return (hidmap_probe(&sc->hm, dev, hskbd_devs, nitems(hskbd_devs),
+	    hskbd_map, hskbd_nmap_items, "Simple Keyboard", NULL));
 }
 
 static int
