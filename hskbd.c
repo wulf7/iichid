@@ -167,7 +167,7 @@ hskbd_ev_event(struct evdev_dev *evdev, uint16_t type, uint16_t code,
 	    !sc->sc_capslock_exists)
 		return;
 
-	DPRINTF("led(%u)=%d\n", type, value);
+	DPRINTFN(5, "led(%u)=%d\n", type, value);
 
 	mtx_lock(hidbus_get_lock(dev));
 
@@ -210,7 +210,7 @@ hskbd_ev_event(struct evdev_dev *evdev, uint16_t type, uint16_t code,
 		buf = sc->sc_buffer + 1;
 	}
 
-	DPRINTF("len=%d, id=%d\n", len, id);
+	DPRINTFN(5, "len=%d, id=%d\n", len, id);
 
 	/* Start data transfer. */
 	evdev_push_event(sc->hm.evdev, type, code, value);
@@ -298,14 +298,14 @@ hskbd_attach(device_t dev)
 	(void)hid_set_protocol(dev, set_report_proto ? 1 : 0);
 
 	/* figure out leds on keyboard */
-	if (hid_tlc_locate(d_ptr, d_len, HID_USAGE2(HUP_LEDS, 0x01),
+	if (hidbus_locate(d_ptr, d_len, HID_USAGE2(HUP_LEDS, 0x01),
 	    hid_output, tlc_index, 0, &sc->sc_loc_numlock, &flags,
 	    &sc->sc_id_leds, NULL)) {
 		if (flags & HIO_VARIABLE)
 			sc->sc_numlock_exists = true;
 		DPRINTFN(1, "Found keyboard numlock\n");
 	}
-	if (hid_tlc_locate(d_ptr, d_len, HID_USAGE2(HUP_LEDS, 0x02),
+	if (hidbus_locate(d_ptr, d_len, HID_USAGE2(HUP_LEDS, 0x02),
 	    hid_output, tlc_index, 0, &sc->sc_loc_capslock, &flags,
 	    &id, NULL)) {
 		if (!sc->sc_numlock_exists)
@@ -314,7 +314,7 @@ hskbd_attach(device_t dev)
 			sc->sc_capslock_exists = true;
 		DPRINTFN(1, "Found keyboard capslock\n");
 	}
-	if (hid_tlc_locate(d_ptr, d_len, HID_USAGE2(HUP_LEDS, 0x03),
+	if (hidbus_locate(d_ptr, d_len, HID_USAGE2(HUP_LEDS, 0x03),
 	    hid_output, tlc_index, 0, &sc->sc_loc_scrolllock, &flags,
 	    &id, NULL)) {
 		if (!sc->sc_numlock_exists && !sc->sc_capslock_exists)
