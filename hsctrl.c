@@ -78,23 +78,8 @@ static const struct hid_device_id hsctrl_devs[] = {
 static int
 hsctrl_probe(device_t dev)
 {
-	struct hidmap *hm = device_get_softc(dev);
-	int error;
-
-	error = HIDBUS_LOOKUP_DRIVER_INFO(dev, hsctrl_devs);
-	if (error != 0)
-		return (error);
-
-	hidmap_set_dev(hm, dev);
-
-	/* Check if report descriptor belongs to a System control TLC */
-	error = HIDMAP_ADD_MAP(hm, hsctrl_map, NULL);
-	if (error != 0)
-		return (error);
-
-	hidbus_set_desc(dev, "System Control");
-
-	return (BUS_PROBE_DEFAULT);
+	return (HIDMAP_PROBE(device_get_softc(dev), dev,
+	    hsctrl_devs, hsctrl_map, "System Control"));
 }
 
 static int

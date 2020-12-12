@@ -270,23 +270,8 @@ hcons_rel_volume_cb(HIDMAP_CB_ARGS)
 static int
 hcons_probe(device_t dev)
 {
-	struct hidmap *hm = device_get_softc(dev);
-	int error;
-
-	error = HIDBUS_LOOKUP_DRIVER_INFO(dev, hcons_devs);
-	if (error != 0)
-		return (error);
-
-	hidmap_set_dev(hm, dev);
-
-	/* Check if report descriptor belongs to a Consumer controls page */
-	error = HIDMAP_ADD_MAP(hm, hcons_map, NULL);
-	if (error != 0)
-		return (error);
-
-	hidbus_set_desc(dev, "Consumer Control");
-
-	return (BUS_PROBE_DEFAULT);
+	return (HIDMAP_PROBE(device_get_softc(dev), dev,
+	    hcons_devs, hcons_map, "Consumer Control"));
 }
 
 static int

@@ -750,6 +750,29 @@ hidmap_parse_hid_descr(struct hidmap *hm, uint8_t tlc_index)
 }
 
 int
+hidmap_probe(struct hidmap* hm, device_t dev,
+    const struct hid_device_id *id, size_t sizeof_id,
+    const struct hidmap_item *map, int nmap_items,
+    const char *suffix, hidmap_caps_t caps)
+{
+	int error;
+
+	error = hidbus_lookup_driver_info(dev, id, sizeof_id);
+	if (error != 0)
+		return (error);
+
+	hidmap_set_dev(hm, dev);
+
+	error = hidmap_add_map(hm, map, nmap_items, caps);
+	if (error != 0)
+		return (error);
+
+	hidbus_set_desc(dev, suffix);
+
+	return (BUS_PROBE_DEFAULT);
+}
+
+int
 hidmap_attach(struct hidmap* hm)
 {
 	const struct hid_device_info *hw = hid_get_device_info(hm->dev);

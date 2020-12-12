@@ -1158,88 +1158,44 @@ static int
 ps4dshock_probe(device_t dev)
 {
 	struct ps4dshock_softc *sc = device_get_softc(dev);
-	int error;
 
-	error = HIDBUS_LOOKUP_DRIVER_INFO(dev, ps4dshock_devs);
-	if (error != 0)
-		return (error);
-
-	hidmap_set_dev(&sc->hm, dev);
 	hidmap_set_debug_var(&sc->hm, &HID_DEBUG_VAR);
-
-	error = HIDMAP_ADD_MAP(&sc->hm, ps4dshock_map, NULL);
-	if (error != 0)
-		return (error);
-
-	device_set_desc(dev, PS4DS_NAME" Gamepad");
-
-	return (BUS_PROBE_DEFAULT);
+	return (
+	    HIDMAP_PROBE(&sc->hm, dev, ps4dshock_devs, ps4dshock_map, NULL)
+	);
 }
 
 static int
 ps4dsacc_probe(device_t dev)
 {
 	struct ps4dsacc_softc *sc = device_get_softc(dev);
-	int error;
 
-	error = HIDBUS_LOOKUP_DRIVER_INFO(dev, ps4dsacc_devs);
-	if (error != 0)
-		return (error);
-
-	hidmap_set_dev(&sc->hm, dev);
 	hidmap_set_debug_var(&sc->hm, &HID_DEBUG_VAR);
-
-	error = HIDMAP_ADD_MAP(&sc->hm, ps4dsacc_map, NULL);
-	if (error != 0)
-		return (error);
-
-	device_set_desc(dev, PS4DS_NAME" Sensors");
-
-	return (BUS_PROBE_DEFAULT);
+	return (
+	    HIDMAP_PROBE(&sc->hm, dev, ps4dsacc_devs, ps4dsacc_map, "Sensors")
+	);
 }
 
 static int
 ps4dshead_probe(device_t dev)
 {
 	struct hidmap *hm = device_get_softc(dev);
-	int error;
 
-	error = HIDBUS_LOOKUP_DRIVER_INFO(dev, ps4dshead_devs);
-	if (error != 0)
-		return (error);
-
-	hidmap_set_dev(hm, dev);
 	hidmap_set_debug_var(hm, &HID_DEBUG_VAR);
-
-	error = HIDMAP_ADD_MAP(hm, ps4dshead_map, NULL);
-	if (error != 0)
-		return (error);
-
-	device_set_desc(dev, PS4DS_NAME" Headset");
-
-	return (BUS_PROBE_DEFAULT);
+	return (
+	    HIDMAP_PROBE(hm, dev, ps4dshead_devs, ps4dshead_map, "Headset")
+	);
 }
 
 static int
 ps4dsmtp_probe(device_t dev)
 {
 	struct ps4dshock_softc *sc = device_get_softc(dev);
-	int error;
 
-	error = HIDBUS_LOOKUP_DRIVER_INFO(dev, ps4dsmtp_devs);
-	if (error != 0)
-		return (error);
-
-	hidmap_set_dev(&sc->hm, dev);
 	hidmap_set_debug_var(&sc->hm, &HID_DEBUG_VAR);
-
-	error = HIDMAP_ADD_MAP(&sc->hm, ps4dsmtp_map, NULL);
-	if (error != 0)
-		return (error);
-
-	device_set_desc(dev, PS4DS_NAME" Touchpad");
-
-	return (BUS_PROBE_DEFAULT);
+	return (
+	    HIDMAP_PROBE(&sc->hm, dev, ps4dsmtp_devs, ps4dsmtp_map, "Touchpad")
+	);
 }
 
 static int

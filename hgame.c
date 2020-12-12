@@ -153,14 +153,8 @@ hgame_probe(device_t dev)
 	if (hid_test_quirk(hw, HQ_IS_XBOX360GP))
 		return(ENXIO);
 
-	error = HIDBUS_LOOKUP_DRIVER_INFO(dev, hgame_devs);
-	if (error != 0)
-		return (error);
-
-	hidmap_set_dev(&sc->hm, dev);
-
-	error = HIDMAP_ADD_MAP(&sc->hm, hgame_map, NULL);
-	if (error != 0)
+	error = HIDMAP_PROBE(&sc->hm, dev, hgame_devs, hgame_map, NULL);
+	if (error > 0)
 		return (error);
 
 	hidbus_set_desc(dev, hidbus_get_driver_info(dev) == HUG_GAME_PAD ?
@@ -168,6 +162,8 @@ hgame_probe(device_t dev)
 
 	return (BUS_PROBE_GENERIC);
 }
+
+
 
 static int
 hgame_attach(device_t dev)
