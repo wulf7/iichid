@@ -242,7 +242,7 @@ void	_hidmap_set_debug_var(struct hidmap *hm, int *debug_var);
 #define	HIDMAP_ADD_MAP(hm, map, caps)					\
 	hidmap_add_map((hm), (map), nitems(map), (caps))
 uint32_t	hidmap_add_map(struct hidmap *hm,
-		    const struct hidmap_item *map, int nmap_items,
+		    const struct hidmap_item *map, int nitems_map,
 		    hidmap_caps_t caps);
 
 /* Versions of evdev_* functions capable to merge key events with same codes */
@@ -250,11 +250,11 @@ void	hidmap_support_key(struct hidmap *hm, uint16_t key);
 void	hidmap_push_key(struct hidmap *hm, uint16_t key, int32_t value);
 
 #define	HIDMAP_PROBE(hm, dev, id, map, suffix)				\
-	hidmap_probe((hm), (dev), (id), sizeof(id), (map), nitems(map),	\
+	hidmap_probe((hm), (dev), (id), nitems(id), (map), nitems(map),	\
 	    (suffix), NULL)
 int	hidmap_probe(struct hidmap* hm, device_t dev,
-	    const struct hid_device_id *id, size_t sizeof_id,
-	    const struct hidmap_item *map, int nmap_items,
+	    const struct hid_device_id *id, int nitems_id,
+	    const struct hidmap_item *map, int nitems_map,
 	    const char *suffix, hidmap_caps_t caps);
 int	hidmap_attach(struct hidmap *hm);
 int	hidmap_detach(struct hidmap *hm);

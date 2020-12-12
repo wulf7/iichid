@@ -397,7 +397,7 @@ can_map_arr_list(struct hid_item *hi, const struct hidmap_item *mi,
 
 static bool
 hidmap_probe_hid_item(struct hid_item *hi, const struct hidmap_item *map,
-    int nmap_items, hidmap_caps_t caps)
+    int nitems_map, hidmap_caps_t caps)
 {
 	int32_t arr_size, usage;
 	u_int i, j;
@@ -408,7 +408,7 @@ hidmap_probe_hid_item(struct hid_item *hi, const struct hidmap_item *map,
 	for ((idx) = 0, (uoff) = -1;			\
 	     hidmap_get_next_map_index((map), (nitems), &(idx), &(uoff));)
 
-	HIDMAP_FOREACH_INDEX(map, nmap_items, i, uoff) {
+	HIDMAP_FOREACH_INDEX(map, nitems_map, i, uoff) {
 		if (can_map_callback(hi, map + i, uoff)) {
 			if (map[i].cb(NULL, NULL,
 			    (union hidmap_cb_ctx){.hi = hi}) != 0)
@@ -419,7 +419,7 @@ hidmap_probe_hid_item(struct hid_item *hi, const struct hidmap_item *map,
 	}
 
 	if (hi->flags & HIO_VARIABLE) {
-		HIDMAP_FOREACH_INDEX(map, nmap_items, i, uoff) {
+		HIDMAP_FOREACH_INDEX(map, nitems_map, i, uoff) {
 			if (can_map_variable(hi, map + i, uoff)) {
 				KASSERT(map[i].type == EV_KEY ||
 					map[i].type == EV_REL ||
@@ -434,7 +434,7 @@ hidmap_probe_hid_item(struct hid_item *hi, const struct hidmap_item *map,
 	}
 
 	if (hi->usage_minimum != 0 || hi->usage_maximum != 0) {
-		HIDMAP_FOREACH_INDEX(map, nmap_items, i, uoff) {
+		HIDMAP_FOREACH_INDEX(map, nitems_map, i, uoff) {
 			if (can_map_arr_range(hi, map + i, uoff)) {
 				setbit(caps, i);
 				found = true;
@@ -455,7 +455,7 @@ hidmap_probe_hid_item(struct hid_item *hi, const struct hidmap_item *map,
 		if (j != 0)
 			break;
 		usage = hi->usage;
-		HIDMAP_FOREACH_INDEX(map, nmap_items, i, uoff) {
+		HIDMAP_FOREACH_INDEX(map, nitems_map, i, uoff) {
 			if (can_map_arr_list(hi, map + i, usage, uoff)) {
 				setbit(caps, i);
 				found = true;
@@ -468,7 +468,7 @@ hidmap_probe_hid_item(struct hid_item *hi, const struct hidmap_item *map,
 
 static uint32_t
 hidmap_probe_hid_descr(void *d_ptr, hid_size_t d_len, uint8_t tlc_index,
-    const struct hidmap_item *map, int nmap_items, hidmap_caps_t caps)
+    const struct hidmap_item *map, int nitems_map, hidmap_caps_t caps)
 {
 	struct hid_data *hd;
 	struct hid_item hi;
@@ -476,10 +476,10 @@ hidmap_probe_hid_descr(void *d_ptr, hid_size_t d_len, uint8_t tlc_index,
 	bool do_free = false;
 
 	if (caps == NULL) {
-		caps = malloc(HIDMAP_CAPS_SZ(nmap_items), M_DEVBUF, M_WAITOK);
+		caps = malloc(HIDMAP_CAPS_SZ(nitems_map), M_DEVBUF, M_WAITOK);
 		do_free = true;
 	} else
-		bzero (caps, HIDMAP_CAPS_SZ(nmap_items));
+		bzero (caps, HIDMAP_CAPS_SZ(nitems_map));
 
 	/* Parse inputs */
 	hd = hid_start_parse(d_ptr, d_len, 1 << hid_input);
@@ -489,13 +489,13 @@ hidmap_probe_hid_descr(void *d_ptr, hid_size_t d_len, uint8_t tlc_index,
 		if (hi.flags & HIO_CONST)
 			continue;
 		for (i = 0; i < hi.loc.count; i++, hi.loc.pos += hi.loc.size)
-			if (hidmap_probe_hid_item(&hi, map, nmap_items, caps))
+			if (hidmap_probe_hid_item(&hi, map, nitems_map, caps))
 				items++;
 	}
 	hid_end_parse(hd);
 
 	/* Take finalizing callbacks in to account */
-	for (i = 0; i < nmap_items; i++) {
+	for (i = 0; i < nitems_map; i++) {
 		if (map[i].has_cb && map[i].final_cb &&
 		    map[i].cb(NULL, NULL, (union hidmap_cb_ctx){}) == 0) {
 			setbit(caps, i);
@@ -505,7 +505,7 @@ hidmap_probe_hid_descr(void *d_ptr, hid_size_t d_len, uint8_t tlc_index,
 
 	/* Check that all mandatory usages are present in report descriptor */
 	if (items != 0) {
-		for (i = 0; i < nmap_items; i++) {
+		for (i = 0; i < nitems_map; i++) {
 			if (map[i].required && isclr(caps, i)) {
 				items = 0;
 				break;
@@ -521,7 +521,7 @@ hidmap_probe_hid_descr(void *d_ptr, hid_size_t d_len, uint8_t tlc_index,
 
 uint32_t
 hidmap_add_map(struct hidmap *hm, const struct hidmap_item *map,
-    int nmap_items, hidmap_caps_t caps)
+    int nitems_map, hidmap_caps_t caps)
 {
 	void *d_ptr;
 	uint32_t items;
@@ -543,7 +543,7 @@ hidmap_add_map(struct hidmap *hm, const struct hidmap_item *map,
 
 	hm->cb_state = HIDMAP_CB_IS_PROBING;
 	items = hidmap_probe_hid_descr(d_ptr, d_len, tlc_index, map,
-	    nmap_items, caps);
+	    nitems_map, caps);
 	if (items == 0)
 		return (ENXIO);
 
@@ -551,7 +551,7 @@ hidmap_add_map(struct hidmap *hm, const struct hidmap_item *map,
 	    ("Not more than %d maps is supported", HIDMAP_MAX_MAPS));
 	hm->nhid_items += items;
 	hm->map[hm->nmaps] = map;
-	hm->nmap_items[hm->nmaps] = nmap_items;
+	hm->nmap_items[hm->nmaps] = nitems_map;
 	hm->nmaps++;
 
 	return (0);
@@ -751,19 +751,19 @@ hidmap_parse_hid_descr(struct hidmap *hm, uint8_t tlc_index)
 
 int
 hidmap_probe(struct hidmap* hm, device_t dev,
-    const struct hid_device_id *id, size_t sizeof_id,
-    const struct hidmap_item *map, int nmap_items,
+    const struct hid_device_id *id, int nitems_id,
+    const struct hidmap_item *map, int nitems_map,
     const char *suffix, hidmap_caps_t caps)
 {
 	int error;
 
-	error = hidbus_lookup_driver_info(dev, id, sizeof_id);
+	error = hidbus_lookup_driver_info(dev, id, nitems_id);
 	if (error != 0)
 		return (error);
 
 	hidmap_set_dev(hm, dev);
 
-	error = hidmap_add_map(hm, map, nmap_items, caps);
+	error = hidmap_add_map(hm, map, nitems_map, caps);
 	if (error != 0)
 		return (error);
 

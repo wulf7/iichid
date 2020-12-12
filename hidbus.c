@@ -699,17 +699,12 @@ hidbus_write(device_t dev, const void *data, hid_size_t len)
  * This functions takes an array of "struct hid_device_id" and tries
  * to match the entries with the information in "struct hid_device_info".
  *
- * NOTE: The "sizeof_id" parameter must be a multiple of the
- * hid_device_id structure size. Else the behaviour of this function
- * is undefined.
- *
  * Return values:
  * NULL: No match found.
  * Else: Pointer to matching entry.
  *------------------------------------------------------------------------*/
 const struct hid_device_id *
-hidbus_lookup_id(device_t dev, const struct hid_device_id *id,
-    size_t sizeof_id)
+hidbus_lookup_id(device_t dev, const struct hid_device_id *id, int nitems_id)
 {
 	const struct hid_device_id *id_end;
 	const struct hid_device_info *info;
@@ -720,7 +715,7 @@ hidbus_lookup_id(device_t dev, const struct hid_device_id *id,
 		goto done;
 	}
 
-	id_end = (const void *)(((const uint8_t *)id) + sizeof_id);
+	id_end = id + nitems_id;
 	info = hid_get_device_info(dev);
 	is_child = device_get_devclass(dev) != hidbus_devclass;
 	if (is_child)
@@ -781,10 +776,10 @@ done:
  *------------------------------------------------------------------------*/
 int
 hidbus_lookup_driver_info(device_t child, const struct hid_device_id *id,
-    size_t sizeof_id)
+    int nitems_id)
 {
 
-	id = hidbus_lookup_id(child, id, sizeof_id);
+	id = hidbus_lookup_id(child, id, nitems_id);
 	if (id) {
 		/* copy driver info */
 		hidbus_set_driver_info(child, id->driver_info);

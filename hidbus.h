@@ -164,9 +164,9 @@ struct hid_device_id {
 		mtx_unlock(_m);			\
 } while (0)
 
-#define	HIDBUS_LOOKUP_ID(d, h)	hidbus_lookup_id((d), (h), sizeof(h))
+#define	HIDBUS_LOOKUP_ID(d, h)	hidbus_lookup_id((d), (h), nitems(h))
 #define	HIDBUS_LOOKUP_DRIVER_INFO(d, h)		\
-	hidbus_lookup_driver_info((d), (h), sizeof(h))
+	hidbus_lookup_driver_info((d), (h), nitems(h))
 
 /*
  * Walk through all HID items hi belonging Top Level Collection #tlc_index
@@ -183,10 +183,10 @@ int	hidbus_locate(const void *desc, hid_size_t size, int32_t u,
 	    struct hid_absinfo *ai);
 
 const struct hid_device_id *hidbus_lookup_id(device_t,
-		    const struct hid_device_id *, size_t);
+		    const struct hid_device_id *, int);
 struct hid_rdesc_info *hidbus_get_rdesc_info(device_t);
 int		hidbus_lookup_driver_info(device_t,
-		    const struct hid_device_id *, size_t);
+		    const struct hid_device_id *, int);
 struct mtx *	hidbus_get_lock(device_t);
 void		hidbus_set_intr(device_t, hid_intr_t*, void *);
 int		hidbus_intr_start(device_t);
