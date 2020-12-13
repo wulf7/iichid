@@ -157,7 +157,7 @@ usbhid_intr_out_callback(struct usb_xfer *xfer, usb_error_t error)
 tr_setup:
 		len = xfer_ctx->req.intr.maxlen;
 		if (len == 0) {
-			if (HID_IN_POLLING_MODE_FUNC())
+			if (USB_IN_POLLING_MODE_FUNC())
 				xfer_ctx->error = 0;
 			else
 				usbd_transfer_stop(xfer);
@@ -168,7 +168,7 @@ tr_setup:
 		usbd_xfer_set_frame_len(xfer, 0, len);
 		usbd_transfer_submit(xfer);
 		xfer_ctx->req.intr.maxlen = 0;
-		if (HID_IN_POLLING_MODE_FUNC())
+		if (USB_IN_POLLING_MODE_FUNC())
 			return;
 		xfer_ctx->error = 0;
 		goto tr_exit;
@@ -278,7 +278,7 @@ static int
 usbhid_sync_wakeup_cb(struct usbhid_xfer_ctx *xfer_ctx)
 {
 
-	if (!HID_IN_POLLING_MODE_FUNC())
+	if (!USB_IN_POLLING_MODE_FUNC())
 		wakeup(xfer_ctx->cb_ctx);
 
 	return (ECANCELED);
@@ -420,7 +420,7 @@ usbhid_sync_xfer(struct usbhid_softc* sc, int xfer_idx,
 
 	xfer_ctx = sc->sc_xfer_ctx + xfer_idx;
 
-	if (HID_IN_POLLING_MODE_FUNC()) {
+	if (USB_IN_POLLING_MODE_FUNC()) {
 		save = *xfer_ctx;
 	} else {
 		mtx_lock(sc->sc_intr_mtx);
@@ -440,7 +440,7 @@ usbhid_sync_xfer(struct usbhid_softc* sc, int xfer_idx,
 	timeout = USB_DEFAULT_TIMEOUT;
 	usbd_transfer_start(sc->sc_xfer[xfer_idx]);
 
-	if (HID_IN_POLLING_MODE_FUNC())
+	if (USB_IN_POLLING_MODE_FUNC())
 		while (timeout > 0 && xfer_ctx->error == ETIMEDOUT) {
 			usbd_transfer_poll(sc->sc_xfer + xfer_idx, 1);
 			DELAY(1000);
@@ -459,7 +459,7 @@ usbhid_sync_xfer(struct usbhid_softc* sc, int xfer_idx,
 	if (error == 0)
 		*req = xfer_ctx->req;
 
-	if (HID_IN_POLLING_MODE_FUNC()) {
+	if (USB_IN_POLLING_MODE_FUNC()) {
 		*xfer_ctx = save;
 	} else {
 		xfer_ctx->influx = false;
