@@ -149,18 +149,27 @@ usbhid_intr_out_callback(struct usb_xfer *xfer, usb_error_t error)
 {
 	struct usbhid_xfer_ctx *xfer_ctx = usbd_xfer_softc(xfer);
 	struct usb_page_cache *pc;
-	int len = xfer_ctx->req.intr.maxlen;
+	int len;
 
 	switch (USB_GET_STATE(xfer)) {
+	case USB_ST_TRANSFERRED:
 	case USB_ST_SETUP:
 tr_setup:
+		len = xfer_ctx->req.intr.maxlen;
+		if (len == 0) {
+			if (HID_IN_POLLING_MODE_FUNC())
+				xfer_ctx->error = 0;
+			else
+				usbd_transfer_stop(xfer);
+			return;
+		}
 		pc = usbd_xfer_get_frame(xfer, 0);
 		usbd_copy_in(pc, 0, xfer_ctx->buf, len);
 		usbd_xfer_set_frame_len(xfer, 0, len);
 		usbd_transfer_submit(xfer);
-		return;
-
-	case USB_ST_TRANSFERRED:
+		xfer_ctx->req.intr.maxlen = 0;
+		if (HID_IN_POLLING_MODE_FUNC())
+			return;
 		xfer_ctx->error = 0;
 		goto tr_exit;
 
@@ -441,7 +450,11 @@ usbhid_sync_xfer(struct usbhid_softc* sc, int xfer_idx,
 		msleep_sbt(xfer_ctx, sc->sc_intr_mtx, 0, "usbhid io",
 		    SBT_1MS * timeout, 0, C_HARDCLOCK);
 
-	usbd_transfer_stop(sc->sc_xfer[xfer_idx]);
+	/* Perform usbhid_write() asyncronously to improve queueing */
+	if (USB_IN_POLLING_MODE_FUNC() ||
+	    sc->sc_config[xfer_idx].type != UE_INTERRUPT ||
+	    sc->sc_config[xfer_idx].direction != UE_DIR_OUT)
+		usbd_transfer_stop(sc->sc_xfer[xfer_idx]);
 	error = xfer_ctx->error;
 	if (error == 0)
 		*req = xfer_ctx->req;
