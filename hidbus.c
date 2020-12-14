@@ -69,6 +69,7 @@ struct hidbus_softc {
 	struct hid_rdesc_info		rdesc;
 	bool				overloaded;
 	int				nest;	/* Child attach nesting lvl */
+	int				nauto;	/* Number of autochildren */
 
 	STAILQ_HEAD(, hidbus_ivars)	tlcs;
 };
@@ -178,6 +179,7 @@ hidbus_add_child(device_t dev, u_int order, const char *name, int unit)
 static int
 hidbus_enumerate_children(device_t dev, const void* data, hid_size_t len)
 {
+	struct hidbus_softc *sc = device_get_softc(dev);
 	struct hid_data *hd;
 	struct hid_item hi;
 	device_t child;
@@ -206,6 +208,8 @@ hidbus_enumerate_children(device_t dev, const void* data, hid_size_t len)
 
 	if (index == 0)
 		return (ENXIO);
+
+	sc->nauto = index;
 
 	return (0);
 }
@@ -460,11 +464,13 @@ void
 hidbus_set_desc(device_t child, const char *suffix)
 {
 	device_t bus = device_get_parent(child);
+	struct hidbus_softc *sc = device_get_softc(bus);
 	struct hid_device_info *devinfo = device_get_ivars(bus);
 	char buf[80];
 
 	/* Do not add NULL suffix or if device name already contains it. */
-	if (suffix != NULL && strcasestr(devinfo->name, suffix) == NULL) {
+	if (suffix != NULL && sc->nauto > 1 &&
+	    strcasestr(devinfo->name, suffix) == NULL) {
 		snprintf(buf, sizeof(buf), "%s %s", devinfo->name, suffix);
 		device_set_desc_copy(child, buf);
 	} else
