@@ -547,6 +547,11 @@ hkbd_interrupt(struct hkbd_softc *sc)
 		}
 	}
 
+#ifdef EVDEV_SUPPORT
+	if (evdev_rcpt_mask & EVDEV_RCPT_HW_KBD && sc->sc_evdev != NULL)
+		evdev_sync(sc->sc_evdev);
+#endif
+
 	/* wakeup keyboard system */
 	hkbd_event_keyinput(sc);
 }
@@ -563,11 +568,6 @@ hkbd_event_keyinput(struct hkbd_softc *sc)
 
 	if (sc->sc_inputs == 0)
 		return;
-
-#ifdef EVDEV_SUPPORT
-	if (evdev_rcpt_mask & EVDEV_RCPT_HW_KBD && sc->sc_evdev != NULL)
-		evdev_sync(sc->sc_evdev);
-#endif
 
 	if (KBD_IS_ACTIVE(&sc->sc_kbd) &&
 	    KBD_IS_BUSY(&sc->sc_kbd)) {
