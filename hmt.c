@@ -637,7 +637,7 @@ hmt_intr(void *context, void *buf, hid_size_t len)
 		if (sc->has_int_button ||
 		    (sc->max_button != 0 && isset(sc->buttons, 0)))
 			evdev_push_key(sc->evdev, BTN_LEFT,
-			    int_btn != 0 | left_btn != 0);
+			    (int_btn != 0) | (left_btn != 0));
 		for (btn = 1; btn < sc->max_button; ++btn) {
 			if (isset(sc->buttons, btn))
 				evdev_push_key(sc->evdev, BTN_MOUSE + btn,
