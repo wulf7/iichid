@@ -26,20 +26,12 @@
 #ifndef _HIDBUS_H_
 #define _HIDBUS_H_
 
-struct hidbus_ivars {
-	device_t			child;
-	int32_t				usage;
-	uint8_t				index;
-	uintptr_t			driver_info;	/* for internal use */
-	hid_intr_t			*intr_handler;
-	void				*intr_ctx;
-	bool				open;
-	STAILQ_ENTRY(hidbus_ivars)	link;
-};
-
 enum {
 	HIDBUS_IVAR_USAGE,
 	HIDBUS_IVAR_INDEX,
+	HIDBUS_IVAR_FLAGS,
+#define	HIDBUS_FLAG_AUTOCHILD	(0<<1)	/* Child is autodiscovered */
+#define	HIDBUS_FLAG_CAN_POLL	(1<<1)	/* Child can work during panic */
 	HIDBUS_IVAR_DRIVER_INFO,
 };
 
@@ -48,6 +40,7 @@ enum {
 
 HIDBUS_ACCESSOR(usage,		USAGE,		int32_t)
 HIDBUS_ACCESSOR(index,		INDEX,		uint8_t)
+HIDBUS_ACCESSOR(flags,		FLAGS,		uint32_t)
 HIDBUS_ACCESSOR(driver_info,	DRIVER_INFO,	uintptr_t)
 
 /*

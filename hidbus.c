@@ -59,6 +59,18 @@ static device_probe_t	hidbus_probe;
 static device_attach_t	hidbus_attach;
 static device_detach_t	hidbus_detach;
 
+struct hidbus_ivars {
+	device_t			child;
+	int32_t				usage;
+	uint8_t				index;
+	uint32_t			flags;
+	uintptr_t			driver_info;	/* for internal use */
+	hid_intr_t			*intr_handler;
+	void				*intr_ctx;
+	bool				open;
+	STAILQ_ENTRY(hidbus_ivars)	link;
+};
+
 struct hidbus_softc {
 	device_t			dev;
 	struct mtx			*lock;
@@ -200,6 +212,7 @@ hidbus_enumerate_children(device_t dev, const void* data, hid_size_t len)
 		}
 		hidbus_set_index(child, index);
 		hidbus_set_usage(child, hi.usage);
+		hidbus_set_flags(child, HIDBUS_FLAG_AUTOCHILD);
 		index++;
 		DPRINTF("Add child TLC: 0x%04x:0x%04x\n",
 		    HID_GET_USAGE_PAGE(hi.usage), HID_GET_USAGE(hi.usage));
@@ -394,6 +407,9 @@ hidbus_read_ivar(device_t bus, device_t child, int which, uintptr_t *result)
 	case HIDBUS_IVAR_USAGE:
 		*result = tlc->usage;
 		break;
+	case HIDBUS_IVAR_FLAGS:
+		*result = tlc->flags;
+		break;
 	case HIDBUS_IVAR_DRIVER_INFO:
 		*result = tlc->driver_info;
 		break;
@@ -414,6 +430,9 @@ hidbus_write_ivar(device_t bus, device_t child, int which, uintptr_t value)
 		break;
 	case HIDBUS_IVAR_USAGE:
 		tlc->usage = value;
+		break;
+	case HIDBUS_IVAR_FLAGS:
+		tlc->flags = value;
 		break;
 	case HIDBUS_IVAR_DRIVER_INFO:
 		tlc->driver_info = value;
