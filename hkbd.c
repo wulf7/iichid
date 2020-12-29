@@ -749,6 +749,8 @@ hkbd_probe(device_t dev)
 	if (error != 0)
                 return (error);
 
+	hidbus_set_desc(dev, "Keyboard");
+
 	return (BUS_PROBE_DEFAULT);
 }
 
@@ -877,8 +879,6 @@ hkbd_attach(device_t dev)
 	kbd_init_struct(kbd, HKBD_DRIVER_NAME, KB_OTHER, unit, 0, 0, 0);
 
 	kbd->kb_data = (void *)sc;
-
-	hidbus_set_desc(dev, "Keyboard");
 
 	sc->sc_mode = K_XLATE;
 
