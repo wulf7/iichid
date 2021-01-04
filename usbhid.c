@@ -159,8 +159,6 @@ tr_setup:
 		if (len == 0) {
 			if (USB_IN_POLLING_MODE_FUNC())
 				xfer_ctx->error = 0;
-			else
-				usbd_transfer_stop(xfer);
 			return;
 		}
 		pc = usbd_xfer_get_frame(xfer, 0);
@@ -396,6 +394,7 @@ usbhid_intr_stop(device_t dev)
 	mtx_assert(sc->sc_intr_mtx, MA_OWNED);
 
 	usbd_transfer_stop(sc->sc_xfer[USBHID_INTR_IN_DT]);
+	usbd_transfer_stop(sc->sc_xfer[USBHID_INTR_OUT_DT]);
 
 	return (0);
 }
