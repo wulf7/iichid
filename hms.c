@@ -90,6 +90,7 @@ enum {
 };
 
 static hidmap_cb_t	hms_final_cb;
+static hid_intr_t	hms_intr;
 
 #define HMS_MAP_BUT_RG(usage_from, usage_to, code)	\
 	{ HIDMAP_KEY_RANGE(HUP_BUTTON, usage_from, usage_to, code) }
@@ -135,7 +136,41 @@ static const struct hid_device_id hms_devs[] = {
 struct hms_softc {
 	struct hidmap		hm;
 	HIDMAP_CAPS(caps, hms_map);
+	bool			iichid_sampling;
+	void			*last_ir;
+	hid_size_t		last_irsize;
+	hid_size_t		isize;
+	uint32_t		drift_cnt;
+	uint32_t		drift_thresh;
 };
+
+static void
+hms_intr(void *context, void *buf, hid_size_t len)
+{
+	struct hidmap *hm = context;
+	struct hms_softc *sc = device_get_softc(hm->dev);
+
+	if (len > sc->isize)
+		len = sc->isize;
+
+	/*
+	 * Many I2C "compatibility" mouse devices found on touchpads continue
+	 * to return last report data in sampling mode even after touch has
+	 * been ended.  That results in cursor drift.  Filter out such a
+	 * reports through comparing with previous one.
+	 */
+	if (len == sc->last_irsize && memcmp(buf, sc->last_ir, len) == 0) {
+		sc->drift_cnt++;
+		if (sc->drift_thresh != 0 && sc->drift_cnt >= sc->drift_thresh)
+			return;
+	} else {
+		sc->drift_cnt = 0;
+		sc->last_irsize = len;
+		bcopy(buf, sc->last_ir, len);
+	}
+
+	hidmap_intr(context, buf, len);
+}
 
 static int
 hms_final_cb(HIDMAP_CB_ARGS)
@@ -149,6 +184,9 @@ hms_final_cb(HIDMAP_CB_ARGS)
 			evdev_support_prop(evdev, INPUT_PROP_DIRECT);
 		else
 			evdev_support_prop(evdev, INPUT_PROP_POINTER);
+		/* Overload interrupt handler to skip identical reports */
+		if (sc->iichid_sampling)
+			hidbus_set_intr(sc->hm.dev, hms_intr, &sc->hm);
 	}
 
 	/* Do not execute callback at interrupt handler and detach */
@@ -237,6 +275,19 @@ hms_attach(device_t dev)
 	else
 		HIDMAP_ADD_MAP(&sc->hm, hms_map_wheel, cap_wheel);
 
+	if (hid_test_quirk(hw, HQ_IICHID_SAMPLING) &&
+	    hidmap_test_cap(sc->caps, HMS_REL_X) &&
+	    hidmap_test_cap(sc->caps, HMS_REL_Y)) {
+		sc->iichid_sampling = true;
+		sc->isize = hid_report_size(d_ptr, d_len, hid_input, NULL);
+		sc->last_ir = malloc(sc->isize, M_DEVBUF, M_WAITOK | M_ZERO);
+		sc->drift_thresh = 2;
+		SYSCTL_ADD_U32(device_get_sysctl_ctx(dev),
+		    SYSCTL_CHILDREN(device_get_sysctl_tree(dev)), OID_AUTO,
+		    "drift_thresh", CTLFLAG_RW, &sc->drift_thresh, 0,
+		    "drift detection threshhold");
+	}
+
 	error = hidmap_attach(&sc->hm);
 	if (error)
 		return (error);
@@ -268,8 +319,12 @@ static int
 hms_detach(device_t dev)
 {
 	struct hms_softc *sc = device_get_softc(dev);
+	int error;
 
-	return (hidmap_detach(&sc->hm));
+	error = hidmap_detach(&sc->hm);
+	if (error == 0)
+		free(sc->last_ir, M_DEVBUF);
+	return (error);
 }
 
 static devclass_t hms_devclass;
