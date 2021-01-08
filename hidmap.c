@@ -189,7 +189,7 @@ hidmap_sync_keys(struct hidmap *hm)
 	bzero(hm->key_rel, howmany(KEY_CNT, 8));
 }
 
-static void
+void
 hidmap_intr(void *context, void *buf, hid_size_t len)
 {
 	struct hidmap *hm = context;

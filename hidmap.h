@@ -249,6 +249,7 @@ uint32_t	hidmap_add_map(struct hidmap *hm,
 void	hidmap_support_key(struct hidmap *hm, uint16_t key);
 void	hidmap_push_key(struct hidmap *hm, uint16_t key, int32_t value);
 
+void	hidmap_intr(void *context, void *buf, hid_size_t len);
 #define	HIDMAP_PROBE(hm, dev, id, map, suffix)				\
 	hidmap_probe((hm), (dev), (id), nitems(id), (map), nitems(map),	\
 	    (suffix), NULL)
