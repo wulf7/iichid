@@ -125,6 +125,9 @@ hpen_battery_strenght_cb(HIDMAP_CB_ARGS)
 	case HIDMAP_CB_IS_RUNNING:
 		data = ctx.data;
 		/* TODO */
+		break;
+	default:
+		break;
 	}
 
 	return (0);
