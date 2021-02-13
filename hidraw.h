@@ -46,16 +46,16 @@ struct hidraw_devinfo {
 	int16_t		product;
 };
 
-#define	HIDIOCGRDESCSIZE	_IOR('H', 0x01, int)
-#define	HIDIOCGRDESC		_IO('H', 0x02)
-#define	HIDIOCGRAWINFO		_IOR('H', 0x03, struct hidraw_devinfo)
-#define	HIDIOCGRAWNAME(len)	_IOC(IOC_OUT, 'H', 0x04, len)
-#define	HIDIOCGRAWPHYS(len)	_IOC(IOC_OUT, 'H', 0x05, len)
-#define	HIDIOCSFEATURE(len)	_IOC(IOC_IN, 'H', 0x06, len)
-#define	HIDIOCGFEATURE(len)	_IOC(IOC_INOUT, 'H', 0x07, len)
-#define	HIDIOCGRAWUNIQ(len)	_IOC(IOC_OUT, 'H', 0x08, len)
+#define	HIDIOCGRDESCSIZE	_IOR('U', 30, int)
+#define	HIDIOCGRDESC		_IO ('U', 31)
+#define	HIDIOCGRAWINFO		_IOR('U', 32, struct hidraw_devinfo)
+#define	HIDIOCGRAWNAME(len)	_IOC(IOC_OUT,   'U', 33, len)
+#define	HIDIOCGRAWPHYS(len)	_IOC(IOC_OUT,   'U', 34, len)
+#define	HIDIOCSFEATURE(len)	_IOC(IOC_IN,    'U', 35, len)
+#define	HIDIOCGFEATURE(len)	_IOC(IOC_INOUT, 'U', 36, len)
+#define	HIDIOCGRAWUNIQ(len)	_IOC(IOC_OUT,   'U', 37, len)
 
 /* FreeBSD extension. Set report descriptor. */
-#define	HIDIOCSRDESC(len)	_IOC(IOC_IN, 'H', 0x02, len)
+#define	HIDIOCSRDESC(len)	_IOC(IOC_IN,    'U', 26, len)
 
 #endif	/* _HIDRAW_H */
