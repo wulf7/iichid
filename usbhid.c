@@ -73,15 +73,17 @@ __FBSDID("$FreeBSD$");
 #include "hid_if.h"
 #include "hidquirk.h"
 
-/* Set default probe priority lesser than other USB device drivers have */
-#ifndef USBHID_BUS_PROBE_PRIO
-#define	USBHID_BUS_PROBE_PRIO	(BUS_PROBE_GENERIC - 1)
+static SYSCTL_NODE(_hw_usb, OID_AUTO, usbhid, CTLFLAG_RW, 0, "USB usbhid");
+#ifdef DISABLE_USBHID
+static int usbhid_enable = 0;
+#else
+static int usbhid_enable = 1;
 #endif
-
+SYSCTL_INT(_hw_usb_usbhid, OID_AUTO, enable, CTLFLAG_RWTUN,
+    &usbhid_enable, 0, "Enable usbhid and prefer it to other USB HID drivers");
 #ifdef USB_DEBUG
 static int usbhid_debug = 0;
 
-static SYSCTL_NODE(_hw_usb, OID_AUTO, usbhid, CTLFLAG_RW, 0, "USB usbhid");
 SYSCTL_INT(_hw_usb_usbhid, OID_AUTO, debug, CTLFLAG_RWTUN,
     &usbhid_debug, 0, "Debug level");
 #endif
@@ -669,6 +671,9 @@ usbhid_probe(device_t dev)
 
 	DPRINTFN(11, "\n");
 
+	if (usbhid_enable == 0)
+		return (ENXIO);
+
 	if (uaa->usb_mode != USB_MODE_HOST)
 		return (ENXIO);
 
@@ -694,7 +699,7 @@ usbhid_probe(device_t dev)
 		return (ENXIO);
 #endif
 
-	return (USBHID_BUS_PROBE_PRIO);
+	return (BUS_PROBE_GENERIC + 1);
 }
 
 static int

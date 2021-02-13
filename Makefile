@@ -32,9 +32,7 @@ SRCS	+= hidbus.c hidbus.h hid_if.c hid_if.h hid.c hid.h
 SRCS	+= hid_debug.h hid_debug.c
 SRCS	+= hidmap.h hidmap.c
 SRCS	+= usbdevs.h
-.if !defined(DISABLE_USBHID)
 SRCS	+= usbhid.c
-.endif
 SRCS	+= hidraw.c hidraw.h
 SRCS	+= hidquirk.h hidquirk.c
 SRCS	+= acpi_if.h bus_if.h device_if.h iicbus_if.h
@@ -55,12 +53,14 @@ CFLAGS	+= -DENABLE_HKBD
 CFLAGS	+= -DHID_DEBUG
 CFLAGS	+= -DIICHID_DEBUG
 CFLAGS	+= -DEVDEV_SUPPORT
+.if defined(DISABLE_USBHID)
+CFLAGS	+= -DDISABLE_USBHID
+.endif
 #CFLAGS	+= -DHAVE_ACPI_EVALUATEDSMTYPED
 .if ${OSVERSION} >= 1300083 || \
     (${OSVERSION} >= 1201513 && ${OSVERSION} < 1300000)
 CFLAGS	+= -DHAVE_ACPI_IICBUS
 .endif
-CFLAGS	+= -DUSBHID_BUS_PROBE_PRIO=-10
 .if ${OSVERSION} >= 1300055 || \
     (${OSVERSION} >= 1201507 && ${OSVERSION} < 1300000)
 CFLAGS	+= -DHAVE_IG4_POLLING
