@@ -707,8 +707,7 @@ hkbd_intr_callback(void *context, void *data, hid_size_t len)
 				/* set key in bitmap */
 				sc->sc_ndata.bitmap[key / 64] |= 1ULL << (key % 64);
 			}
-		} else {
-			int32_t pressed = hid_get_data(buf, len, &sc->sc_loc_key[i]);
+		} else if (hid_get_data(buf, len, &sc->sc_loc_key[i])) {
 			uint32_t key = i;
 
 			if (modifiers & MOD_FN)
@@ -718,10 +717,7 @@ hkbd_intr_callback(void *context, void *data, hid_size_t len)
 			if (key == KEY_NONE || key == KEY_ERROR || key >= HKBD_NKEYCODE)
 				continue;
 			/* set key in bitmap */
-			if (pressed != 0)
-				sc->sc_ndata.bitmap[key / 64] |= 1ULL << (key % 64);
-			else
-				sc->sc_ndata.bitmap[key / 64] &= ~(1ULL << (key % 64));
+			sc->sc_ndata.bitmap[key / 64] |= 1ULL << (key % 64);
 		}
 	}
 #ifdef HID_DEBUG
