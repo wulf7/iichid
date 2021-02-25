@@ -656,6 +656,9 @@ hkbd_intr_callback(void *context, void *data, hid_size_t len)
 		}
 	}
 
+	/* clear temporary storage */
+	memset(&sc->sc_ndata, 0, sizeof(sc->sc_ndata));
+
 	/* clear modifiers */
 	modifiers = 0;
 
@@ -686,9 +689,6 @@ hkbd_intr_callback(void *context, void *data, hid_size_t len)
 			offset = sc->sc_loc_key[0].count;
 			if (offset < 0 || offset > len)
 				offset = len;
-			/* clear temporary storage */
-			if (offset != 0)
-				memset(&sc->sc_ndata, 0, sizeof(sc->sc_ndata));
 			while (offset--) {
 				uint32_t key =
 				    hid_get_data(buf + offset, len - offset,
