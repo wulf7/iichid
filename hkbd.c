@@ -63,6 +63,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/malloc.h>
 #include <sys/priv.h>
 #include <sys/proc.h>
+#include <sys/bitstring.h>
 
 #include "hid.h"
 #include "hidbus.h"
@@ -111,7 +112,7 @@ SYSCTL_INT(_hw_hid_hkbd, OID_AUTO, no_leds, CTLFLAG_RWTUN,
 #define	HKBD_BUFFER_SIZE	      64	/* bytes */
 #define	HKBD_KEY_PRESSED(map, key) ({ \
 	CTASSERT((key) >= 0 && (key) < HKBD_NKEYCODE); \
-	((map)[(key) / 64] & (1ULL << ((key) % 64))); \
+	bit_test(map, key); \
 })
 
 #define	MOD_EJECT	0x01
@@ -119,10 +120,6 @@ SYSCTL_INT(_hw_hid_hkbd, OID_AUTO, no_leds, CTLFLAG_RWTUN,
 
 #define MOD_MIN     0xe0
 #define MOD_MAX     0xe7
-
-struct hkbd_data {
-	uint64_t bitmap[howmany(HKBD_NKEYCODE, 64)];
-};
 
 struct hkbd_softc {
 	device_t sc_dev;
@@ -132,7 +129,7 @@ struct hkbd_softc {
 	keymap_t sc_keymap;
 	accentmap_t sc_accmap;
 	fkeytab_t sc_fkeymap[HKBD_NFKEY];
-	uint64_t sc_loc_key_valid[howmany(HKBD_NKEYCODE, 64)];
+	bitstr_t bit_decl(sc_loc_key_valid, HKBD_NKEYCODE);
 	struct hid_location sc_loc_apple_eject;
 	struct hid_location sc_loc_apple_fn;
 	struct hid_location sc_loc_key[HKBD_NKEYCODE];
@@ -140,8 +137,8 @@ struct hkbd_softc {
 	struct hid_location sc_loc_capslock;
 	struct hid_location sc_loc_scrolllock;
 	struct callout sc_callout;
-	struct hkbd_data sc_ndata;
-	struct hkbd_data sc_odata;
+	bitstr_t bit_decl(sc_ndata, HKBD_NKEYCODE);
+	bitstr_t bit_decl(sc_odata, HKBD_NKEYCODE);
 
 	struct thread *sc_poll_thread;
 #ifdef EVDEV_SUPPORT
@@ -214,6 +211,13 @@ struct hkbd_softc {
 #define	HKBD_LOCK(sc)	HID_MTX_LOCK((sc)->sc_lock)
 #define	HKBD_UNLOCK(sc)	HID_MTX_UNLOCK((sc)->sc_lock)
 #define	HKBD_LOCK_ASSERT(sc)	HID_MTX_ASSERT((sc)->sc_lock, MA_OWNED)
+
+#define BIT_FOREACH_AT(_bitstr, _start, _nbits, _iter)			\
+	for (bit_ffs_at((_bitstr), (_start), (_nbits), &(_iter));	\
+	     (_iter) != -1;						\
+	     bit_ffs_at((_bitstr), (_iter) + 1, (_nbits), &(_iter)))
+#define BIT_FOREACH(_bitstr, _nbits, _iter)				\
+	BIT_FOREACH_AT(_bitstr, /*start*/0, _nbits, _iter)
 
 #define	NN 0				/* no translation */
 /*
@@ -315,23 +319,19 @@ static const struct evdev_methods hkbd_evdev_methods = {
 static bool
 hkbd_any_key_pressed(struct hkbd_softc *sc)
 {
-	bool ret = false;
-	unsigned i;
+	int result;
 
-	for (i = 0; i != howmany(HKBD_NKEYCODE, 64); i++)
-		ret |= (sc->sc_odata.bitmap[i] != 0);
-	return (ret);
+	bit_ffs(sc->sc_odata, HKBD_NKEYCODE, &result);
+	return (result != -1);
 }
 
 static bool
 hkbd_any_key_valid(struct hkbd_softc *sc)
 {
-	bool ret = false;
-	unsigned i;
+	int result;
 
-	for (i = 0; i != howmany(HKBD_NKEYCODE, 64); i++)
-		ret |= (sc->sc_loc_key_valid[i] != 0);
-	return (ret);
+	bit_ffs(sc->sc_loc_key_valid, HKBD_NKEYCODE, &result);
+	return (result != -1);
 }
 
 static bool
@@ -476,65 +476,47 @@ hkbd_interrupt(struct hkbd_softc *sc)
 
 	HKBD_LOCK_ASSERT(sc);
 
-	/* Check for key changes, the order is:
-	 * 1. Modifier keys down
-	 * 2. Regular keys up/down
-	 * 3. Modifier keys up
+	/*
+	 * Check for key changes, the order is:
+	 * 1. Regular keys up
+	 * 2. Modifier keys up
+	 * 3. Modifier keys down
+	 * 4. Regular keys down
 	 *
 	 * This allows devices which send events changing the state of
-	 * both a modifier key and a regular key, to be correctly
-	 * translated. */
-	for (key = MOD_MIN; key <= MOD_MAX; key++) {
-		const uint64_t mask = 1ULL << (key % 64);
-
-		if (!(sc->sc_odata.bitmap[key / 64] & mask) &&
-		    (sc->sc_ndata.bitmap[key / 64] & mask)) {
-			hkbd_put_key(sc, key | KEY_PRESS);
-		}
-	}
-	for (key = 0; key != HKBD_NKEYCODE; key++) {
-		const uint64_t mask = 1ULL << (key % 64);
-		const uint64_t delta =
-		    sc->sc_odata.bitmap[key / 64] ^
-		    sc->sc_ndata.bitmap[key / 64];
-
-		if (hkbd_is_modifier_key(key))
+	 * both a modifier key and a regular key, to be correctly translated.
+	 */
+	BIT_FOREACH(sc->sc_odata, HKBD_NKEYCODE, key) {
+		if (hkbd_is_modifier_key(key) || bit_test(sc->sc_ndata, key))
 			continue;
+		hkbd_put_key(sc, key | KEY_RELEASE);
 
-		if (mask == 1 && delta == 0) {
-			key += 63;
-			continue;	/* skip empty areas */
-		} else if (delta & mask) {
-			if (sc->sc_odata.bitmap[key / 64] & mask) {
-				hkbd_put_key(sc, key | KEY_RELEASE);
-
-				/* clear repeating key, if any */
-				if (sc->sc_repeat_key == key)
-					sc->sc_repeat_key = 0;
-			} else {
-				hkbd_put_key(sc, key | KEY_PRESS);
-
-				sc->sc_co_basetime = sbinuptime();
-				sc->sc_delay = sc->sc_kbd.kb_delay1;
-				hkbd_start_timer(sc);
-
-				/* set repeat time for last key */
-				sc->sc_repeat_time = now + sc->sc_kbd.kb_delay1;
-				sc->sc_repeat_key = key;
-			}
-		}
+		/* clear repeating key, if any */
+		if (sc->sc_repeat_key == key)
+			sc->sc_repeat_key = 0;
 	}
-	for (key = MOD_MIN; key <= MOD_MAX; key++) {
-		const uint64_t mask = 1ULL << (key % 64);
-
-		if ((sc->sc_odata.bitmap[key / 64] & mask) &&
-		    !(sc->sc_ndata.bitmap[key / 64] & mask)) {
+	BIT_FOREACH_AT(sc->sc_odata, MOD_MIN, MOD_MAX + 1, key)
+		if (!bit_test(sc->sc_ndata, key))
 			hkbd_put_key(sc, key | KEY_RELEASE);
-		}
+	BIT_FOREACH_AT(sc->sc_ndata, MOD_MIN, MOD_MAX + 1, key)
+		if (!bit_test(sc->sc_odata, key))
+			hkbd_put_key(sc, key | KEY_PRESS);
+	BIT_FOREACH(sc->sc_ndata, HKBD_NKEYCODE, key) {
+		if (hkbd_is_modifier_key(key) || bit_test(sc->sc_odata, key))
+			continue;
+		hkbd_put_key(sc, key | KEY_PRESS);
+
+		sc->sc_co_basetime = sbinuptime();
+		sc->sc_delay = sc->sc_kbd.kb_delay1;
+		hkbd_start_timer(sc);
+
+		/* set repeat time for last key */
+		sc->sc_repeat_time = now + sc->sc_kbd.kb_delay1;
+		sc->sc_repeat_key = key;
 	}
 
 	/* synchronize old data with new data */
-	sc->sc_odata = sc->sc_ndata;
+	memcpy(sc->sc_odata, sc->sc_ndata, bitstr_size(HKBD_NKEYCODE));
 
 	/* check if last key is still pressed */
 	if (sc->sc_repeat_key != 0) {
@@ -656,7 +638,7 @@ hkbd_intr_callback(void *context, void *data, hid_size_t len)
 	}
 
 	/* clear temporary storage */
-	memset(&sc->sc_ndata, 0, sizeof(sc->sc_ndata));
+	bit_nclear(sc->sc_ndata, 0, HKBD_NKEYCODE - 1);
 
 	/* clear modifiers */
 	modifiers = 0;
@@ -673,16 +655,8 @@ hkbd_intr_callback(void *context, void *data, hid_size_t len)
 			modifiers |= MOD_FN;
 	}
 
-	for (i = 0; i != HKBD_NKEYCODE; i++) {
-		const uint64_t valid = sc->sc_loc_key_valid[i / 64];
-		const uint64_t mask = 1ULL << (i % 64);
-
-		if (mask == 1 && valid == 0) {
-			i += 63;
-			continue;	/* skip empty areas */
-		} else if (~valid & mask) {
-			continue;	/* location is not valid */
-		} else if (id != sc->sc_id_loc_key[i]) {
+	BIT_FOREACH(sc->sc_loc_key_valid, HKBD_NKEYCODE, i) {
+		if (id != sc->sc_id_loc_key[i]) {
 			continue;	/* invalid HID ID */
 		} else if (i == 0) {
 			struct hid_location tmp_loc = sc->sc_loc_key[0];
@@ -696,7 +670,8 @@ hkbd_intr_callback(void *context, void *data, hid_size_t len)
 				tmp_loc.pos += tmp_loc.size;
 				if (key == KEY_ERROR) {
 					DPRINTF("KEY_ERROR\n");
-					sc->sc_ndata = sc->sc_odata;
+					memcpy(sc->sc_ndata, sc->sc_odata,
+					    bitstr_size(HKBD_NKEYCODE));
 					return;	/* ignore */
 				}
 				if (modifiers & MOD_FN)
@@ -706,7 +681,7 @@ hkbd_intr_callback(void *context, void *data, hid_size_t len)
 				if (key == KEY_NONE || key >= HKBD_NKEYCODE)
 					continue;
 				/* set key in bitmap */
-				sc->sc_ndata.bitmap[key / 64] |= 1ULL << (key % 64);
+				bit_set(sc->sc_ndata, key);
 			}
 		} else if (hid_get_data(buf, len, &sc->sc_loc_key[i])) {
 			uint32_t key = i;
@@ -718,18 +693,13 @@ hkbd_intr_callback(void *context, void *data, hid_size_t len)
 			if (key == KEY_NONE || key == KEY_ERROR || key >= HKBD_NKEYCODE)
 				continue;
 			/* set key in bitmap */
-			sc->sc_ndata.bitmap[key / 64] |= 1ULL << (key % 64);
+			bit_set(sc->sc_ndata, key);
 		}
 	}
 #ifdef HID_DEBUG
 	DPRINTF("modifiers = 0x%04x\n", modifiers);
-	for (i = 0; i != HKBD_NKEYCODE; i++) {
-		const uint64_t valid = sc->sc_ndata.bitmap[i / 64];
-		const uint64_t mask = 1ULL << (i % 64);
-
-		if (valid & mask)
-			DPRINTF("Key 0x%02x pressed\n", i);
-	}
+	BIT_FOREACH(sc->sc_ndata, HKBD_NKEYCODE, i)
+		DPRINTF("Key 0x%02x pressed\n", i);
 #endif
 	hkbd_interrupt(sc);
 }
@@ -772,7 +742,7 @@ hkbd_parse_hid(struct hkbd_softc *sc, const uint8_t *ptr, uint32_t len,
 	sc->sc_flags &= ~HKBD_FLAG_HID_MASK;
 
 	/* reset detected keys */
-	memset(sc->sc_loc_key_valid, 0, sizeof(sc->sc_loc_key_valid));
+	bit_nclear(sc->sc_loc_key_valid, 0, HKBD_NKEYCODE - 1);
 
 	/* check if there is an ID byte */
 	sc->sc_kbd_size = hid_report_size(ptr, len,
@@ -805,7 +775,7 @@ hkbd_parse_hid(struct hkbd_softc *sc, const uint8_t *ptr, uint32_t len,
 		if (flags & HIO_VARIABLE) {
 			DPRINTFN(1, "Ignoring keyboard event control\n");
 		} else {
-			sc->sc_loc_key_valid[0] |= 1;
+			bit_set(sc->sc_loc_key_valid, 0);
 			DPRINTFN(1, "Found keyboard event array\n");
 		}
 	}
@@ -817,8 +787,7 @@ hkbd_parse_hid(struct hkbd_softc *sc, const uint8_t *ptr, uint32_t len,
 		    hid_input, tlc_index, 0, &sc->sc_loc_key[key], &flags,
 		    &sc->sc_id_loc_key[key], NULL)) {
 			if (flags & HIO_VARIABLE) {
-				sc->sc_loc_key_valid[key / 64] |=
-				    1ULL << (key % 64);
+				bit_set(sc->sc_loc_key_valid, key);
 				DPRINTFN(1, "Found key 0x%02x\n", key);
 			}
 		}
@@ -1024,7 +993,7 @@ hkbd_detach(device_t dev)
 		hidbus_intr_stop(dev);
 
 		/* release all leftover keys, if any */
-		memset(&sc->sc_ndata, 0, sizeof(sc->sc_ndata));
+		bit_nclear(sc->sc_ndata, 0, HKBD_NKEYCODE - 1);
 
 		/* process releasing of all keys */
 		hkbd_interrupt(sc);
@@ -1266,11 +1235,11 @@ hkbd_read(keyboard_t *kbd, int wait)
 	++(kbd->kb_count);
 
 #ifdef HKBD_EMULATE_ATSCANCODE
-	keycode = hkbd_atkeycode(usbcode, sc->sc_ndata.bitmap);
+	keycode = hkbd_atkeycode(usbcode, sc->sc_ndata);
 	if (keycode == NN) {
 		return -1;
 	}
-	return (hkbd_key2scan(sc, keycode, sc->sc_ndata.bitmap,
+	return (hkbd_key2scan(sc, keycode, sc->sc_ndata,
 	    (usbcode & KEY_RELEASE)));
 #else					/* !HKBD_EMULATE_ATSCANCODE */
 	return (usbcode);
@@ -1336,13 +1305,13 @@ next_code:
 
 #ifdef HKBD_EMULATE_ATSCANCODE
 	/* USB key index -> key code -> AT scan code */
-	keycode = hkbd_atkeycode(usbcode, sc->sc_ndata.bitmap);
+	keycode = hkbd_atkeycode(usbcode, sc->sc_ndata);
 	if (keycode == NN) {
 		return (NOKEY);
 	}
 	/* return an AT scan code for the K_RAW mode */
 	if (sc->sc_mode == K_RAW) {
-		return (hkbd_key2scan(sc, keycode, sc->sc_ndata.bitmap,
+		return (hkbd_key2scan(sc, keycode, sc->sc_ndata,
 		    (usbcode & KEY_RELEASE)));
 	}
 #else					/* !HKBD_EMULATE_ATSCANCODE */
@@ -1665,8 +1634,8 @@ hkbd_clear_state(keyboard_t *kbd)
 	sc->sc_buffered_char[0] = 0;
 	sc->sc_buffered_char[1] = 0;
 #endif
-	memset(&sc->sc_ndata, 0, sizeof(sc->sc_ndata));
-	memset(&sc->sc_odata, 0, sizeof(sc->sc_odata));
+	bit_nclear(sc->sc_ndata, 0, HKBD_NKEYCODE - 1);
+	bit_nclear(sc->sc_odata, 0, HKBD_NKEYCODE - 1);
 	sc->sc_repeat_time = 0;
 	sc->sc_repeat_key = 0;
 }
@@ -1815,7 +1784,7 @@ hkbd_set_typematic(keyboard_t *kbd, int code)
 
 #ifdef HKBD_EMULATE_ATSCANCODE
 static uint32_t
-hkbd_atkeycode(int usbcode, const uint64_t *bitmap)
+hkbd_atkeycode(int usbcode, const bitstr_t *bitmap)
 {
 	uint32_t keycode;
 
@@ -1842,7 +1811,7 @@ hkbd_atkeycode(int usbcode, const uint64_t *bitmap)
 }
 
 static int
-hkbd_key2scan(struct hkbd_softc *sc, int code, const uint64_t *bitmap, int up)
+hkbd_key2scan(struct hkbd_softc *sc, int code, const bitstr_t *bitmap, int up)
 {
 	static const int scan[] = {
 		/* 89 */
